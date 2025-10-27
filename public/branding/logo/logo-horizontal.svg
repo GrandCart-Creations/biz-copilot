@@ -1,0 +1,24 @@
+<svg width="500" height="150" viewBox="0 0 500 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Gradient Definition -->
+  <defs>
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#9333EA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#EC4899;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9333EA;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Icon: Rounded Square with BC -->
+  <g transform="translate(10, 10)">
+    <rect width="130" height="130" rx="30" fill="url(#iconGradient)"/>
+    <text x="65" y="92" font-family="Arial, sans-serif" font-size="60" font-weight="700" fill="white" text-anchor="middle">BC</text>
+    <circle cx="95" cy="42" r="5" fill="white" opacity="0.8"/>
+  </g>
+  
+  <!-- Wordmark: Biz-CoPilot -->
+  <text x="165" y="90" font-family="Arial, sans-serif" font-size="48" font-weight="700" fill="url(#textGradient)">Biz-CoPilot</text>
+</svg>

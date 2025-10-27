@@ -1,0 +1,27 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle with Gradient -->
+  <defs>
+    <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#9333EA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#EC4899;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Rounded Square Background -->
+  <rect x="10" y="10" width="180" height="180" rx="40" fill="url(#brandGradient)"/>
+  
+  <!-- BC Monogram in White -->
+  <!-- Letter B -->
+  <path d="M 60 70 L 60 130 L 90 130 C 100 130 108 122 108 112 C 108 107 106 103 103 100 C 106 97 108 93 108 88 C 108 78 100 70 90 70 Z M 72 82 L 88 82 C 93 82 96 85 96 88 C 96 91 93 94 88 94 L 72 94 Z M 72 104 L 90 104 C 95 104 98 107 98 112 C 98 115 95 118 90 118 L 72 118 Z" fill="white"/>
+  
+  <!-- Letter C -->
+  <path d="M 120 85 C 124 82 129 80 135 80 C 145 80 153 88 153 98 L 141 98 C 141 94 138 91 135 91 C 130 91 126 95 126 100 C 126 105 130 109 135 109 C 138 109 141 106 141 102 L 153 102 C 153 112 145 120 135 120 C 124 120 116 112 116 100 C 116 93 118 88 122 85 Z" fill="white"/>
+  
+  <!-- Navigation Arrow/Compass Element -->
+  <circle cx="100" cy="45" r="8" fill="white" opacity="0.9"/>
+  <path d="M 100 35 L 103 43 L 100 41 L 97 43 Z" fill="#4F46E5"/>
+  
+  <circle cx="155" cy="100" r="8" fill="white" opacity="0.9"/>
+  <path d="M 165 100 L 157 103 L 159 100 L 157 97 Z" fill="#9333EA"/>
+</svg>
