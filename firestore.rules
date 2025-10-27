@@ -1,0 +1,255 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user is the owner of a company
+    function isOwner(companyId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)).data.role == 'owner';
+    }
+    
+    // Check if user has specific role in company
+    function hasRole(companyId, allowedRoles) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)).data.role in allowedRoles;
+    }
+    
+    // Check if user has specific permission
+    function hasPermission(companyId, module, action) {
+      let userDoc = get(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid));
+      let permissionString = module + ':' + action;
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) &&
+             (permissionString in userDoc.data.permissions || '*' in userDoc.data.permissions);
+    }
+    
+    // Check if user created the resource
+    function isResourceOwner() {
+      return isAuthenticated() && 
+             resource.data.createdBy == request.auth.uid;
+    }
+    
+    // Rate limiting check (prevent spam)
+    function notTooFrequent() {
+      return !('lastModified' in resource.data) || 
+             request.time > resource.data.lastModified + duration.value(1, 's');
+    }
+    
+    // Validate expense data structure
+    function isValidExpense() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['date', 'category', 'vendor', 'amount', 'createdBy', 'createdAt']) &&
+             data.amount is number &&
+             data.amount >= 0 &&
+             data.amount < 1000000 &&
+             data.createdBy is string &&
+             data.createdAt is timestamp;
+    }
+    
+    // Validate income data structure
+    function isValidIncome() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['date', 'category', 'amount', 'createdBy', 'createdAt']) &&
+             data.amount is number &&
+             data.amount >= 0 &&
+             data.amount < 10000000 &&
+             data.createdBy is string &&
+             data.createdAt is timestamp;
+    }
+    
+    // ============================================
+    // USER PROFILES & LEGACY STRUCTURE
+    // ============================================
+    
+    match /users/{userId} {
+      // Users can only read/write their own profile
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+      
+      // BACKWARDS COMPATIBILITY: Allow users to access their own expenses
+      // This supports the existing app structure
+      match /expenses/{expenseId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        allow update: if isAuthenticated() && request.auth.uid == userId;
+        allow delete: if isAuthenticated() && request.auth.uid == userId;
+      }
+      
+      // BACKWARDS COMPATIBILITY: Allow users to access their own accounts
+      match /accounts/{accountId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        allow update: if isAuthenticated() && request.auth.uid == userId;
+        allow delete: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+    
+    // ============================================
+    // COMPANIES
+    // ============================================
+    
+    match /companies/{companyId} {
+      // Read: Any user who is part of the company
+      allow read: if isAuthenticated() && 
+                     exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid));
+      
+      // Create: Any authenticated user can create a company
+      allow create: if isAuthenticated() &&
+                       request.resource.data.createdBy == request.auth.uid;
+      
+      // Update: Only company owner
+      allow update: if isOwner(companyId);
+      
+      // Delete: Only company owner
+      allow delete: if isOwner(companyId);
+      
+      // ============================================
+      // COMPANY USERS (Role Management)
+      // ============================================
+      
+      match /users/{userId} {
+        // Read: Any company member can see other members
+        allow read: if isAuthenticated() && 
+                       exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid));
+        
+        // Write: Only owner can manage users and roles
+        allow write: if isOwner(companyId);
+      }
+      
+      // ============================================
+      // EXPENSES MODULE
+      // ============================================
+      
+      match /modules/expenses/{expenseId} {
+        allow read: if hasPermission(companyId, 'expenses', 'read');
+        
+        allow create: if hasPermission(companyId, 'expenses', 'write') && 
+                         request.resource.data.createdBy == request.auth.uid &&
+                         isValidExpense() &&
+                         notTooFrequent();
+        
+        allow update: if hasPermission(companyId, 'expenses', 'write') && 
+                         (isOwner(companyId) || isResourceOwner()) &&
+                         isValidExpense();
+        
+        allow delete: if hasPermission(companyId, 'expenses', 'delete') && 
+                         (isOwner(companyId) || isResourceOwner());
+      }
+      
+      // ============================================
+      // INCOME MODULE
+      // ============================================
+      
+      match /modules/income/{incomeId} {
+        allow read: if hasPermission(companyId, 'income', 'read');
+        
+        allow create: if hasPermission(companyId, 'income', 'write') && 
+                         request.resource.data.createdBy == request.auth.uid &&
+                         isValidIncome() &&
+                         notTooFrequent();
+        
+        allow update: if hasPermission(companyId, 'income', 'write') && 
+                         (isOwner(companyId) || isResourceOwner()) &&
+                         isValidIncome();
+        
+        allow delete: if hasPermission(companyId, 'income', 'delete') && 
+                         (isOwner(companyId) || isResourceOwner());
+      }
+      
+      // ============================================
+      // INVOICES MODULE
+      // ============================================
+      
+      match /modules/invoices/{invoiceId} {
+        allow read: if hasPermission(companyId, 'invoices', 'read');
+        allow create: if hasPermission(companyId, 'invoices', 'write') && 
+                         request.resource.data.createdBy == request.auth.uid;
+        allow update: if hasPermission(companyId, 'invoices', 'write');
+        allow delete: if hasPermission(companyId, 'invoices', 'delete') && 
+                         (isOwner(companyId) || isResourceOwner());
+      }
+      
+      // ============================================
+      // CUSTOMERS MODULE
+      // ============================================
+      
+      match /modules/customers/{customerId} {
+        allow read: if hasPermission(companyId, 'customers', 'read');
+        allow create: if hasPermission(companyId, 'customers', 'write') && 
+                         request.resource.data.createdBy == request.auth.uid;
+        allow update: if hasPermission(companyId, 'customers', 'write');
+        allow delete: if hasPermission(companyId, 'customers', 'delete') && 
+                         isOwner(companyId);
+      }
+      
+      // ============================================
+      // PAYROLL MODULE
+      // ============================================
+      
+      match /modules/payroll/{payrollId} {
+        allow read: if hasRole(companyId, ['owner', 'admin', 'accountant']);
+        allow create: if hasRole(companyId, ['owner', 'admin']) && 
+                         request.resource.data.createdBy == request.auth.uid;
+        allow update: if hasRole(companyId, ['owner', 'admin']);
+        allow delete: if isOwner(companyId);
+      }
+      
+      // ============================================
+      // BUSINESS PLANNING MODULE
+      // ============================================
+      
+      match /modules/businessPlans/{planId} {
+        allow read: if hasPermission(companyId, 'businessPlanning', 'read');
+        allow create: if hasPermission(companyId, 'businessPlanning', 'write') && 
+                         request.resource.data.createdBy == request.auth.uid;
+        allow update: if hasPermission(companyId, 'businessPlanning', 'write');
+        allow delete: if hasPermission(companyId, 'businessPlanning', 'delete') && 
+                         isOwner(companyId);
+      }
+      
+      // ============================================
+      // AUDIT LOGS (Read-only for users, system writes)
+      // ============================================
+      
+      match /auditLogs/{logId} {
+        // Users can only read audit logs, not create/update/delete them
+        allow read: if hasRole(companyId, ['owner', 'admin']);
+        // System creates logs via Admin SDK, users cannot write
+        allow write: if false;
+      }
+    }
+    
+    // ============================================
+    // GLOBAL AUDIT LOGS (for events without company context)
+    // ============================================
+    
+    match /globalAuditLogs/{logId} {
+      // Allow authenticated users to create logs
+      allow create: if isAuthenticated();
+      // Only admins can read (future feature)
+      allow read: if false;
+      // Nobody can update/delete
+      allow update, delete: if false;
+    }
+    
+    // ============================================
+    // DENY ALL OTHER PATHS
+    // ============================================
+    
+    // Explicitly deny access to any paths not defined above
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

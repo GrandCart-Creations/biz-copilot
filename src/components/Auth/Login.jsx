@@ -1,10 +1,15 @@
-// src/components/Auth/Login.jsx - ENHANCED VERSION
+// src/components/Auth/Login.jsx - ENHANCED VERSION WITH SECURITY
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithEmail, signInWithGoogle, resetPassword } from '../../firebase';
+import { useSecurityContext } from '../../contexts/SecurityContext';
+import { validateEmail } from '../../utils/validation';
+import { logLogin, logAuditEvent, AUDIT_EVENTS } from '../../utils/auditLog';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { handleFailedLogin, handleSuccessfulLogin, isAccountLocked } = useSecurityContext();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,14 +27,34 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    
+    // Check if account is locked
+    if (isAccountLocked) {
+      setError('Account temporarily locked due to failed login attempts. Please try again in 15 minutes.');
+      return;
+    }
+    
     setLoading(true);
 
     try {
-      await signInWithEmail(email, password);
+      // Validate email format
+      const validEmail = validateEmail(email);
+      
+      // Attempt sign in
+      await signInWithEmail(validEmail, password);
+      
+      // Log successful login
+      await logLogin(validEmail, true);
+      handleSuccessfulLogin();
+      
       setSuccess('Successfully signed in! Redirecting...');
       setTimeout(() => navigate('/dashboard'), 1000);
     } catch (err) {
-      setError(err.message);
+      // Log failed login
+      await logLogin(email, false);
+      handleFailedLogin(email);
+      
+      setError(err.message || 'Invalid email or password');
     } finally {
       setLoading(false);
     }
@@ -38,14 +63,35 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     setError('');
     setSuccess('');
+    
+    // Check if account is locked
+    if (isAccountLocked) {
+      setError('Account temporarily locked due to failed login attempts. Please try again in 15 minutes.');
+      return;
+    }
+    
     setLoading(true);
 
     try {
-      await signInWithGoogle();
+      const result = await signInWithGoogle();
+      
+      // Log successful login
+      await logAuditEvent(AUDIT_EVENTS.USER_LOGIN, {
+        email: result.user?.email,
+        method: 'google'
+      }, 'success');
+      handleSuccessfulLogin();
+      
       setSuccess('Successfully signed in! Redirecting...');
       setTimeout(() => navigate('/dashboard'), 1000);
     } catch (err) {
-      setError(err.message);
+      // Log failed login
+      await logAuditEvent(AUDIT_EVENTS.FAILED_LOGIN, {
+        method: 'google',
+        error: err.message
+      }, 'failure');
+      
+      setError(err.message || 'Failed to sign in with Google');
     } finally {
       setLoading(false);
     }
@@ -64,7 +110,16 @@ export default function Login() {
     setResetLoading(true);
 
     try {
-      const message = await resetPassword(resetEmail);
+      // Validate email format
+      const validEmail = validateEmail(resetEmail);
+      
+      const message = await resetPassword(validEmail);
+      
+      // Log password reset request
+      await logAuditEvent(AUDIT_EVENTS.PASSWORD_RESET, {
+        email: validEmail
+      }, 'success');
+      
       setResetSuccess(message);
       setTimeout(() => {
         setShowResetModal(false);
@@ -72,7 +127,7 @@ export default function Login() {
         setResetSuccess('');
       }, 3000);
     } catch (err) {
-      setResetError(err.message);
+      setResetError(err.message || 'Failed to send reset email');
     } finally {
       setResetLoading(false);
     }
