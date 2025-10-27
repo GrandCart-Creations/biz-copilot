@@ -116,15 +116,15 @@ export default function Signup() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-white">Excel GC Expense Tracker</h1>
+            <h1 className="text-2xl font-bold text-white">Biz-CoPilot</h1>
           </div>
           
           <div className="space-y-8">
             <h2 className="text-5xl font-bold text-white leading-tight">
-              Start tracking your expenses today
+              Start Your Business Journey with Your Co-Pilot
             </h2>
             <p className="text-xl text-indigo-100">
-              Join thousands of Dutch freelancers and small businesses managing their finances with ease.
+              Join Dutch entrepreneurs managing their business with intelligent automation and enterprise-grade security.
             </p>
             
             <div className="space-y-4 pt-8">
@@ -135,8 +135,8 @@ export default function Signup() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold text-lg">Free to Start</h3>
-                  <p className="text-indigo-100">No credit card required</p>
+                  <h3 className="text-white font-semibold text-lg">Multi-Account Management</h3>
+                  <p className="text-indigo-100">Manage business and personal separately</p>
                 </div>
               </div>
               
@@ -147,8 +147,8 @@ export default function Signup() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold text-lg">Secure & Private</h3>
-                  <p className="text-indigo-100">Your data is encrypted and protected</p>
+                  <h3 className="text-white font-semibold text-lg">Enterprise Security</h3>
+                  <p className="text-indigo-100">MFA, audit logs, and compliance-ready</p>
                 </div>
               </div>
               
@@ -159,8 +159,8 @@ export default function Signup() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold text-lg">Setup in Minutes</h3>
-                  <p className="text-indigo-100">Start managing expenses right away</p>
+                  <h3 className="text-white font-semibold text-lg">Intelligent Automation</h3>
+                  <p className="text-indigo-100">Side-by-side assistance for every task</p>
                 </div>
               </div>
             </div>
@@ -168,7 +168,7 @@ export default function Signup() {
         </div>
         
         <p className="text-indigo-200 text-sm">
-          © 2025 Excel GC. Made for Dutch freelancers and small businesses.
+          © 2025 Biz-CoPilot by GrandCart Creations. Made for Dutch entrepreneurs.
         </p>
       </div>
 

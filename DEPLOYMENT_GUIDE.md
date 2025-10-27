@@ -2,7 +2,7 @@
 
 ## ✅ Security Features Integrated!
 
-All security components have been successfully integrated into your BizPilot app:
+All security components have been successfully integrated into your Biz-CoPilot app:
 
 ### 📦 What's Been Integrated:
 

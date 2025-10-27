@@ -2,7 +2,7 @@
 
 ## ✅ What We Just Built
 
-You now have a **production-ready security foundation** for BizPilot with:
+You now have a **production-ready security foundation** for Biz-CoPilot with:
 
 ### 1. **Enhanced Firestore Security Rules** (`firestore.rules`)
 - ✅ Role-based access control (Owner, Admin, Accountant, etc.)

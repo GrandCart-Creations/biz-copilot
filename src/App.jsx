@@ -18,8 +18,9 @@ function App() {
       <AuthProvider>
         <SecurityProvider>
           <Routes>
-            {/* Public Route - Login */}
+            {/* Public Routes */}
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
             
             {/* Protected Route - Expense Tracker Dashboard */}
             <Route 

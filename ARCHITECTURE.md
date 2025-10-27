@@ -1,7 +1,7 @@
 # 🎨 SECURITY ARCHITECTURE - VISUAL OVERVIEW
 
 ```
-📁 BizPilot Security Implementation
+📁 Biz-CoPilot Security Implementation
 │
 ├── 🔥 FIRESTORE RULES (Database Security)
 │   └── firestore.rules

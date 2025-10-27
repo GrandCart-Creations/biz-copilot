@@ -1,8 +1,11 @@
 {
-  "name": "expense-tracker-app",
+  "name": "biz-copilot",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "Intelligent business management platform for Dutch entrepreneurs and small businesses",
+  "author": "GrandCart Creations",
+  "homepage": "https://biz-copilot.nl",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
