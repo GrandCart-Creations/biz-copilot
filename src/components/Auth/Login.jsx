@@ -139,11 +139,7 @@ export default function Login() {
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 p-12 flex-col justify-between">
         <div>
           <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center">
-              <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
+            <img src="/branding/logo/logo-light.svg" alt="Biz-CoPilot" className="w-12 h-12" />
             <h1 className="text-2xl font-bold text-white">Biz-CoPilot</h1>
           </div>
           
@@ -206,11 +202,7 @@ export default function Login() {
           <div className="bg-white rounded-2xl shadow-xl p-8">
             {/* Mobile Logo (hidden on desktop) */}
             <div className="lg:hidden flex justify-center mb-6">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center">
-                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-              </div>
+              <img src="/branding/logo/logo-light.svg" alt="Biz-CoPilot" className="w-16 h-16" />
             </div>
 
             {/* Header */}
