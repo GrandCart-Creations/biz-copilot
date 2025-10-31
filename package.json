@@ -6,6 +6,13 @@
   "description": "Intelligent business management platform for Dutch entrepreneurs and small businesses",
   "author": "GrandCart Creations",
   "homepage": "https://biz-copilot.nl",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GrandCart-Creations/biz-copilot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/GrandCart-Creations/biz-copilot/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

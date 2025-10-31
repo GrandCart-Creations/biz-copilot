@@ -1,8 +1,8 @@
 // src/firebase.js - ENHANCED VERSION
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword, 
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
@@ -12,14 +12,14 @@ import {
   updateProfile,
   onAuthStateChanged
 } from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  addDoc, 
-  getDoc, 
-  getDocs, 
-  updateDoc, 
+import {
+  getFirestore,
+  collection,
+  doc,
+  addDoc,
+  getDoc,
+  getDocs,
+  updateDoc,
   deleteDoc,
   query,
   where,
@@ -27,6 +27,15 @@ import {
   serverTimestamp,
   setDoc
 } from 'firebase/firestore';
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject,
+  listAll
+} from 'firebase/storage';
 
 // Your Firebase configuration
 const firebaseConfig = {
@@ -43,6 +52,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 
 // ==================== ERROR HANDLING ====================
@@ -390,5 +400,151 @@ export const deleteAccount = async (userId, accountId) => {
   }
 };
 
-// Export auth and db instances
-export { auth, db };
+// ==================== FIREBASE STORAGE - FILE UPLOADS ====================
+
+// Upload a file to Firebase Storage for an expense
+export const uploadExpenseFile = async (userId, expenseId, file, onProgress = null) => {
+  try {
+    // Validate file size (max 10 MB)
+    const maxSize = 10 * 1024 * 1024; // 10 MB in bytes
+    if (file.size > maxSize) {
+      throw new Error('File size exceeds 10 MB limit');
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error('Invalid file type. Only PNG, JPG, and PDF files are allowed');
+    }
+
+    // Create a unique filename
+    const timestamp = Date.now();
+    const fileName = `${timestamp}_${file.name}`;
+    const filePath = `users/${userId}/expenses/${expenseId}/${fileName}`;
+
+    // Create storage reference
+    const storageRef = ref(storage, filePath);
+
+    // Upload with progress tracking
+    if (onProgress) {
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      return new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            onProgress(progress);
+          },
+          (error) => {
+            console.error('Error uploading file:', error);
+            reject(error);
+          },
+          async () => {
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve({
+                fileName: file.name,
+                fileUrl: downloadURL,
+                filePath: filePath,
+                fileType: file.type,
+                fileSize: file.size,
+                uploadedAt: new Date().toISOString()
+              });
+            } catch (error) {
+              reject(error);
+            }
+          }
+        );
+      });
+    } else {
+      // Simple upload without progress tracking
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+
+      return {
+        fileName: file.name,
+        fileUrl: downloadURL,
+        filePath: filePath,
+        fileType: file.type,
+        fileSize: file.size,
+        uploadedAt: new Date().toISOString()
+      };
+    }
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    throw error;
+  }
+};
+
+// Get all files for an expense from Storage
+export const getExpenseFiles = async (userId, expenseId) => {
+  try {
+    const folderPath = `users/${userId}/expenses/${expenseId}`;
+    const folderRef = ref(storage, folderPath);
+
+    const filesList = await listAll(folderRef);
+
+    const files = await Promise.all(
+      filesList.items.map(async (fileRef) => {
+        const downloadURL = await getDownloadURL(fileRef);
+        return {
+          name: fileRef.name,
+          url: downloadURL,
+          path: fileRef.fullPath
+        };
+      })
+    );
+
+    return files;
+  } catch (error) {
+    console.error('Error getting expense files:', error);
+    throw error;
+  }
+};
+
+// Delete a file from Storage
+export const deleteExpenseFile = async (filePath) => {
+  try {
+    const fileRef = ref(storage, filePath);
+    await deleteObject(fileRef);
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    throw error;
+  }
+};
+
+// Get download URL for a file
+export const getFileDownloadURL = async (filePath) => {
+  try {
+    const fileRef = ref(storage, filePath);
+    const downloadURL = await getDownloadURL(fileRef);
+    return downloadURL;
+  } catch (error) {
+    console.error('Error getting download URL:', error);
+    throw error;
+  }
+};
+
+// Delete all files for an expense
+export const deleteAllExpenseFiles = async (userId, expenseId) => {
+  try {
+    const folderPath = `users/${userId}/expenses/${expenseId}`;
+    const folderRef = ref(storage, folderPath);
+
+    const filesList = await listAll(folderRef);
+
+    // Delete all files in the folder
+    await Promise.all(
+      filesList.items.map(async (fileRef) => {
+        await deleteObject(fileRef);
+      })
+    );
+  } catch (error) {
+    console.error('Error deleting expense files:', error);
+    throw error;
+  }
+};
+
+// Export auth, db, and storage instances
+export { auth, db, storage };
