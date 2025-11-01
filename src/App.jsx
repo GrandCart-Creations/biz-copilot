@@ -11,16 +11,28 @@ import ProtectedRoute from './components/Auth/ProtectedRoute';
 import ExpenseTracker from './components/ExpenseTracker';
 import SecurityDashboard from './components/SecurityDashboard';
 import MFASetup from './components/MFASetup';
+import TermsOfService from './components/TermsOfService';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import CookiePolicy from './components/CookiePolicy';
+import CookieConsent from './components/CookieConsent';
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <SecurityProvider>
+          {/* Cookie Consent Banner - appears on all pages */}
+          <CookieConsent />
+          
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            
+            {/* Legal Pages (Public) */}
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/cookies" element={<CookiePolicy />} />
             
             {/* Protected Route - Expense Tracker Dashboard */}
             <Route 

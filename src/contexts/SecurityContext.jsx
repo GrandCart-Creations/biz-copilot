@@ -15,7 +15,14 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import { logAuditEvent, AUDIT_EVENTS } from '@/utils/auditLog';
+import { logAuditEvent, AUDIT_EVENTS } from '../utils/auditLog';
+import { 
+  generateMFASecret, 
+  verifyMFACode, 
+  disableMFA as disableMFAUtil,
+  isMFAEnabled as checkMFAEnabled,
+  verifyBackupCode
+} from '../utils/mfa';
 
 const SecurityContext = createContext();
 
@@ -109,28 +116,39 @@ export const SecurityProvider = ({ children }) => {
     setIsAccountLocked(false);
   };
 
+  // Load MFA status on mount
+  useEffect(() => {
+    const loadMFAStatus = async () => {
+      if (currentUser?.uid) {
+        const enabled = await checkMFAEnabled(currentUser.uid);
+        setMfaEnabled(enabled);
+      }
+    };
+    loadMFAStatus();
+  }, [currentUser]);
+
   // Enable MFA for user
   const enableMFA = async () => {
     try {
-      // In production, this would:
-      // 1. Generate a secret key
-      // 2. Create QR code for authenticator app
-      // 3. Store secret in secure backend
-      
-      // For now, simulating MFA setup
-      setMfaEnabled(true);
+      if (!currentUser?.uid || !currentUser?.email) {
+        throw new Error('User not authenticated');
+      }
+
+      // Generate real MFA secret and QR code
+      const result = await generateMFASecret(currentUser.uid, currentUser.email);
       
       await logAuditEvent(AUDIT_EVENTS.MFA_ENABLED, {
-        userId: currentUser?.uid,
-        email: currentUser?.email
+        userId: currentUser.uid,
+        email: currentUser.email
       }, 'success');
       
       return {
         success: true,
-        message: 'MFA enabled successfully',
-        // In production, return QR code and backup codes
-        qrCode: 'data:image/png;base64,...',
-        backupCodes: ['CODE1', 'CODE2', 'CODE3']
+        message: 'MFA setup initiated. Please verify with your authenticator app.',
+        qrCode: result.qrCode,
+        otpAuthUrl: result.otpAuthUrl,
+        // Backup codes will be provided after verification
+        backupCodes: []
       };
     } catch (error) {
       console.error('Error enabling MFA:', error);
@@ -141,11 +159,16 @@ export const SecurityProvider = ({ children }) => {
   // Disable MFA for user
   const disableMFA = async () => {
     try {
+      if (!currentUser?.uid) {
+        throw new Error('User not authenticated');
+      }
+
+      await disableMFAUtil(currentUser.uid);
       setMfaEnabled(false);
       
       await logAuditEvent(AUDIT_EVENTS.MFA_DISABLED, {
-        userId: currentUser?.uid,
-        email: currentUser?.email
+        userId: currentUser.uid,
+        email: currentUser.email
       }, 'warning');
       
       return { success: true, message: 'MFA disabled successfully' };
@@ -155,30 +178,53 @@ export const SecurityProvider = ({ children }) => {
     }
   };
 
-  // Verify MFA code
+  // Verify MFA code (TOTP or backup code)
   const verifyMFA = async (code) => {
     try {
-      // In production, verify code against stored secret
-      // For now, accept any 6-digit code
-      if (!/^\d{6}$/.test(code)) {
-        throw new Error('Invalid MFA code format');
+      if (!currentUser?.uid) {
+        throw new Error('User not authenticated');
       }
-      
-      // Simulate verification (in production, use authenticator library)
-      const isValid = code.length === 6;
-      
-      if (isValid) {
-        await logAuditEvent(AUDIT_EVENTS.USER_LOGIN, {
-          userId: currentUser?.uid,
-          email: currentUser?.email,
-          mfaVerified: true
-        }, 'success');
+
+      // Check if it's a 6-digit TOTP code or backup code
+      if (/^\d{6}$/.test(code)) {
+        // TOTP code
+        const result = await verifyMFACode(currentUser.uid, code);
+        
+        if (result.valid) {
+          // First verification - enable MFA
+          if (result.backupCodes) {
+            setMfaEnabled(true);
+            await logAuditEvent(AUDIT_EVENTS.MFA_ENABLED, {
+              userId: currentUser.uid,
+              email: currentUser.email,
+              verified: true
+            }, 'success');
+            
+            return {
+              valid: true,
+              backupCodes: result.backupCodes,
+              message: 'MFA verified and enabled!'
+            };
+          } else {
+            // Subsequent verification
+            return { valid: true };
+          }
+        }
+        
+        return { valid: false, error: 'Invalid code. Please try again.' };
+      } else {
+        // Backup code (8 characters)
+        const isValid = await verifyBackupCode(currentUser.uid, code);
+        
+        if (isValid) {
+          return { valid: true, usedBackupCode: true };
+        }
+        
+        return { valid: false, error: 'Invalid backup code.' };
       }
-      
-      return isValid;
     } catch (error) {
       console.error('Error verifying MFA:', error);
-      return false;
+      return { valid: false, error: error.message };
     }
   };
 

@@ -36,16 +36,19 @@ import {
   deleteObject,
   listAll
 } from 'firebase/storage';
+import { encryptSensitiveFields, decryptSensitiveFields } from './utils/encryption';
 
-// Your Firebase configuration
+// Firebase configuration from environment variables
+// In production, these should be set via environment variables
+// For development, fallback to hardcoded values (will be removed in production)
 const firebaseConfig = {
-  apiKey: "AIzaSyDvSZZ1rWL8eAaTrRtMAsBj1D1rxp34zVo",
-  authDomain: "expense-tracker-prod-475813.firebaseapp.com",
-  projectId: "expense-tracker-prod-475813",
-  storageBucket: "expense-tracker-prod-475813.firebasestorage.app",
-  messagingSenderId: "366675970251",
-  appId: "1:366675970251:web:b31fe0f2ea3930d388734e",
-  measurementId: "G-CVCYBMQ2SY"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDvSZZ1rWL8eAaTrRtMAsBj1D1rxp34zVo",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "expense-tracker-prod-475813.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "expense-tracker-prod-475813",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "expense-tracker-prod-475813.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "366675970251",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:366675970251:web:b31fe0f2ea3930d388734e",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-CVCYBMQ2SY"
 };
 
 // Initialize Firebase
@@ -268,12 +271,39 @@ export const getUserExpenses = async (userId) => {
     const querySnapshot = await getDocs(q);
     
     const expenses = [];
-    querySnapshot.forEach((doc) => {
-      expenses.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
+    
+    // Decrypt sensitive fields for each expense
+    for (const docSnapshot of querySnapshot.docs) {
+      const expenseData = docSnapshot.data();
+      const sensitiveFields = ['amount', 'vatNumber', 'bankAccount', 'invoiceNumber'];
+      
+      try {
+        // Check if fields are encrypted
+        const hasEncryptedFields = sensitiveFields.some(field => expenseData[`${field}_encrypted`]);
+        
+        if (hasEncryptedFields) {
+          const decryptedData = await decryptSensitiveFields(expenseData, sensitiveFields);
+          expenses.push({
+            id: docSnapshot.id,
+            ...decryptedData
+          });
+        } else {
+          // Legacy data not encrypted yet
+          expenses.push({
+            id: docSnapshot.id,
+            ...expenseData
+          });
+        }
+      } catch (decryptError) {
+        console.error('Error decrypting expense:', decryptError);
+        // Return encrypted data on error (user can still see structure)
+        expenses.push({
+          id: docSnapshot.id,
+          ...expenseData,
+          _decryptionError: true
+        });
+      }
+    }
     
     return expenses;
   } catch (error) {
@@ -285,9 +315,13 @@ export const getUserExpenses = async (userId) => {
 // Add a new expense
 export const addExpense = async (userId, expenseData) => {
   try {
+    // Encrypt sensitive fields before storing
+    const sensitiveFields = ['amount', 'vatNumber', 'bankAccount', 'invoiceNumber'];
+    const encryptedData = await encryptSensitiveFields(expenseData, sensitiveFields);
+    
     const expensesRef = collection(db, 'users', userId, 'expenses');
     const docRef = await addDoc(expensesRef, {
-      ...expenseData,
+      ...encryptedData,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
@@ -302,9 +336,13 @@ export const addExpense = async (userId, expenseData) => {
 // Update an expense
 export const updateExpense = async (userId, expenseId, expenseData) => {
   try {
+    // Encrypt sensitive fields before storing
+    const sensitiveFields = ['amount', 'vatNumber', 'bankAccount', 'invoiceNumber'];
+    const encryptedData = await encryptSensitiveFields(expenseData, sensitiveFields);
+    
     const expenseRef = doc(db, 'users', userId, 'expenses', expenseId);
     await updateDoc(expenseRef, {
-      ...expenseData,
+      ...encryptedData,
       updatedAt: serverTimestamp()
     });
   } catch (error) {

@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signUpWithEmail, signInWithGoogle } from '../../firebase';
+import Footer from '../Footer';
+import { FaChartLine, FaReceipt, FaShieldAlt, FaClock, FaFileInvoice, FaCalculator, FaSyncAlt, FaUsers, FaCheckCircle } from 'react-icons/fa';
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -105,128 +107,150 @@ export default function Signup() {
 
   const passwordStrength = getPasswordStrength();
 
+  const benefits = [
+    {
+      icon: <FaReceipt className="w-5 h-5" />,
+      title: "Instant Expense Capture",
+      description: "Scan receipts and auto-categorize expenses in seconds"
+    },
+    {
+      icon: <FaCalculator className="w-5 h-5" />,
+      title: "BENELUX Tax Compliance Made Easy",
+      description: "Built-in Benelux tax rates with automatic calculations"
+    },
+    {
+      icon: <FaFileInvoice className="w-5 h-5" />,
+      title: "Invoice Management",
+      description: "Create, send, and track invoices from one platform"
+    },
+    {
+      icon: <FaChartLine className="w-5 h-5" />,
+      title: "Real-time Insights",
+      description: "Live dashboards showing your business financial health"
+    },
+    {
+      icon: <FaShieldAlt className="w-5 h-5" />,
+      title: "Bank-Level Security",
+      description: "MFA, encryption, and GDPR compliance built-in"
+    },
+    {
+      icon: <FaUsers className="w-5 h-5" />,
+      title: "Team Collaboration",
+      description: "Share access with your accountant or team members"
+    }
+  ];
+
   return (
-    <div className="min-h-screen w-full flex">
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 p-12 flex-col justify-between">
-        <div>
-          <div className="flex items-center gap-3 mb-12">
-            <img src="/branding/logo/logo-light.svg" alt="Biz-CoPilot" className="w-12 h-12" />
-            <h1 className="text-2xl font-bold text-white">Biz-CoPilot</h1>
-          </div>
+    <div className="min-h-screen w-full bg-gray-50 overflow-hidden">
+      <div className="min-h-screen w-full flex overflow-hidden">
+        {/* Left Side - Branding & Value Proposition (40% width) */}
+        <div className="hidden lg:flex lg:w-2/5 lg:flex-shrink-0 lg:flex-grow-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 p-4 flex-col justify-start relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -mr-48 -mt-48"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-white/5 rounded-full -ml-48 -mb-48"></div>
           
-          <div className="space-y-8">
-            <h2 className="text-5xl font-bold text-white leading-tight">
-              Start Your Business Journey with Your Co-Pilot
-            </h2>
-            <p className="text-xl text-indigo-100">
-              Join Dutch entrepreneurs managing their business with intelligent automation and enterprise-grade security.
-            </p>
+          <div className="relative z-10">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                <span className="text-lg font-bold text-white">BC</span>
+              </div>
+              <h1 className="text-lg font-bold text-white">Biz-CoPilot</h1>
+            </div>
             
-            <div className="space-y-4 pt-8">
-              <div className="flex items-start gap-4">
-                <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+            <div className="space-y-2 mb-3">
+              <h2 className="text-2xl font-bold text-white leading-tight">
+                Start Your Business Journey with Your Co-Pilot
+              </h2>
+              <p className="text-sm text-indigo-100 leading-tight">
+                Join BENELUX entrepreneurs managing their business with intelligent automation and enterprise-grade security.
+              </p>
+            </div>
+
+            {/* Benefits Grid */}
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              {benefits.map((benefit, index) => (
+                <div key={index} className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20">
+                  <div className="text-white mb-1 text-xs">
+                    {benefit.icon}
+                  </div>
+                  <h3 className="text-white text-xs font-semibold mb-0.5 leading-tight">{benefit.title}</h3>
+                  <p className="text-indigo-200 text-xs leading-tight">{benefit.description}</p>
                 </div>
-                <div>
-                  <h3 className="text-white font-semibold text-lg">Multi-Account Management</h3>
-                  <p className="text-indigo-100">Manage business and personal separately</p>
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom Stats */}
+          <div className="relative z-10 mt-auto pt-2">
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 text-center">
+                  <p className="text-white text-lg font-bold">100%</p>
+                  <p className="text-indigo-200 text-xs">GDPR Compliant</p>
                 </div>
-              </div>
-              
-              <div className="flex items-start gap-4">
-                <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                <div className="w-px h-8 bg-white/20"></div>
+                <div className="flex-1 text-center">
+                  <p className="text-white text-lg font-bold">24/7</p>
+                  <p className="text-indigo-200 text-xs">Secure & Available</p>
                 </div>
-                <div>
-                  <h3 className="text-white font-semibold text-lg">Enterprise Security</h3>
-                  <p className="text-indigo-100">MFA, audit logs, and compliance-ready</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-4">
-                <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-white font-semibold text-lg">Intelligent Automation</h3>
-                  <p className="text-indigo-100">Side-by-side assistance for every task</p>
+                <div className="w-px h-8 bg-white/20"></div>
+                <div className="flex-1 text-center">
+                  <p className="text-white text-lg font-bold">Free</p>
+                  <p className="text-indigo-200 text-xs">To Get Started</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        
-        <p className="text-indigo-200 text-sm">
-          © 2025 Biz-CoPilot by GrandCart Creations. Made for Dutch entrepreneurs.
-        </p>
-      </div>
 
-      {/* Right Side - Signup Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gray-50">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl p-8">
-            {/* Mobile Logo (hidden on desktop) */}
-            <div className="lg:hidden flex justify-center mb-6">
-              <img src="/branding/logo/logo-light.svg" alt="Biz-CoPilot" className="w-16 h-16" />
+        {/* Right Side - Signup Form (60% width) */}
+        <div className="flex-1 lg:flex-none lg:w-3/5 lg:flex-shrink-0 lg:flex-grow-0 flex flex-col items-center justify-center p-4 bg-white overflow-hidden">
+          <div className="w-full max-w-md">
+            {/* Logo for mobile */}
+            <div className="lg:hidden flex items-center justify-center gap-3 mb-4">
+              <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <span className="text-lg font-bold text-white">BC</span>
+              </div>
+              <h1 className="text-lg font-bold text-gray-900">Biz-CoPilot</h1>
             </div>
 
-            {/* Header */}
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">
-              Create Account
-            </h2>
-            <p className="text-gray-600 mb-8">
-              Sign up to get started
-            </p>
+            {/* Welcome Card */}
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-gray-900 mb-0.5">Create Your Account</h2>
+              <p className="text-xs text-gray-600">Start managing your business finances today</p>
+            </div>
 
-            {/* Success Message - Email Verification Notice */}
-            {showVerificationNotice && (
-              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
+            {/* Success Message */}
+            {success && (
+              <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <FaCheckCircle className="w-3 h-3 text-green-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="text-sm font-semibold text-blue-900 mb-1">Verify Your Email</h4>
-                    <p className="text-sm text-blue-700">
-                      We've sent a verification link to <strong>{formData.email}</strong>. 
-                      Please check your inbox and verify your email to get started.
-                    </p>
+                    <p className="text-xs font-medium text-green-800 mb-0.5">{success}</p>
+                    {showVerificationNotice && (
+                      <p className="text-xs text-green-700">
+                        Please check your email to verify your account. Redirecting to dashboard...
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Success Message */}
-            {success && !showVerificationNotice && (
-              <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
-                <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm text-green-700">{success}</p>
-              </div>
-            )}
-
             {/* Error Message */}
             {error && (
-              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
-                <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+                <svg className="w-3 h-3 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p className="text-sm text-red-600">{error}</p>
+                <p className="text-xs text-red-600">{error}</p>
               </div>
             )}
 
-            {/* Email/Password Form */}
-            <form onSubmit={handleEmailSignUp} className="space-y-4">
+            {/* Signup Form */}
+            <form onSubmit={handleEmailSignUp} className="space-y-2 mb-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
                   Full Name
                 </label>
                 <input
@@ -237,12 +261,12 @@ export default function Signup() {
                   placeholder="John Doe"
                   required
                   disabled={loading}
-                  className="w-full px-4 py-3 text-gray-900 placeholder-gray-400 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
+                  className="w-full px-3 py-2 text-sm text-gray-900 placeholder-gray-400 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
                   Email Address
                 </label>
                 <input
@@ -253,12 +277,12 @@ export default function Signup() {
                   placeholder="you@example.com"
                   required
                   disabled={loading}
-                  className="w-full px-4 py-3 text-gray-900 placeholder-gray-400 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
+                  className="w-full px-3 py-2 text-sm text-gray-900 placeholder-gray-400 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
                   Password
                 </label>
                 <input
@@ -269,39 +293,29 @@ export default function Signup() {
                   placeholder="••••••••"
                   required
                   disabled={loading}
-                  className="w-full px-4 py-3 text-gray-900 placeholder-gray-400 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
+                  className="w-full px-3 py-2 text-sm text-gray-900 placeholder-gray-400 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
                 />
-                
                 {/* Password Strength Indicator */}
                 {formData.password && (
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-600">Password Strength:</span>
-                      <span className={`text-xs font-medium ${
-                        passwordStrength.strength <= 2 ? 'text-red-600' :
-                        passwordStrength.strength <= 3 ? 'text-yellow-600' :
-                        passwordStrength.strength <= 4 ? 'text-blue-600' :
-                        'text-green-600'
-                      }`}>
+                  <div className="mt-1.5">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-xs text-gray-600">Password strength:</span>
+                      <span className={`text-xs font-medium ${passwordStrength.color.replace('bg-', 'text-')}`}>
                         {passwordStrength.text}
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-1.5">
-                      <div 
+                      <div
                         className={`h-1.5 rounded-full transition-all ${passwordStrength.color}`}
                         style={{ width: `${(passwordStrength.strength / 5) * 100}%` }}
                       ></div>
                     </div>
                   </div>
                 )}
-                
-                <p className="mt-2 text-xs text-gray-500">
-                  Must be at least 6 characters with uppercase and numbers
-                </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
                   Confirm Password
                 </label>
                 <input
@@ -312,14 +326,17 @@ export default function Signup() {
                   placeholder="••••••••"
                   required
                   disabled={loading}
-                  className="w-full px-4 py-3 text-gray-900 placeholder-gray-400 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
+                  className="w-full px-3 py-2 text-sm text-gray-900 placeholder-gray-400 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
                 />
+                {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                  <p className="mt-1 text-xs text-red-600">Passwords do not match</p>
+                )}
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-purple-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-semibold rounded-lg hover:from-blue-700 hover:to-purple-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <>
@@ -336,12 +353,12 @@ export default function Signup() {
             </form>
 
             {/* Divider */}
-            <div className="relative my-6">
+            <div className="relative my-3">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-300"></div>
               </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-white text-gray-500">Or continue with</span>
+              <div className="relative flex justify-center text-xs">
+                <span className="px-2 bg-white text-gray-500">Or continue with</span>
               </div>
             </div>
 
@@ -349,9 +366,9 @@ export default function Signup() {
             <button
               onClick={handleGoogleSignIn}
               disabled={loading}
-              className="w-full py-3 px-4 border border-gray-300 rounded-lg font-medium text-gray-700 bg-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-200 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-2 px-3 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mb-3"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <svg className="w-3 h-3" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
@@ -361,7 +378,7 @@ export default function Signup() {
             </button>
 
             {/* Sign In Link */}
-            <div className="mt-6 text-center">
+            <div className="mt-3 text-center">
               <button
                 type="button"
                 onClick={() => navigate('/login')}
@@ -374,6 +391,9 @@ export default function Signup() {
           </div>
         </div>
       </div>
+      
+      {/* Footer with Legal Links */}
+      <Footer />
     </div>
   );
 }
