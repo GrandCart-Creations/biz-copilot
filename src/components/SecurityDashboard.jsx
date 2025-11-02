@@ -12,15 +12,20 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, query, orderBy, limit, onSnapshot, where } from 'firebase/firestore';
-import { db } from '@/firebase.js';
-import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { db } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { useCompany } from '../contexts/CompanyContext';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Alert, AlertDescription } from './ui/alert';
 import { Shield, AlertTriangle, CheckCircle, Activity } from 'lucide-react';
+import { FaArrowLeft } from 'react-icons/fa';
 
 const SecurityDashboard = () => {
-  const { currentUser, selectedCompany } = useAuth();
+  const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const { currentCompanyId, currentCompany } = useCompany();
   const [auditLogs, setAuditLogs] = useState([]);
   const [securityAlerts, setSecurityAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,9 +38,9 @@ const SecurityDashboard = () => {
 
   // Fetch audit logs in real-time
   useEffect(() => {
-    if (!selectedCompany?.id) return;
+    if (!currentCompanyId) return;
 
-    const logsRef = collection(db, `companies/${selectedCompany.id}/auditLogs`);
+    const logsRef = collection(db, `companies/${currentCompanyId}/auditLogs`);
     const logsQuery = query(
       logsRef,
       orderBy('timestamp', 'desc'),
@@ -72,7 +77,7 @@ const SecurityDashboard = () => {
     });
 
     return () => unsubscribe();
-  }, [selectedCompany]);
+  }, [currentCompanyId]);
 
   // Filter for security alerts (failures and warnings)
   useEffect(() => {
@@ -103,6 +108,18 @@ const SecurityDashboard = () => {
     return date.toLocaleString();
   };
 
+  if (!currentCompanyId) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Shield className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">No Company Selected</h2>
+          <p className="text-gray-500">Please select a company to view security dashboard.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -120,8 +137,20 @@ const SecurityDashboard = () => {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
+            {/* Back Button */}
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="mr-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Back to Dashboard"
+            >
+              <FaArrowLeft className="w-5 h-5" />
+            </button>
+            
             <Shield className="w-8 h-8 text-blue-600" />
-            <h1 className="text-3xl font-bold text-gray-900">Security Dashboard</h1>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Security Dashboard</h1>
+              <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
+            </div>
           </div>
           <p className="text-gray-600">Monitor security events and system health</p>
         </div>

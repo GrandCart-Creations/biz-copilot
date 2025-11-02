@@ -199,6 +199,22 @@ service cloud.firestore {
       }
       
       // ============================================
+      // COMPANY ACCOUNTS (Bank accounts, credit cards, etc.)
+      // ============================================
+      
+      match /accounts/{accountId} {
+        // Read: Any company member OR creator
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Write: Only owner OR creator (managing company accounts)
+        allow write: if isAuthenticated() && 
+                      (isOwner(companyId) || 
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+      }
+      
+      // ============================================
       // COMPANY SETTINGS
       // ============================================
       

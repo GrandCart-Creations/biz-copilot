@@ -66,8 +66,9 @@ export const CompanyProvider = ({ children }) => {
 
   /**
    * Load all companies the user has access to
+   * @param {boolean} skipSelectionUpdate - If true, don't update current company selection
    */
-  const loadUserCompanies = async () => {
+  const loadUserCompanies = async (skipSelectionUpdate = false) => {
     if (!currentUser) return;
 
     try {
@@ -185,24 +186,39 @@ export const CompanyProvider = ({ children }) => {
 
       setCompanies(companiesList);
 
-      // Set current company (preserve current selection if it exists in the list)
-      const storedCompanyId = localStorage.getItem(`currentCompany_${currentUser.uid}`);
-      const currentSelection = currentCompanyId || storedCompanyId;
-      
-      // Check if current selection is still valid
-      const companyToUse = currentSelection && companiesList.find(c => c.id === currentSelection)
-        ? currentSelection  // Keep current selection if it's in the list
-        : companiesList[0]?.id;  // Otherwise use first company
+      // Only update current company selection if not explicitly skipped (e.g., during switchCompany)
+      if (!skipSelectionUpdate) {
+        // Set current company (preserve current selection if it exists in the list)
+        const storedCompanyId = localStorage.getItem(`currentCompany_${currentUser.uid}`);
+        const currentSelection = currentCompanyId || storedCompanyId;
+        
+        // Check if current selection is still valid
+        const companyToUse = currentSelection && companiesList.find(c => c.id === currentSelection)
+          ? currentSelection  // Keep current selection if it's in the list
+          : companiesList[0]?.id;  // Otherwise use first company
 
-      if (companyToUse) {
-        // Only update if it's different to avoid unnecessary re-renders
-        if (currentCompanyId !== companyToUse) {
-          setCurrentCompanyId(companyToUse);
+        if (companyToUse) {
+          // Only update if it's different to avoid unnecessary re-renders
+          if (currentCompanyId !== companyToUse) {
+            setCurrentCompanyId(companyToUse);
+            localStorage.setItem(`currentCompany_${currentUser.uid}`, companyToUse);
+          }
+          // Ensure company data is loaded (but only if not already loaded)
+          if (!currentCompany || currentCompany.id !== companyToUse) {
+            await loadCompanyData(companyToUse);
+          }
         }
-        localStorage.setItem(`currentCompany_${currentUser.uid}`, companyToUse);
-        // Ensure company data is loaded (but only if not already loaded)
-        if (!currentCompany || currentCompany.id !== companyToUse) {
-          await loadCompanyData(companyToUse);
+      } else {
+        // Even when skipping selection update, ensure the current company is in the list
+        // and company data is loaded if needed
+        if (currentCompanyId) {
+          const companyExists = companiesList.find(c => c.id === currentCompanyId);
+          if (!companyExists) {
+            console.warn(`[CompanyContext] Current company ${currentCompanyId} not in companies list after switch`);
+          } else if (!currentCompany || currentCompany.id !== currentCompanyId) {
+            // Company exists but data not loaded, load it
+            await loadCompanyData(currentCompanyId);
+          }
         }
       }
 
@@ -521,6 +537,8 @@ export const CompanyProvider = ({ children }) => {
   const switchCompany = async (companyId) => {
     if (!currentUser) return;
 
+    console.log(`[CompanyContext] Switching to company: ${companyId}`);
+
     // Verify company exists and user has access
     const companyDocRef = doc(db, 'companies', companyId);
     const companyDoc = await getDoc(companyDocRef);
@@ -532,26 +550,57 @@ export const CompanyProvider = ({ children }) => {
     }
 
     // Verify user has access to this company
+    // User has access if:
+    // 1. They are the creator (even if user doc doesn't exist yet), OR
+    // 2. They have a user document in the company's users subcollection
+    const companyData = companyDoc.data();
+    const isCreator = companyData.createdBy === currentUser.uid;
+    
     const userRef = doc(db, 'companies', companyId, 'users', currentUser.uid);
     const userDoc = await getDoc(userRef);
+    const hasUserDoc = userDoc.exists();
     
-    if (!userDoc.exists()) {
-      console.error('User does not have access to company:', companyId);
+    if (!isCreator && !hasUserDoc) {
+      console.error('User does not have access to company:', companyId, {
+        isCreator,
+        hasUserDoc,
+        companyCreatedBy: companyData.createdBy,
+        currentUser: currentUser.uid
+      });
       await loadUserCompanies(); // Reload to refresh list
       return;
     }
+    
+    // If user is creator but user doc doesn't exist, create it (for consistency)
+    if (isCreator && !hasUserDoc) {
+      console.log(`[CompanyContext] Creator accessing company ${companyId} without user doc - creating it`);
+      try {
+        await setDoc(userRef, {
+          role: 'owner',
+          accessModules: ['expenses', 'income', 'marketing', 'forecasting', 'settings'],
+          subscriptionTier: 'business',
+          joinedAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.warn('Could not create user doc (may be permission issue):', error);
+        // Continue anyway - user is creator so has access
+      }
+    }
 
-    // Set current company first
-    setCurrentCompanyId(companyId);
+    // Save to localStorage first to persist the selection
     localStorage.setItem(`currentCompany_${currentUser.uid}`, companyId);
     
-    // Load company data first, then refresh companies list
-    // This ensures we have the company data before refreshing the list
+    // Set current company state
+    setCurrentCompanyId(companyId);
+    
+    // Load company data (this will trigger the useEffect to load data)
     await loadCompanyData(companyId);
     
-    // Refresh companies list AFTER loading company data
-    // This ensures all companies (including the newly created one) are in the list
-    await loadUserCompanies();
+    // Refresh companies list WITHOUT changing the current selection
+    // Pass skipSelectionUpdate=true to prevent overriding the switch
+    await loadUserCompanies(true);
+    
+    console.log(`[CompanyContext] Successfully switched to company: ${companyId}`);
   };
 
   /**
@@ -833,6 +882,7 @@ export const CompanyProvider = ({ children }) => {
     currentCompany,
     companies,
     userRole,
+    subscriptionTier: currentCompany?.subscriptionTier || 'business',
     loading,
 
     // Actions

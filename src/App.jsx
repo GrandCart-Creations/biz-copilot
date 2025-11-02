@@ -10,8 +10,13 @@ import Signup from './components/Auth/Signup';
 import Login from './components/Auth/Login';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 import ExpenseTracker from './components/ExpenseTracker';
+import IncomeTracker from './components/IncomeTracker';
+import ReportsDashboard from './components/ReportsDashboard';
+import SettingsDashboard from './components/SettingsDashboard';
 import SecurityDashboard from './components/SecurityDashboard';
 import MFASetup from './components/MFASetup';
+import ModuleDashboard from './components/ModuleDashboard';
+import SubscriptionGateWrapper from './components/SubscriptionGateWrapper';
 import TermsOfService from './components/TermsOfService';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import CookiePolicy from './components/CookiePolicy';
@@ -36,12 +41,62 @@ function App() {
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/cookies" element={<CookiePolicy />} />
             
-            {/* Protected Route - Expense Tracker Dashboard */}
+            {/* Protected Route - Main Dashboard (Module Selection) */}
             <Route 
               path="/dashboard" 
               element={
                 <ProtectedRoute>
+                  <ModuleDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Expenses Module */}
+            <Route 
+              path="/modules/expenses" 
+              element={
+                <ProtectedRoute>
                   <ExpenseTracker />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Income Module */}
+            <Route 
+              path="/modules/income" 
+              element={
+                <ProtectedRoute>
+                  <IncomeTracker />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Reports Module */}
+            <Route 
+              path="/modules/reports" 
+              element={
+                <ProtectedRoute>
+                  <ReportsDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Settings Module */}
+            <Route 
+              path="/modules/settings" 
+              element={
+                <ProtectedRoute>
+                  <SettingsDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Subscription Gate (Upgrade Required) */}
+            <Route 
+              path="/modules/:moduleId/upgrade" 
+              element={
+                <ProtectedRoute>
+                  <SubscriptionGateWrapper />
                 </ProtectedRoute>
               } 
             />

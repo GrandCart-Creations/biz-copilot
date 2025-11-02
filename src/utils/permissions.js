@@ -53,7 +53,8 @@ const MODULE_TIERS = {
   forecasting: 'business',
   reports: 'lite',
   settings: 'lite',
-  team: 'business'
+  team: 'business',
+  security: 'lite'
 };
 
 // Subscription tier hierarchy
@@ -179,6 +180,10 @@ export default {
   canExport,
   getRolePermissions,
   ROLE_PERMISSIONS,
-  MODULE_TIERS
+  MODULE_TIERS,
+  TIER_LEVELS
 };
+
+// Export constants for use in other modules
+export { MODULE_TIERS, TIER_LEVELS, ROLE_PERMISSIONS };
 

@@ -559,6 +559,100 @@ export const deleteAccount = async (userId, accountId) => {
   }
 };
 
+// ==================== COMPANY-BASED ACCOUNTS (NEW STRUCTURE) ====================
+
+/**
+ * Get all accounts for a company
+ * @param {string} companyId - Company ID
+ * @returns {Promise<Array>} Array of account objects
+ */
+export const getCompanyAccounts = async (companyId) => {
+  try {
+    const accountsRef = collection(db, 'companies', companyId, 'accounts');
+    const querySnapshot = await getDocs(accountsRef);
+    
+    const accounts = [];
+    querySnapshot.forEach((doc) => {
+      accounts.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return accounts;
+  } catch (error) {
+    console.error('Error getting company accounts:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add a new account to a company
+ * @param {string} companyId - Company ID
+ * @param {object} accountData - Account data
+ * @returns {Promise<string>} Account document ID
+ */
+export const addCompanyAccount = async (companyId, accountData) => {
+  try {
+    const accountsRef = collection(db, 'companies', companyId, 'accounts');
+    
+    // Use the account ID as the document ID if provided
+    if (accountData.id) {
+      const accountRef = doc(accountsRef, accountData.id);
+      await setDoc(accountRef, {
+        ...accountData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      return accountData.id;
+    } else {
+      const docRef = await addDoc(accountsRef, {
+        ...accountData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      return docRef.id;
+    }
+  } catch (error) {
+    console.error('Error adding company account:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update an account in a company
+ * @param {string} companyId - Company ID
+ * @param {string} accountId - Account ID
+ * @param {object} accountData - Updated account data
+ */
+export const updateCompanyAccount = async (companyId, accountId, accountData) => {
+  try {
+    const accountRef = doc(db, 'companies', companyId, 'accounts', accountId);
+    await updateDoc(accountRef, {
+      ...accountData,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error('Error updating company account:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete an account from a company
+ * @param {string} companyId - Company ID
+ * @param {string} accountId - Account ID
+ */
+export const deleteCompanyAccount = async (companyId, accountId) => {
+  try {
+    const accountRef = doc(db, 'companies', companyId, 'accounts', accountId);
+    await deleteDoc(accountRef);
+  } catch (error) {
+    console.error('Error deleting company account:', error);
+    throw error;
+  }
+};
+
 // ==================== FIREBASE STORAGE - FILE UPLOADS ====================
 
 // Upload a file to Firebase Storage for an expense
