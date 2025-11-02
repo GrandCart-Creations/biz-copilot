@@ -14,7 +14,8 @@ import {
   query,
   where,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  collectionGroup
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -115,6 +116,7 @@ export const CompanyProvider = ({ children }) => {
             }
           }
           
+          const userDocData = userDoc && userDoc.exists() ? userDoc.data() : null;
           companiesList.push({
             id: companyId,
             name: companyData.name || 'Unnamed Company',
@@ -122,9 +124,10 @@ export const CompanyProvider = ({ children }) => {
             createdAt: companyData.createdAt,
             updatedAt: companyData.updatedAt,
             settings: companyData.settings || {},
-            userRole: userDoc && userDoc.exists() ? userDoc.data().role : 'owner',
-            accessModules: userDoc && userDoc.exists() ? (userDoc.data().accessModules || []) : ['expenses', 'income', 'marketing', 'forecasting', 'settings'],
-            subscriptionTier: userDoc && userDoc.exists() ? (userDoc.data().subscriptionTier || 'business') : 'business'
+            userRole: userDocData ? userDocData.role : 'owner',
+            accessModules: userDocData ? (userDocData.accessModules || []) : ['expenses', 'income', 'marketing', 'forecasting', 'settings'],
+            subscriptionTier: userDocData ? (userDocData.subscriptionTier || 'business') : 'business',
+            joinedAt: userDocData ? (userDocData.joinedAt || null) : null // Track when user joined
           });
         } catch (error) {
           // Log but don't throw - continue processing other companies
@@ -143,15 +146,75 @@ export const CompanyProvider = ({ children }) => {
       companiesList = Array.from(uniqueByCreatedBy);
 
       // Approach 2: Find companies where user is a member (but not creator)
-      // We need to check all companies where user document exists
-      // Since we can't efficiently query subcollections, we'll use the fact that
-      // Firestore security rules allow reading if user document exists
-      // So we'll try to read companies and catch permission errors
-      // Actually, better approach: Try reading known company IDs from localStorage or cache
+      // Since we can't query all companies efficiently, we'll use a different strategy:
+      // Try to read companies that the user might be part of by checking stored company IDs
+      // or by attempting to read companies one by one from known sources
       
-      // For now, we'll rely on the createdBy query and the fact that when a user
-      // creates a company, they become the owner. If they join other companies,
-      // those would need to be tracked differently (e.g., via a user's company list)
+      // Strategy: Check localStorage for previously accessed companies
+      // Also check if user has any accepted invitations that would create user documents
+      try {
+        // Get stored company IDs from localStorage (user might have switched before)
+        const storedCompanyId = localStorage.getItem(`currentCompany_${currentUser.uid}`);
+        const allStoredCompanies = [];
+        
+        // Check all localStorage keys for company references
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('currentCompany_')) {
+            const storedId = localStorage.getItem(key);
+            if (storedId && !companyIdsSet.has(storedId)) {
+              allStoredCompanies.push(storedId);
+            }
+          }
+        }
+        
+        // Try to read these stored companies to see if user has access
+        for (const storedCompanyId of allStoredCompanies) {
+          if (companyIdsSet.has(storedCompanyId)) continue;
+          
+          try {
+            // Try to read user document in this company
+            const userRef = doc(db, 'companies', storedCompanyId, 'users', currentUser.uid);
+            const userDoc = await getDoc(userRef);
+            
+            if (userDoc.exists()) {
+              // User is a member! Try to read company document
+              try {
+                const companyRef = doc(db, 'companies', storedCompanyId);
+                const companyDoc = await getDoc(companyRef);
+                
+                if (companyDoc.exists()) {
+                  const companyData = companyDoc.data();
+                  const userData = userDoc.data();
+                  
+                  companyIdsSet.add(storedCompanyId);
+                  companiesList.push({
+                    id: storedCompanyId,
+                    name: companyData.name || 'Unnamed Company',
+                    createdBy: companyData.createdBy,
+                    createdAt: companyData.createdAt,
+                    updatedAt: companyData.updatedAt,
+                    settings: companyData.settings || {},
+                    userRole: userData.role || 'employee',
+                    accessModules: userData.accessModules || [],
+                    subscriptionTier: userData.subscriptionTier || 'lite',
+                    joinedAt: userData.joinedAt || null
+                  });
+                }
+              } catch (companyError) {
+                // Can't read company - skip
+                if (companyError.code !== 'permission-denied') {
+                  console.warn(`[CompanyContext] Error reading company ${storedCompanyId}:`, companyError);
+                }
+              }
+            }
+          } catch (userDocError) {
+            // Can't read user doc - user not a member, skip
+          }
+        }
+      } catch (error) {
+        console.warn('[CompanyContext] Error discovering companies from stored IDs:', error);
+      }
 
       // Final deduplication by ID (in case duplicates were added somehow)
       const finalUniqueCompanies = Array.from(
@@ -165,14 +228,41 @@ export const CompanyProvider = ({ children }) => {
         console.warn(`[CompanyContext] WARNING: User has ${companiesList.length} companies - this may indicate duplicate creation.`);
       }
 
-      // Sort companies: current company first, then by name, then by creation date
+      // Sort companies intelligently:
+      // 1. Current company first (if set)
+      // 2. Companies where user is a member (not creator) - prioritize these for new users
+      // 3. Most recently joined companies first
+      // 4. Companies created by user come last
+      // 5. Then by name, then by ID
       const currentId = currentCompanyId;
+      const userId = currentUser.uid;
+      
       companiesList.sort((a, b) => {
+        // Current company always first
         if (a.id === currentId) return -1;
         if (b.id === currentId) return 1;
+        
+        // Priority: Companies where user is a member (not creator)
+        const aIsCreator = a.createdBy === userId;
+        const bIsCreator = b.createdBy === userId;
+        
+        if (!aIsCreator && bIsCreator) return -1; // a is member-only, b is creator
+        if (aIsCreator && !bIsCreator) return 1;  // a is creator, b is member-only
+        
+        // If both are same type, sort by most recent join date
+        if (a.joinedAt && b.joinedAt) {
+          const aDate = a.joinedAt?.toDate ? a.joinedAt.toDate() : new Date(a.joinedAt);
+          const bDate = b.joinedAt?.toDate ? b.joinedAt.toDate() : new Date(b.joinedAt);
+          const dateDiff = bDate - aDate; // Most recent first
+          if (dateDiff !== 0) return dateDiff > 0 ? 1 : -1;
+        } else if (a.joinedAt && !b.joinedAt) return -1;
+        else if (!a.joinedAt && b.joinedAt) return 1;
+        
+        // Fallback: sort by name
         const nameCompare = (a.name || '').localeCompare(b.name || '');
         if (nameCompare !== 0) return nameCompare;
-        // If names are same, sort by ID (to maintain consistent ordering)
+        
+        // Final fallback: sort by ID
         return a.id.localeCompare(b.id);
       });
 
@@ -188,18 +278,45 @@ export const CompanyProvider = ({ children }) => {
 
       // Only update current company selection if not explicitly skipped (e.g., during switchCompany)
       if (!skipSelectionUpdate) {
-        // Set current company (preserve current selection if it exists in the list)
+        // Intelligent company selection priority:
+        // 1. If user has a stored preference, use it (if still valid)
+        // 2. If user is a member of companies (not creator), prioritize those
+        // 3. Otherwise, use first company in list (which is sorted by priority)
         const storedCompanyId = localStorage.getItem(`currentCompany_${currentUser.uid}`);
         const currentSelection = currentCompanyId || storedCompanyId;
         
-        // Check if current selection is still valid
-        const companyToUse = currentSelection && companiesList.find(c => c.id === currentSelection)
-          ? currentSelection  // Keep current selection if it's in the list
-          : companiesList[0]?.id;  // Otherwise use first company
+        let companyToUse = null;
+        
+        // Check if stored/current selection is still valid
+        if (currentSelection && companiesList.find(c => c.id === currentSelection)) {
+          companyToUse = currentSelection;
+        } else {
+            // No valid stored selection - choose intelligently
+          if (companiesList.length > 0) {
+            // Prioritize companies where user is a member (not creator)
+            // These are typically companies they were invited to
+            const memberCompanies = companiesList.filter(c => c.createdBy !== userId);
+            
+            if (memberCompanies.length > 0) {
+              // User is a member of at least one company - use the first one
+              // (already sorted by most recent join date)
+              companyToUse = memberCompanies[0].id;
+              console.log(`[CompanyContext] User is member of company ${companyToUse} (${memberCompanies[0].name}) - selecting it`);
+              
+              // Clear any old localStorage that might have wrong company
+              localStorage.removeItem(`currentCompany_${currentUser.uid}`);
+            } else {
+              // User only created companies, use first one
+              companyToUse = companiesList[0].id;
+              console.log(`[CompanyContext] User only has created companies - selecting first: ${companyToUse}`);
+            }
+          }
+        }
 
         if (companyToUse) {
           // Only update if it's different to avoid unnecessary re-renders
           if (currentCompanyId !== companyToUse) {
+            console.log(`[CompanyContext] Setting initial company: ${companyToUse}`);
             setCurrentCompanyId(companyToUse);
             localStorage.setItem(`currentCompany_${currentUser.uid}`, companyToUse);
           }
@@ -788,9 +905,20 @@ export const CompanyProvider = ({ children }) => {
 
   /**
    * Create a new company
+   * Note: Only owners can create additional companies.
+   * Users without any company can create their first company (they become owner).
    */
   const createCompany = async (companyName, settings = {}) => {
     if (!currentUser) throw new Error('User must be authenticated');
+
+    // Security check: If user already has a company, they must be an owner to create more
+    if (currentCompany) {
+      // User already has at least one company
+      if (userRole !== 'owner') {
+        throw new Error('Only owners can create additional companies. Please contact your company owner to create a new company.');
+      }
+    }
+    // If no company exists yet, allow creation (user will become owner of first company)
 
     try {
       const companyData = {

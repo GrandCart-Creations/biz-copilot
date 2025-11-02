@@ -11,6 +11,7 @@ import { useCompany } from '../contexts/CompanyContext';
 import { useAuth } from '../contexts/AuthContext';
 import CompanySelector from './CompanySelector';
 import UserProfile from './UserProfile';
+import TeamManagement from './TeamManagement';
 import {
   FaCog,
   FaBuilding,
@@ -103,31 +104,34 @@ const SettingsDashboard = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Coming Soon Message */}
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <FaCog className="w-12 h-12 text-gray-600" />
+        {/* Settings Tabs */}
+        <div className="bg-white rounded-lg shadow mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px">
+              <button className="px-6 py-4 text-sm font-medium text-blue-600 border-b-2 border-blue-600">
+                <div className="flex items-center gap-2">
+                  <FaUsers className="w-4 h-4" />
+                  Team Management
+                </div>
+              </button>
+            </nav>
           </div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Settings Coming Soon</h2>
-          <p className="text-lg text-gray-600 mb-6 max-w-2xl mx-auto">
-            Manage company settings, preferences, tax rules, and user permissions. This module is
-            being developed and will be available soon.
-          </p>
-          
-          {/* Feature Preview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 text-left">
+        </div>
+
+        {/* Team Management Section */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <TeamManagement />
+        </div>
+
+        {/* Coming Soon Features */}
+        <div className="mt-8 bg-white rounded-lg shadow p-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Additional Settings (Coming Soon)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="p-6 border border-gray-200 rounded-lg">
               <FaBuilding className="w-8 h-8 text-gray-600 mb-4" />
               <h3 className="font-semibold text-gray-900 mb-2">Company Profile</h3>
               <p className="text-sm text-gray-600">
                 Update company information, logo, address, and business details.
-              </p>
-            </div>
-            <div className="p-6 border border-gray-200 rounded-lg">
-              <FaUsers className="w-8 h-8 text-gray-600 mb-4" />
-              <h3 className="font-semibold text-gray-900 mb-2">User Management</h3>
-              <p className="text-sm text-gray-600">
-                Invite team members, manage roles, and control access permissions.
               </p>
             </div>
             <div className="p-6 border border-gray-200 rounded-lg">

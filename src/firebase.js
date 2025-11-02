@@ -25,7 +25,9 @@ import {
   where,
   orderBy,
   serverTimestamp,
-  setDoc
+  setDoc,
+  writeBatch,
+  Timestamp
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -799,6 +801,523 @@ export const deleteAllExpenseFiles = async (userId, expenseId) => {
     );
   } catch (error) {
     console.error('Error deleting expense files:', error);
+    throw error;
+  }
+};
+
+// ==================== TEAM MANAGEMENT ====================
+
+/**
+ * Get all team members for a company
+ * @param {string} companyId - Company ID
+ * @returns {Promise<Array>} Array of team member objects
+ */
+export const getCompanyMembers = async (companyId) => {
+  try {
+    const usersRef = collection(db, 'companies', companyId, 'users');
+    const usersSnapshot = await getDocs(usersRef);
+    
+    const members = [];
+    const userIdsSeen = new Set();
+    const emailsSeen = new Set();
+    
+    usersSnapshot.forEach((doc) => {
+      const userData = doc.data();
+      const userId = doc.id;
+      const email = (userData.email || '').toLowerCase().trim();
+      
+      // Deduplication: Check by userId first (most reliable)
+      if (userIdsSeen.has(userId)) {
+        // Silent skip - same userId appearing twice is likely a data issue, not worth warning
+        return;
+      }
+      
+      // Also check by email to catch cases where same email might have different UIDs
+      if (email && emailsSeen.has(email)) {
+        // Check if this is a real duplicate (different UID with same email)
+        const existingEntry = members.find(m => m.email && m.email.toLowerCase() === email);
+        if (existingEntry && existingEntry.userId !== userId) {
+          // This is a real duplicate - log once per duplicate pair
+          console.warn(`[getCompanyMembers] Duplicate email detected: ${email} with different userIds (${existingEntry.userId} vs ${userId}). Keeping ${existingEntry.userId}, skipping ${userId}. Use Team Management to remove invalid duplicates.`);
+          return;
+        }
+        // Same email and same userId - just skip silently (already processed)
+        return;
+      }
+      
+      userIdsSeen.add(userId);
+      if (email) emailsSeen.add(email);
+      
+      members.push({
+        userId: userId,
+        email: userData.email || '',
+        role: userData.role || 'employee',
+        accessModules: userData.accessModules || [],
+        subscriptionTier: userData.subscriptionTier || 'lite',
+        joinedAt: userData.joinedAt,
+        addedDirectly: userData.addedDirectly || false,
+        invitedBy: userData.invitedBy || null,
+        ...userData
+      });
+    });
+    
+    return members;
+  } catch (error) {
+    console.error('Error getting company members:', error);
+    throw error;
+  }
+};
+
+/**
+ * Invite a user to a company by email
+ * @param {string} companyId - Company ID
+ * @param {string} email - User email to invite
+ * @param {string} role - Role to assign (owner, manager, employee, accountant)
+ * @param {string} invitedBy - User ID of the person sending the invitation
+ * @returns {Promise<string>} Invitation ID
+ */
+export const inviteUserToCompany = async (companyId, email, role = 'employee', invitedBy) => {
+  try {
+    // First check if user is already a member of the company
+    const usersRef = collection(db, 'companies', companyId, 'users');
+    const usersSnapshot = await getDocs(usersRef);
+    const emailToCheck = email.toLowerCase().trim();
+    
+    // Check if any user with this email already exists as a member
+    for (const userDoc of usersSnapshot.docs) {
+      const userData = userDoc.data();
+      const userEmail = (userData.email || '').toLowerCase().trim();
+      
+      if (userEmail === emailToCheck) {
+        throw new Error(`User with email ${email} is already a member of this company. Please remove them first if you want to re-invite.`);
+      }
+    }
+    
+    // Check if there's already a pending invitation for this email
+    const existingInvitesRef = collection(db, 'companies', companyId, 'invitations');
+    const existingQuery = query(existingInvitesRef, where('email', '==', emailToCheck));
+    const existingSnapshot = await getDocs(existingQuery);
+    
+    // Filter to only pending invitations
+    const pendingInvites = existingSnapshot.docs.filter(doc => doc.data().status === 'pending');
+    
+    if (pendingInvites.length > 0) {
+      // Update existing pending invitation
+      const existingInvite = pendingInvites[0];
+      await updateDoc(doc(db, 'companies', companyId, 'invitations', existingInvite.id), {
+        role,
+        status: 'pending',
+        invitedBy,
+        invitedAt: serverTimestamp(),
+        expiresAt: Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) // 7 days
+      });
+      return existingInvite.id;
+    }
+    
+    // Cancel any old (non-pending) invitations for this email to clean up
+    const cancelledInvites = existingSnapshot.docs.filter(doc => doc.data().status !== 'pending');
+    if (cancelledInvites.length > 0) {
+      const batch = writeBatch(db);
+      cancelledInvites.forEach(inviteDoc => {
+        batch.update(doc(db, 'companies', companyId, 'invitations', inviteDoc.id), {
+          status: 'cancelled',
+          cancelledAt: serverTimestamp(),
+          cancelledReason: 'New invitation created'
+        });
+      });
+      await batch.commit();
+    }
+    
+    // Create new invitation
+    const invitationsRef = collection(db, 'companies', companyId, 'invitations');
+    const invitationRef = await addDoc(invitationsRef, {
+      email: email.toLowerCase().trim(),
+      role,
+      status: 'pending',
+      invitedBy,
+      companyId,
+      invitedAt: serverTimestamp(),
+      expiresAt: Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)), // 7 days
+      acceptedAt: null,
+      acceptedBy: null
+    });
+    
+    return invitationRef.id;
+  } catch (error) {
+    console.error('Error inviting user to company:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all pending invitations for a company
+ * @param {string} companyId - Company ID
+ * @returns {Promise<Array>} Array of invitation objects
+ */
+export const getCompanyInvitations = async (companyId) => {
+  try {
+    const invitationsRef = collection(db, 'companies', companyId, 'invitations');
+    const invitationsSnapshot = await getDocs(invitationsRef);
+    
+    const invitations = [];
+    invitationsSnapshot.forEach((doc) => {
+      const inviteData = doc.data();
+      invitations.push({
+        id: doc.id,
+        ...inviteData
+      });
+    });
+    
+    return invitations;
+  } catch (error) {
+    console.error('Error getting company invitations:', error);
+    throw error;
+  }
+};
+
+/**
+ * Cancel/delete an invitation
+ * @param {string} companyId - Company ID
+ * @param {string} invitationId - Invitation ID
+ */
+export const cancelInvitation = async (companyId, invitationId) => {
+  try {
+    const invitationRef = doc(db, 'companies', companyId, 'invitations', invitationId);
+    await deleteDoc(invitationRef);
+  } catch (error) {
+    console.error('Error canceling invitation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update a user's role in a company
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID
+ * @param {string} newRole - New role (owner, manager, employee, accountant)
+ * @param {Array} accessModules - Optional: array of access modules
+ */
+export const updateUserRole = async (companyId, userId, newRole, accessModules = null) => {
+  try {
+    const userRef = doc(db, 'companies', companyId, 'users', userId);
+    const updateData = {
+      role: newRole,
+      updatedAt: serverTimestamp()
+    };
+    
+    if (accessModules) {
+      updateData.accessModules = accessModules;
+    } else {
+      // Set default access modules based on role
+      const roleModules = {
+        owner: ['expenses', 'income', 'marketing', 'forecasting', 'reports', 'settings', 'team'],
+        manager: ['expenses', 'income', 'marketing', 'forecasting', 'reports'],
+        employee: ['expenses'],
+        accountant: ['expenses', 'income', 'reports']
+      };
+      updateData.accessModules = roleModules[newRole] || ['expenses'];
+    }
+    
+    await updateDoc(userRef, updateData);
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    throw error;
+  }
+};
+
+/**
+ * Remove a user from a company
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID to remove
+ */
+export const removeUserFromCompany = async (companyId, userId) => {
+  try {
+    const userRef = doc(db, 'companies', companyId, 'users', userId);
+    await deleteDoc(userRef);
+  } catch (error) {
+    console.error('Error removing user from company:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all pending invitations for the current user's email
+ * @param {string} userEmail - User email to check invitations for
+ * @returns {Promise<Array>} Array of invitation objects with company info
+ */
+export const getUserInvitations = async (userEmail) => {
+  try {
+    if (!userEmail) return [];
+    
+    // Since we can't query all companies (permission restrictions),
+    // we'll only check invitations for companies the user is a member of or created
+    // This is more efficient and respects security rules
+    
+    const invitations = [];
+    
+    try {
+      // Get companies created by current user (if available via context)
+      // For now, we'll try to query only companies we have access to
+      const companiesRef = collection(db, 'companies');
+      let companiesSnapshot;
+      
+      try {
+        companiesSnapshot = await getDocs(companiesRef);
+      } catch (queryError) {
+        // If we can't query all companies (permission denied), that's okay
+        // We'll only check invitations in companies the user is already part of
+        console.warn('[getUserInvitations] Cannot query all companies, checking known companies only');
+        return invitations; // Return empty array instead of throwing
+      }
+      
+      // Try to read invitations for each company, handling permission errors gracefully
+      for (const companyDoc of companiesSnapshot.docs) {
+        const companyId = companyDoc.id;
+        
+        try {
+          // Try to read invitations - will only work if user is a member or creator
+          const invitationsRef = collection(db, 'companies', companyId, 'invitations');
+          const inviteQuery = query(
+            invitationsRef,
+            where('email', '==', userEmail.toLowerCase().trim()),
+            where('status', '==', 'pending')
+          );
+          const inviteSnapshot = await getDocs(inviteQuery);
+          
+          inviteSnapshot.forEach((inviteDoc) => {
+            invitations.push({
+              id: inviteDoc.id,
+              companyId,
+              companyName: companyDoc.data().name || 'Unknown Company',
+              ...inviteDoc.data()
+            });
+          });
+        } catch (inviteError) {
+          // Permission denied for this company's invitations - skip silently
+          // This is expected for companies the user is not a member of
+          if (inviteError.code !== 'permission-denied') {
+            console.warn(`[getUserInvitations] Error checking invitations for company ${companyId}:`, inviteError);
+          }
+        }
+      }
+    } catch (error) {
+      // If we can't query at all, return empty array instead of throwing
+      // This prevents blocking the UI
+      if (error.code !== 'permission-denied') {
+        console.error('Error getting user invitations:', error);
+      }
+      return invitations; // Return empty array on permission errors
+    }
+    
+    return invitations;
+  } catch (error) {
+    // Final catch-all: return empty array instead of throwing to prevent UI blocking
+    console.warn('Error in getUserInvitations, returning empty array:', error.message);
+    return [];
+  }
+};
+
+/**
+ * Accept an invitation and add user to company
+ * @param {string} companyId - Company ID
+ * @param {string} invitationId - Invitation ID
+ * @param {string} userId - User ID accepting the invitation
+ * @param {string} userEmail - User email (to verify match)
+ */
+export const acceptInvitation = async (companyId, invitationId, userId, userEmail) => {
+  try {
+    // Get invitation to verify email and get role
+    const invitationRef = doc(db, 'companies', companyId, 'invitations', invitationId);
+    const invitationDoc = await getDoc(invitationRef);
+    
+    if (!invitationDoc.exists()) {
+      throw new Error('Invitation not found');
+    }
+    
+    const invitationData = invitationDoc.data();
+    
+    // Verify email matches
+    if (invitationData.email.toLowerCase() !== userEmail.toLowerCase()) {
+      throw new Error('Email does not match invitation');
+    }
+    
+    // Check if invitation is still valid
+    if (invitationData.status !== 'pending') {
+      throw new Error('Invitation has already been accepted or cancelled');
+    }
+    
+    // Check expiration
+    if (invitationData.expiresAt && invitationData.expiresAt.toDate() < new Date()) {
+      throw new Error('Invitation has expired');
+    }
+    
+    // Use batch to update invitation and create user document atomically
+    const batch = writeBatch(db);
+    
+    // Update invitation status
+    batch.update(invitationRef, {
+      status: 'accepted',
+      acceptedAt: serverTimestamp(),
+      acceptedBy: userId
+    });
+    
+    // Create user document in company
+    const userRef = doc(db, 'companies', companyId, 'users', userId);
+    const roleModules = {
+      owner: ['expenses', 'income', 'marketing', 'forecasting', 'reports', 'settings', 'team'],
+      manager: ['expenses', 'income', 'marketing', 'forecasting', 'reports'],
+      employee: ['expenses'],
+      accountant: ['expenses', 'income', 'reports']
+    };
+    
+    batch.set(userRef, {
+      email: userEmail,
+      role: invitationData.role || 'employee',
+      accessModules: roleModules[invitationData.role || 'employee'] || ['expenses'],
+      subscriptionTier: invitationData.subscriptionTier || 'lite',
+      joinedAt: serverTimestamp(),
+      invitedBy: invitationData.invitedBy
+    });
+    
+    await batch.commit();
+  } catch (error) {
+    console.error('Error accepting invitation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add an existing user directly to a company (bypassing invitation)
+ * Useful for manually adding users who already have accounts
+ * @param {string} companyId - Company ID
+ * @param {string} userId - Firebase Auth User ID
+ * @param {string} userEmail - User email
+ * @param {string} role - Role to assign
+ */
+export const addUserDirectlyToCompany = async (companyId, userId, userEmail, role = 'employee') => {
+  try {
+    // Check if user already exists in company (by userId)
+    const userRef = doc(db, 'companies', companyId, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (userDoc.exists()) {
+      throw new Error('User is already a member of this company');
+    }
+    
+    // Auto-cancel any pending invitations for this email since user is being added directly
+    try {
+      const invitationsRef = collection(db, 'companies', companyId, 'invitations');
+      const inviteQuery = query(
+        invitationsRef,
+        where('email', '==', userEmail.toLowerCase().trim()),
+        where('status', '==', 'pending')
+      );
+      const inviteSnapshot = await getDocs(inviteQuery);
+      
+      // Cancel all pending invitations for this email
+      const batch = writeBatch(db);
+      inviteSnapshot.forEach((inviteDoc) => {
+        batch.update(doc(db, 'companies', companyId, 'invitations', inviteDoc.id), {
+          status: 'cancelled',
+          cancelledAt: serverTimestamp(),
+          cancelledReason: 'User added directly - invitation no longer needed'
+        });
+      });
+      
+      if (inviteSnapshot.docs.length > 0) {
+        await batch.commit();
+        console.log(`[addUserDirectlyToCompany] Auto-cancelled ${inviteSnapshot.docs.length} pending invitation(s) for ${userEmail}`);
+      }
+    } catch (inviteError) {
+      // Don't fail user addition if invitation cancellation fails - just log it
+      console.warn('[addUserDirectlyToCompany] Could not cancel pending invitations:', inviteError);
+    }
+    
+    // Also check if another user with the same email already exists
+    // This prevents duplicate entries if the same email was added with different UIDs
+    const usersRef = collection(db, 'companies', companyId, 'users');
+    const usersSnapshot = await getDocs(usersRef);
+    const emailToCheck = userEmail.toLowerCase().trim();
+    
+    let existingDuplicate = null;
+    for (const existingUserDoc of usersSnapshot.docs) {
+      const existingUserData = existingUserDoc.data();
+      const existingEmail = (existingUserData.email || '').toLowerCase().trim();
+      
+      if (existingEmail === emailToCheck && existingUserDoc.id !== userId) {
+        // Found duplicate - check if the existing one has wrong UID (short/invalid)
+        // Firebase Auth UIDs are typically 28 characters long
+        const existingUid = existingUserDoc.id;
+        const isValidUid = existingUid && existingUid.length > 20 && /^[A-Za-z0-9]+$/.test(existingUid);
+        
+        // If existing UID looks invalid and new one is valid, auto-remove old one
+        if (!isValidUid && userId && userId.length > 20) {
+          console.warn(`[addUserDirectlyToCompany] Removing invalid duplicate user ${existingUid}, replacing with correct UID ${userId}`);
+          try {
+            const duplicateRef = doc(db, 'companies', companyId, 'users', existingUid);
+            await deleteDoc(duplicateRef);
+            console.log(`[addUserDirectlyToCompany] Removed duplicate user ${existingUid}`);
+          } catch (deleteError) {
+            console.error(`[addUserDirectlyToCompany] Could not auto-remove duplicate:`, deleteError);
+            throw new Error(`A user with email ${userEmail} already exists with an invalid User ID (${existingUid}). Please remove it manually first.`);
+          }
+        } else {
+          existingDuplicate = existingUserDoc.id;
+        }
+      }
+    }
+    
+    if (existingDuplicate) {
+      throw new Error(`A user with email ${userEmail} already exists in this company with User ID ${existingDuplicate}. Please remove the existing entry first.`);
+    }
+    
+    // Set default access modules based on role
+    const roleModules = {
+      owner: ['expenses', 'income', 'marketing', 'forecasting', 'reports', 'settings', 'team'],
+      manager: ['expenses', 'income', 'marketing', 'forecasting', 'reports'],
+      employee: ['expenses'],
+      accountant: ['expenses', 'income', 'reports']
+    };
+    
+    // Create user document
+    await setDoc(userRef, {
+      email: userEmail,
+      role: role || 'employee',
+      accessModules: roleModules[role] || ['expenses'],
+      subscriptionTier: 'lite',
+      joinedAt: serverTimestamp(),
+      addedDirectly: true
+    });
+    
+    return userRef.id;
+  } catch (error) {
+    console.error('Error adding user directly to company:', error);
+    throw error;
+  }
+};
+
+/**
+ * Find Firebase user by email (searches public user data)
+ * Note: This is limited - Firebase Auth doesn't expose user emails directly
+ * This function helps when you know the email matches the Firebase user
+ * @param {string} email - Email to search for
+ * @returns {Promise<{uid: string, email: string} | null>}
+ */
+export const findUserByEmail = async (email) => {
+  try {
+    // In Firebase, we can't directly query users by email from the client
+    // This function is a placeholder for when we have a backend API
+    // For now, we'll rely on the user providing their UID or we'll add them via invitation
+    
+    // In production, you would:
+    // 1. Have a Cloud Function that searches users
+    // 2. Or maintain a users index collection
+    // 3. Or use Firebase Admin SDK on backend
+    
+    console.warn('findUserByEmail: Direct email search not available from client. Use invitation system instead.');
+    return null;
+  } catch (error) {
+    console.error('Error finding user by email:', error);
     throw error;
   }
 };

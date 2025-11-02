@@ -115,8 +115,9 @@ service cloud.firestore {
     // ============================================
     
       match /companies/{companyId} {
-      // Read: Allow if user is creator OR is a member (for queries, check createdBy field directly)
-      // When querying with where('createdBy', '==', userId), this will work
+      // Read: Allow if user is creator OR is a member
+      // For list operations, we check if user document exists (even if we can't read it yet)
+      // This enables CompanyContext to discover companies user is member of
       allow read: if isAuthenticated() && 
                      (request.auth.uid == resource.data.createdBy ||
                       exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)));
@@ -152,8 +153,12 @@ service cloud.firestore {
                         (request.auth.uid == userId || isOwner(companyId));
         
         // Update: Only owner can manage users and roles (except self can update some fields)
+        // Manager can also update employee roles
         allow update: if isAuthenticated() && 
                         (isOwner(companyId) || 
+                         (hasRole(companyId, ['manager']) && 
+                          resource.data.role == 'employee' && 
+                          request.resource.data.role in ['employee', 'accountant']) ||
                          (request.auth.uid == userId && 
                           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferences', 'notifications'])));
         
@@ -161,6 +166,32 @@ service cloud.firestore {
         allow delete: if isAuthenticated() && 
                        (isOwner(companyId) || 
                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+      }
+      
+      // ============================================
+      // COMPANY INVITATIONS
+      // ============================================
+      
+      match /invitations/{invitationId} {
+        // Read: Company members can see invitations, creators can always read
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create: Only owners and managers can create invitations
+        allow create: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager'])) &&
+                        request.resource.data.invitedBy == request.auth.uid &&
+                        request.resource.data.email is string &&
+                        request.resource.data.role in ['owner', 'manager', 'employee', 'accountant'];
+        
+        // Update: Only owners and managers can update invitations
+        allow update: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+        
+        // Delete: Only owners and managers can delete invitations
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
       }
       
       // ============================================

@@ -6,7 +6,7 @@ import { useCompany } from '../contexts/CompanyContext';
 import { FaBuilding, FaPlus, FaCheck, FaTrash } from 'react-icons/fa';
 
 const CompanySelector = () => {
-  const { companies, currentCompany, switchCompany, createCompany, updateCompanyName, deleteCompany, loading } = useCompany();
+  const { companies, currentCompany, userRole, switchCompany, createCompany, updateCompanyName, deleteCompany, loading } = useCompany();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -148,53 +148,60 @@ const CompanySelector = () => {
                       {currentCompany.id === company.id && (
                         <>
                           <FaCheck className="w-4 h-4 text-blue-600" />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingCompanyName(company.name);
-                              setShowEditModal(true);
-                              setShowDropdown(false);
-                            }}
-                            className="p-1 hover:bg-blue-100 rounded text-blue-600"
-                            title="Edit company name"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
+                          {/* Only owners can edit company name */}
+                          {userRole === 'owner' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingCompanyName(company.name);
+                                setShowEditModal(true);
+                                setShowDropdown(false);
+                              }}
+                              className="p-1 hover:bg-blue-100 rounded text-blue-600"
+                              title="Edit company name"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
                         </>
                       )}
-                      {/* Show delete button for all companies (not just current) */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeletingCompanyId(company.id);
-                          setShowDeleteConfirm(true);
-                          setShowDropdown(false);
-                        }}
-                        className="p-1 hover:bg-red-100 rounded text-red-600"
-                        title="Delete company"
-                      >
-                        <FaTrash className="w-3 h-3" />
-                      </button>
+                      {/* Only owners can delete companies */}
+                      {userRole === 'owner' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeletingCompanyId(company.id);
+                            setShowDeleteConfirm(true);
+                            setShowDropdown(false);
+                          }}
+                          className="p-1 hover:bg-red-100 rounded text-red-600"
+                          title="Delete company"
+                        >
+                          <FaTrash className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Create New Company Button */}
-              <div className="mt-2 pt-2 border-t border-gray-200">
-                <button
-                  onClick={() => {
-                    setShowCreateModal(true);
-                    setShowDropdown(false);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                >
-                  <FaPlus className="w-4 h-4" />
-                  <span className="font-medium">Create New Company</span>
-                </button>
-              </div>
+              {/* Create New Company Button - OWNER ONLY */}
+              {userRole === 'owner' && (
+                <div className="mt-2 pt-2 border-t border-gray-200">
+                  <button
+                    onClick={() => {
+                      setShowCreateModal(true);
+                      setShowDropdown(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  >
+                    <FaPlus className="w-4 h-4" />
+                    <span className="font-medium">Create New Company</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </>

@@ -20,10 +20,10 @@ const ROLE_PERMISSIONS = {
     expenses: ['read', 'write', 'delete'],
     income: ['read', 'write'],
     marketing: ['read', 'write'],
-    forecasting: ['read'], // Read-only
-    reports: ['read', 'export'],
-    settings: [], // No access
-    team: ['read']
+    forecasting: ['read', 'write'], // Can create/edit forecasts
+    reports: ['read', 'write', 'export'], // Can create and export reports
+    settings: ['read', 'write'], // Access to company settings (except owner-only controls)
+    team: ['read', 'write'] // Can view and manage team (except owner role changes)
   },
   employee: {
     expenses: ['read', 'write'], // Own expenses only (enforced in Firestore rules)
