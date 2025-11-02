@@ -263,6 +263,127 @@ export const updateUserProfile = async (userId, data) => {
 
 // ==================== FIRESTORE - EXPENSES ====================
 
+// ==================== COMPANY-BASED EXPENSES (NEW STRUCTURE) ====================
+// These functions use the new company structure: companies/{companyId}/expenses
+
+/**
+ * Get all expenses for a company
+ * @param {string} companyId - Company ID
+ * @returns {Promise<Array>} Array of expense objects
+ */
+export const getCompanyExpenses = async (companyId) => {
+  try {
+    const expensesRef = collection(db, 'companies', companyId, 'expenses');
+    const q = query(expensesRef, orderBy('date', 'desc'));
+    const querySnapshot = await getDocs(q);
+    
+    const expenses = [];
+    
+    // Decrypt sensitive fields for each expense
+    for (const docSnapshot of querySnapshot.docs) {
+      const expenseData = docSnapshot.data();
+      const sensitiveFields = ['amount', 'vatNumber', 'bankAccount', 'invoiceNumber'];
+      
+      try {
+        // Check if fields are encrypted
+        const hasEncryptedFields = sensitiveFields.some(field => expenseData[`${field}_encrypted`]);
+        
+        if (hasEncryptedFields) {
+          const decryptedData = await decryptSensitiveFields(expenseData, sensitiveFields);
+          expenses.push({
+            id: docSnapshot.id,
+            ...decryptedData
+          });
+        } else {
+          expenses.push({
+            id: docSnapshot.id,
+            ...expenseData
+          });
+        }
+      } catch (decryptError) {
+        console.error('Error decrypting expense:', decryptError);
+        expenses.push({
+          id: docSnapshot.id,
+          ...expenseData,
+          _decryptionError: true
+        });
+      }
+    }
+    
+    return expenses;
+  } catch (error) {
+    console.error('Error getting company expenses:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add expense to a company
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID (for audit)
+ * @param {object} expenseData - Expense data
+ * @returns {Promise<string>} Expense document ID
+ */
+export const addCompanyExpense = async (companyId, userId, expenseData) => {
+  try {
+    const sensitiveFields = ['amount', 'vatNumber', 'bankAccount', 'invoiceNumber'];
+    const encryptedData = await encryptSensitiveFields(expenseData, sensitiveFields);
+    
+    const expensesRef = collection(db, 'companies', companyId, 'expenses');
+    const docRef = await addDoc(expensesRef, {
+      ...encryptedData,
+      createdBy: userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding company expense:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update expense in a company
+ * @param {string} companyId - Company ID
+ * @param {string} expenseId - Expense ID
+ * @param {object} expenseData - Updated expense data
+ */
+export const updateCompanyExpense = async (companyId, expenseId, expenseData) => {
+  try {
+    const sensitiveFields = ['amount', 'vatNumber', 'bankAccount', 'invoiceNumber'];
+    const encryptedData = await encryptSensitiveFields(expenseData, sensitiveFields);
+    
+    const expenseRef = doc(db, 'companies', companyId, 'expenses', expenseId);
+    await updateDoc(expenseRef, {
+      ...encryptedData,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error('Error updating company expense:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete expense from a company
+ * @param {string} companyId - Company ID
+ * @param {string} expenseId - Expense ID
+ */
+export const deleteCompanyExpense = async (companyId, expenseId) => {
+  try {
+    const expenseRef = doc(db, 'companies', companyId, 'expenses', expenseId);
+    await deleteDoc(expenseRef);
+  } catch (error) {
+    console.error('Error deleting company expense:', error);
+    throw error;
+  }
+};
+
+// ==================== USER-BASED EXPENSES (LEGACY - BACKWARD COMPATIBLE) ====================
+// These functions maintain compatibility with existing user-based structure
+
 // Get all expenses for a user
 export const getUserExpenses = async (userId) => {
   try {
@@ -441,7 +562,7 @@ export const deleteAccount = async (userId, accountId) => {
 // ==================== FIREBASE STORAGE - FILE UPLOADS ====================
 
 // Upload a file to Firebase Storage for an expense
-export const uploadExpenseFile = async (userId, expenseId, file, onProgress = null) => {
+export const uploadExpenseFile = async (userId, expenseId, file, onProgress = null, companyId = null) => {
   try {
     // Validate file size (max 10 MB)
     const maxSize = 10 * 1024 * 1024; // 10 MB in bytes
@@ -458,7 +579,11 @@ export const uploadExpenseFile = async (userId, expenseId, file, onProgress = nu
     // Create a unique filename
     const timestamp = Date.now();
     const fileName = `${timestamp}_${file.name}`;
-    const filePath = `users/${userId}/expenses/${expenseId}/${fileName}`;
+    
+    // Use company-based path if company ID provided, otherwise fallback to user path
+    const filePath = companyId 
+      ? `companies/${companyId}/expenses/${expenseId}/${fileName}`
+      : `users/${userId}/expenses/${expenseId}/${fileName}`;
 
     // Create storage reference
     const storageRef = ref(storage, filePath);

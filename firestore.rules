@@ -41,18 +41,27 @@ service cloud.firestore {
     }
     
     // Rate limiting check (prevent spam)
+    // For CREATE: resource doesn't exist yet, so always allow
+    // For UPDATE: check that enough time has passed since last modification
     function notTooFrequent() {
+      // During CREATE, resource doesn't exist - skip rate limiting check
+      // During UPDATE, check lastModified timestamp
       return !('lastModified' in resource.data) || 
              request.time > resource.data.lastModified + duration.value(1, 's');
     }
     
     // Validate expense data structure
+    // Note: amount may be encrypted (string) or unencrypted (number)
     function isValidExpense() {
       let data = request.resource.data;
-      return data.keys().hasAll(['date', 'category', 'vendor', 'amount', 'createdBy', 'createdAt']) &&
-             data.amount is number &&
-             data.amount >= 0 &&
-             data.amount < 1000000 &&
+      
+      // Amount validation: can be number OR encrypted string
+      let amountIsValid = ('amount' in data) && 
+                         ((data.amount is number && data.amount >= 0 && data.amount < 1000000) ||
+                          (data.amount is string && 'amount_encrypted' in data && data.amount.size() > 0));
+      
+      return data.keys().hasAll(['date', 'category', 'vendor', 'createdBy', 'createdAt']) &&
+             amountIsValid &&
              data.createdBy is string &&
              data.createdAt is timestamp;
     }
@@ -93,42 +102,120 @@ service cloud.firestore {
         allow update: if isAuthenticated() && request.auth.uid == userId;
         allow delete: if isAuthenticated() && request.auth.uid == userId;
       }
+      
+      // Security settings (MFA, etc.)
+      match /security/{document=**} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if isAuthenticated() && request.auth.uid == userId;
+      }
     }
     
     // ============================================
     // COMPANIES
     // ============================================
     
-    match /companies/{companyId} {
-      // Read: Any user who is part of the company
+      match /companies/{companyId} {
+      // Read: Allow if user is creator OR is a member (for queries, check createdBy field directly)
+      // When querying with where('createdBy', '==', userId), this will work
       allow read: if isAuthenticated() && 
-                     exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid));
+                     (request.auth.uid == resource.data.createdBy ||
+                      exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)));
       
       // Create: Any authenticated user can create a company
       allow create: if isAuthenticated() &&
-                       request.resource.data.createdBy == request.auth.uid;
+                       request.resource.data.createdBy == request.auth.uid &&
+                       request.resource.data.keys().hasAll(['name', 'createdBy', 'createdAt', 'settings']);
       
-      // Update: Only company owner
-      allow update: if isOwner(companyId);
+      // Update: Only company owner OR creator (for initial setup)
+      allow update: if isAuthenticated() && 
+                     (isOwner(companyId) || 
+                      request.auth.uid == resource.data.createdBy);
       
-      // Delete: Only company owner
-      allow delete: if isOwner(companyId);
+      // Delete: Company owner OR creator (even if user doc can't be read)
+      allow delete: if isAuthenticated() && 
+                     (isOwner(companyId) || 
+                      request.auth.uid == resource.data.createdBy);
       
       // ============================================
       // COMPANY USERS (Role Management)
       // ============================================
       
       match /users/{userId} {
-        // Read: Any company member can see other members
+        // Read: Any company member can see other members OR creator can read (for deletion)
         allow read: if isAuthenticated() && 
-                       exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid));
+                       (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                        request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
         
-        // Write: Only owner can manage users and roles
-        allow write: if isOwner(companyId);
+        // Create: Allow user to create their own document when joining company
+        // OR owner can create documents for others
+        allow create: if isAuthenticated() && 
+                        (request.auth.uid == userId || isOwner(companyId));
+        
+        // Update: Only owner can manage users and roles (except self can update some fields)
+        allow update: if isAuthenticated() && 
+                        (isOwner(companyId) || 
+                         (request.auth.uid == userId && 
+                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferences', 'notifications'])));
+        
+        // Delete: Owner OR creator can remove users (for company deletion)
+        allow delete: if isAuthenticated() && 
+                       (isOwner(companyId) || 
+                        request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
       }
       
       // ============================================
-      // EXPENSES MODULE
+      // COMPANY EXPENSES (Direct Path)
+      // ============================================
+      
+      match /expenses/{expenseId} {
+        // Read: Any company member OR creator (for deletion purposes)
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       (exists(/databases/$(database)/documents/companies/$(companyId)) &&
+                        request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy));
+        
+        // Create: Any company member OR creator can create expenses
+        // Check: user is in company users OR user is the company creator
+        // Note: notTooFrequent() skipped for CREATE (resource doesn't exist yet)
+        allow create: if isAuthenticated() && 
+                        request.resource.data.createdBy == request.auth.uid &&
+                        isValidExpense() &&
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         (exists(/databases/$(database)/documents/companies/$(companyId)) &&
+                          request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy));
+        
+        // Update: Owner or the user who created it OR creator
+        allow update: if isAuthenticated() && 
+                        ((exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) &&
+                         (isOwner(companyId) || isResourceOwner())) ||
+                         (request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy && isResourceOwner())) &&
+                        isValidExpense();
+        
+        // Delete: Owner or the user who created it OR creator (for company deletion)
+        allow delete: if isAuthenticated() && 
+                        ((exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) &&
+                         (isOwner(companyId) || isResourceOwner())) ||
+                        request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+      }
+      
+      // ============================================
+      // COMPANY SETTINGS
+      // ============================================
+      
+      match /settings/{settingId} {
+        // Read: Any company member OR creator (for deletion purposes)
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Write: Only owner OR creator
+        allow write: if isAuthenticated() && 
+                      (isOwner(companyId) || 
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+      }
+      
+      // ============================================
+      // EXPENSES MODULE (Legacy Path)
       // ============================================
       
       match /modules/expenses/{expenseId} {

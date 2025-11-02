@@ -5,6 +5,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { SecurityProvider } from './contexts/SecurityContext';
+import { CompanyProvider } from './contexts/CompanyContext';
 import Signup from './components/Auth/Signup';
 import Login from './components/Auth/Login';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
@@ -21,8 +22,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <SecurityProvider>
-          {/* Cookie Consent Banner - appears on all pages */}
-          <CookieConsent />
+          <CompanyProvider>
+            {/* Cookie Consent Banner - appears on all pages */}
+            <CookieConsent />
           
           <Routes>
             {/* Public Routes */}
@@ -70,6 +72,7 @@ function App() {
             {/* Catch all - redirect to dashboard */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+          </CompanyProvider>
         </SecurityProvider>
       </AuthProvider>
     </BrowserRouter>

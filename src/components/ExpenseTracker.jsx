@@ -17,12 +17,18 @@ import {
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
 import FileUpload from './FileUpload';
+import CompanySelector from './CompanySelector';
 import { useAuth } from '../contexts/AuthContext';
+import { useCompany } from '../contexts/CompanyContext';
 import {
   getUserExpenses,
+  getCompanyExpenses,
   addExpense,
+  addCompanyExpense,
   updateExpense,
+  updateCompanyExpense,
   deleteExpense,
+  deleteCompanyExpense,
   getUserAccounts,
   addAccount,
   updateAccount,
@@ -33,6 +39,11 @@ import {
 
 const ExpenseTracker = () => {
   const { currentUser, logout } = useAuth();
+  const { currentCompany, currentCompanyId, userRole, performExpenseMigration } = useCompany();
+  
+  // Migration state
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationResult, setMigrationResult] = useState(null);
   
   // Constants
   const categories = ['Subscriptions', 'Office', 'One-time', 'Donations', 'Marketing', 'Other'];
@@ -90,6 +101,9 @@ const ExpenseTracker = () => {
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
   const [viewingExpense, setViewingExpense] = useState(null);
 
+  // Track last loaded company to prevent unnecessary reloads
+  const lastLoadedCompanyIdRef = useRef(null);
+
   // Filters
   const [filters, setFilters] = useState({
     category: 'all',
@@ -116,20 +130,65 @@ const ExpenseTracker = () => {
     notes: ''
   });
 
-  // Load expenses from Firebase when component mounts
+  // Load expenses from Firebase when component mounts or company changes
   useEffect(() => {
-    if (currentUser) {
-      loadExpenses();
+    if (!currentUser) {
+      setExpenses([]);
+      return;
     }
-  }, [currentUser]);
+    
+    if (currentCompanyId) {
+      // Only reload if company ID actually changed
+      if (lastLoadedCompanyIdRef.current !== currentCompanyId) {
+        console.log(`[ExpenseTracker] Loading expenses for company: ${currentCompanyId}`);
+        lastLoadedCompanyIdRef.current = currentCompanyId;
+        loadExpenses();
+      }
+    } else {
+      // If no company yet, try legacy structure for backward compatibility
+      if (lastLoadedCompanyIdRef.current !== 'legacy') {
+        console.log('[ExpenseTracker] Loading legacy expenses (no company selected)');
+        lastLoadedCompanyIdRef.current = 'legacy';
+        loadLegacyExpenses();
+      }
+    }
+  }, [currentUser, currentCompanyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadExpenses = async () => {
+    if (!currentCompanyId) {
+      console.warn('No company selected, cannot load expenses');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Try company-based structure first
+      try {
+        const companyExpenses = await getCompanyExpenses(currentCompanyId);
+        setExpenses(companyExpenses);
+      } catch (companyError) {
+        console.warn('Company expenses not found, trying legacy structure:', companyError);
+        // Fallback to legacy structure during migration
+        const userExpenses = await getUserExpenses(currentUser.uid);
+        setExpenses(userExpenses || []);
+      }
+    } catch (error) {
+      console.error('Error loading expenses:', error);
+      setExpenses([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadLegacyExpenses = async () => {
     try {
       setLoading(true);
       const userExpenses = await getUserExpenses(currentUser.uid);
-      setExpenses(userExpenses);
+      setExpenses(userExpenses || []);
     } catch (error) {
-      console.error('Error loading expenses:', error);
+      console.error('Error loading legacy expenses:', error);
+      setExpenses([]);
     } finally {
       setLoading(false);
     }
@@ -155,17 +214,36 @@ const ExpenseTracker = () => {
       if (editingExpense) {
         // Update existing expense
         expenseId = editingExpense.id;
-        await updateExpense(currentUser.uid, expenseId, {
-          ...formData,
-          updatedAt: new Date().toISOString()
-        });
+        if (currentCompanyId) {
+          // Use company-based structure
+          await updateCompanyExpense(currentCompanyId, expenseId, {
+            ...formData,
+            updatedAt: new Date().toISOString()
+          });
+        } else {
+          // Fallback to legacy structure
+          await updateExpense(currentUser.uid, expenseId, {
+            ...formData,
+            updatedAt: new Date().toISOString()
+          });
+        }
       } else {
         // Add new expense
-        expenseId = await addExpense(currentUser.uid, {
-          ...formData,
-          accountId: currentAccountId,
-          createdAt: new Date().toISOString()
-        });
+        if (currentCompanyId) {
+          // Use company-based structure
+          expenseId = await addCompanyExpense(currentCompanyId, currentUser.uid, {
+            ...formData,
+            accountId: currentAccountId,
+            createdAt: new Date().toISOString()
+          });
+        } else {
+          // Fallback to legacy structure
+          expenseId = await addExpense(currentUser.uid, {
+            ...formData,
+            accountId: currentAccountId,
+            createdAt: new Date().toISOString()
+          });
+        }
       }
 
       // Upload files if any
@@ -184,7 +262,8 @@ const ExpenseTracker = () => {
               // Calculate overall progress across all files
               const overallProgress = ((completedUploads + (progress / 100)) / selectedFiles.length) * 100;
               setUploadProgress(overallProgress);
-            }
+            },
+            currentCompanyId // Pass company ID for proper path structure
           );
           
           completedUploads++;
@@ -193,10 +272,17 @@ const ExpenseTracker = () => {
         }
 
         // Update expense with file metadata
-        const existingExpenseDoc = await updateExpense(currentUser.uid, expenseId, {
-          attachments: uploadedFiles,
-          updatedAt: new Date().toISOString()
-        });
+        if (currentCompanyId) {
+          await updateCompanyExpense(currentCompanyId, expenseId, {
+            attachments: uploadedFiles,
+            updatedAt: new Date().toISOString()
+          });
+        } else {
+          await updateExpense(currentUser.uid, expenseId, {
+            attachments: uploadedFiles,
+            updatedAt: new Date().toISOString()
+          });
+        }
       }
 
       // Reload expenses
@@ -234,7 +320,11 @@ const ExpenseTracker = () => {
   const handleDeleteExpense = async (expenseId) => {
     if (window.confirm('Are you sure you want to delete this expense?')) {
       try {
-        await deleteExpense(currentUser.uid, expenseId);
+        if (currentCompanyId) {
+          await deleteCompanyExpense(currentCompanyId, expenseId);
+        } else {
+          await deleteExpense(currentUser.uid, expenseId);
+        }
         await loadExpenses();
       } catch (error) {
         console.error('Error deleting expense:', error);
@@ -310,7 +400,10 @@ const ExpenseTracker = () => {
               <img src="/branding/logo/logo-light.svg" alt="Biz-CoPilot" className="w-8 h-8" />
               <h1 className="text-2xl font-bold text-gray-900">Biz-CoPilot</h1>
             </div>
-            <UserProfile />
+            <div className="flex items-center gap-4">
+              <CompanySelector />
+              <UserProfile />
+            </div>
           </div>
         </div>
       </header>
@@ -730,8 +823,45 @@ const ExpenseTracker = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {expenses.length === 0 ? (
                   <tr>
-                    <td colSpan="10" className="px-6 py-8 text-center text-gray-500">
-                      No expenses yet. Click "Add Expense" to get started.
+                    <td colSpan="10" className="px-6 py-8 text-center">
+                      <div className="flex flex-col items-center gap-4">
+                        <p className="text-gray-500">No expenses yet.</p>
+                        {currentCompanyId && (
+                          <button
+                            onClick={async () => {
+                              setIsMigrating(true);
+                              setMigrationResult(null);
+                              try {
+                                const result = await performExpenseMigration(currentCompanyId);
+                                setMigrationResult(result);
+                                if (result.success && result.migratedCount > 0) {
+                                  // Reload expenses after migration
+                                  await loadExpenses();
+                                }
+                              } catch (error) {
+                                setMigrationResult({
+                                  success: false,
+                                  message: `Migration failed: ${error.message}`
+                                });
+                              } finally {
+                                setIsMigrating(false);
+                              }
+                            }}
+                            disabled={isMigrating}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                          >
+                            {isMigrating ? 'Migrating Expenses...' : 'Migrate Legacy Expenses to This Company'}
+                          </button>
+                        )}
+                        {migrationResult && (
+                          <p className={`text-sm ${migrationResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                            {migrationResult.message}
+                          </p>
+                        )}
+                        {!currentCompanyId && (
+                          <p className="text-sm text-gray-400">Or click "Add Expense" to get started.</p>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (
