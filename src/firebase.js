@@ -1322,5 +1322,330 @@ export const findUserByEmail = async (email) => {
   }
 };
 
+// ==================== FINANCIAL ACCOUNTS ====================
+
+/**
+ * Get all financial accounts for a company
+ * @param {string} companyId - Company ID
+ * @returns {Promise<Array>} Array of financial account objects
+ */
+export const getCompanyFinancialAccounts = async (companyId) => {
+  try {
+    const accountsRef = collection(db, 'companies', companyId, 'financialAccounts');
+    const accountsSnapshot = await getDocs(accountsRef);
+    
+    const accounts = [];
+    accountsSnapshot.forEach((doc) => {
+      accounts.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    // Sort by name for consistent display
+    return accounts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  } catch (error) {
+    console.error('Error getting company financial accounts:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add a financial account to a company
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID (for audit)
+ * @param {object} accountData - Account data
+ * @returns {Promise<string>} Account document ID
+ */
+export const addFinancialAccount = async (companyId, userId, accountData) => {
+  try {
+    const accountsRef = collection(db, 'companies', companyId, 'financialAccounts');
+    const docRef = await addDoc(accountsRef, {
+      name: accountData.name?.trim() || '',
+      type: accountData.type || 'bank',
+      currency: accountData.currency || 'EUR',
+      initialBalance: parseFloat(accountData.initialBalance || 0),
+      currentBalance: parseFloat(accountData.initialBalance || 0), // Start with initial balance
+      linkedTo: accountData.linkedTo || [],
+      description: accountData.description?.trim() || '',
+      
+      // Bank Account Details
+      bankName: accountData.bankName?.trim() || '',
+      accountNumber: accountData.accountNumber?.trim() || '',
+      iban: accountData.iban?.trim() || '',
+      swift: accountData.swift?.trim() || '',
+      
+      // Card Details
+      cardLastFour: accountData.cardLastFour?.trim() || '',
+      cardType: accountData.cardType || '',
+      cardHolderName: accountData.cardHolderName?.trim() || '',
+      expiryDate: accountData.expiryDate?.trim() || '',
+      
+      // Metadata
+      isActive: accountData.isActive !== undefined ? accountData.isActive : true,
+      createdBy: userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding financial account:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update a financial account
+ * @param {string} companyId - Company ID
+ * @param {string} accountId - Account ID
+ * @param {object} accountData - Updated account data
+ */
+export const updateFinancialAccount = async (companyId, accountId, accountData) => {
+  try {
+    const accountRef = doc(db, 'companies', companyId, 'financialAccounts', accountId);
+    
+    const updateData = {
+      ...accountData,
+      updatedAt: serverTimestamp()
+    };
+    
+    // Remove undefined fields
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+    
+    await updateDoc(accountRef, updateData);
+  } catch (error) {
+    console.error('Error updating financial account:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a financial account
+ * @param {string} companyId - Company ID
+ * @param {string} accountId - Account ID
+ */
+export const deleteFinancialAccount = async (companyId, accountId) => {
+  try {
+    const accountRef = doc(db, 'companies', companyId, 'financialAccounts', accountId);
+    await deleteDoc(accountRef);
+  } catch (error) {
+    console.error('Error deleting financial account:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update account balance (used when transactions are added/modified)
+ * @param {string} companyId - Company ID
+ * @param {string} accountId - Account ID
+ * @param {number} amount - Amount to adjust (positive for income, negative for expense)
+ * @param {string} type - Transaction type: 'income' | 'expense'
+ */
+export const updateAccountBalance = async (companyId, accountId, amount, type) => {
+  try {
+    const accountRef = doc(db, 'companies', companyId, 'financialAccounts', accountId);
+    const accountDoc = await getDoc(accountRef);
+    
+    if (!accountDoc.exists()) {
+      throw new Error('Financial account not found');
+    }
+    
+    const currentBalance = accountDoc.data().currentBalance || 0;
+    const adjustment = type === 'income' ? amount : -Math.abs(amount);
+    const newBalance = currentBalance + adjustment;
+    
+    await updateDoc(accountRef, {
+      currentBalance: newBalance,
+      updatedAt: serverTimestamp()
+    });
+    
+    return newBalance;
+  } catch (error) {
+    console.error('Error updating account balance:', error);
+    throw error;
+  }
+};
+
+// ==================== INCOME ====================
+
+/**
+ * Get all income transactions for a company
+ * @param {string} companyId - Company ID
+ * @returns {Promise<Array>} Array of income objects
+ */
+export const getCompanyIncome = async (companyId) => {
+  try {
+    const incomeRef = collection(db, 'companies', companyId, 'income');
+    const q = query(incomeRef, orderBy('date', 'desc'));
+    const querySnapshot = await getDocs(q);
+    
+    const incomeList = [];
+    querySnapshot.forEach((doc) => {
+      incomeList.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return incomeList;
+  } catch (error) {
+    console.error('Error getting company income:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add income transaction to a company
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID (for audit)
+ * @param {object} incomeData - Income data
+ * @returns {Promise<string>} Income document ID
+ */
+export const addCompanyIncome = async (companyId, userId, incomeData) => {
+  try {
+    const incomeRef = collection(db, 'companies', companyId, 'income');
+    const docRef = await addDoc(incomeRef, {
+      date: incomeData.date || new Date().toISOString().split('T')[0],
+      source: incomeData.source || '',
+      customer: incomeData.customer || '',
+      description: incomeData.description || '',
+      amount: parseFloat(incomeData.amount || 0),
+      currency: incomeData.currency || 'EUR',
+      btw: parseFloat(incomeData.btw || 0),
+      financialAccountId: incomeData.financialAccountId || '',
+      invoiceId: incomeData.invoiceId || '',
+      transactionId: incomeData.transactionId || '',
+      reconciled: incomeData.reconciled || false,
+      category: incomeData.category || 'Other',
+      notes: incomeData.notes || '',
+      attachments: incomeData.attachments || [],
+      createdBy: userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    // Update account balance if financial account is linked
+    if (incomeData.financialAccountId && incomeData.amount) {
+      const amount = parseFloat(incomeData.amount || 0);
+      if (amount > 0) {
+        try {
+          await updateAccountBalance(companyId, incomeData.financialAccountId, amount, 'income');
+        } catch (balanceError) {
+          console.error('Error updating account balance:', balanceError);
+          // Don't fail the income creation if balance update fails
+        }
+      }
+    }
+    
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding company income:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update income transaction in a company
+ * @param {string} companyId - Company ID
+ * @param {string} incomeId - Income ID
+ * @param {object} incomeData - Updated income data
+ */
+export const updateCompanyIncome = async (companyId, incomeId, incomeData) => {
+  try {
+    const incomeRef = doc(db, 'companies', companyId, 'income', incomeId);
+    
+    // Get existing income to handle balance updates
+    const existingIncome = await getDoc(incomeRef);
+    const existingData = existingIncome.exists() ? existingIncome.data() : {};
+    
+    // Prepare update data
+    const updateData = {
+      ...incomeData,
+      updatedAt: serverTimestamp()
+    };
+    
+    // Remove undefined fields
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+    
+    await updateDoc(incomeRef, updateData);
+    
+    // Update account balances if financial account changed or amount changed
+    const oldAmount = parseFloat(existingData.amount || 0);
+    const newAmount = parseFloat(incomeData.amount || oldAmount);
+    const oldAccountId = existingData.financialAccountId || '';
+    const newAccountId = incomeData.financialAccountId || oldAccountId;
+    
+    if (oldAccountId && oldAccountId !== newAccountId) {
+      // Account changed: reverse old, apply new
+      try {
+        await updateAccountBalance(companyId, oldAccountId, -oldAmount, 'income');
+        if (newAccountId) {
+          await updateAccountBalance(companyId, newAccountId, newAmount, 'income');
+        }
+      } catch (balanceError) {
+        console.error('Error updating account balances:', balanceError);
+      }
+    } else if (newAccountId && oldAmount !== newAmount) {
+      // Same account, different amount: adjust difference
+      const difference = newAmount - oldAmount;
+      if (difference !== 0) {
+        try {
+          await updateAccountBalance(companyId, newAccountId, difference, 'income');
+        } catch (balanceError) {
+          console.error('Error updating account balance:', balanceError);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error updating company income:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete income transaction from a company
+ * @param {string} companyId - Company ID
+ * @param {string} incomeId - Income ID
+ */
+export const deleteCompanyIncome = async (companyId, incomeId) => {
+  try {
+    // Get existing income to reverse balance update
+    const incomeRef = doc(db, 'companies', companyId, 'income', incomeId);
+    const incomeDoc = await getDoc(incomeRef);
+    
+    if (incomeDoc.exists()) {
+      const incomeData = incomeDoc.data();
+      
+      // Reverse account balance if financial account was linked
+      if (incomeData.financialAccountId && incomeData.amount) {
+        const amount = parseFloat(incomeData.amount || 0);
+        if (amount > 0) {
+          try {
+            await updateAccountBalance(companyId, incomeData.financialAccountId, -amount, 'income');
+          } catch (balanceError) {
+            console.error('Error reversing account balance:', balanceError);
+            // Continue with deletion even if balance update fails
+          }
+        }
+      }
+    }
+    
+    // Delete the income document
+    await deleteDoc(incomeRef);
+  } catch (error) {
+    console.error('Error deleting company income:', error);
+    throw error;
+  }
+};
+
 // Export auth, db, and storage instances
 export { auth, db, storage };

@@ -16,6 +16,7 @@ import {
 import UserProfile from './UserProfile';
 import FileUpload from './FileUpload';
 import CompanySelector from './CompanySelector';
+import FinancialAccountSelect from './FinancialAccountSelect';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
 import {
@@ -24,7 +25,8 @@ import {
   updateCompanyExpense,
   deleteCompanyExpense,
   uploadExpenseFile,
-  deleteExpenseFile
+  deleteExpenseFile,
+  updateAccountBalance
 } from '../firebase';
 
 const ExpenseTracker = () => {
@@ -67,7 +69,7 @@ const ExpenseTracker = () => {
     category: 'all',
     bankAccount: 'all',
     paymentMethod: 'all',
-    periodType: 'all',
+    periodType: 'all', // 'all', 'today', 'week', 'month', 'year', 'custom'
     startDate: '',
     endDate: ''
   });
@@ -83,7 +85,8 @@ const ExpenseTracker = () => {
     description: '',
     amount: '',
     btw: 21,
-    bankAccount: 'Business Checking',
+    bankAccount: 'Business Checking', // Keep for backward compatibility
+    financialAccountId: '', // NEW: Link to financial accounts
     paymentMethod: 'Debit Card',
     notes: ''
   });
@@ -149,10 +152,30 @@ const ExpenseTracker = () => {
       if (editingExpense) {
         // Update existing expense
         expenseId = editingExpense.id;
+        const oldAmount = parseFloat(editingExpense.amount || 0);
+        const newAmount = parseFloat(formData.amount || 0);
+        const oldAccountId = editingExpense.financialAccountId;
+        const newAccountId = formData.financialAccountId;
+        
         await updateCompanyExpense(currentCompanyId, expenseId, {
           ...formData,
           updatedAt: new Date().toISOString()
         });
+        
+        // Update account balances if financial account is linked
+        if (oldAccountId && oldAccountId !== newAccountId) {
+          // Account changed: reverse old, apply new
+          await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
+          if (newAccountId) {
+            await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
+          }
+        } else if (newAccountId && oldAmount !== newAmount) {
+          // Same account, different amount: adjust difference
+          const difference = oldAmount - newAmount;
+          if (difference !== 0) {
+            await updateAccountBalance(currentCompanyId, newAccountId, difference, 'expense');
+          }
+        }
       } else {
         // Add new expense
         expenseId = await addCompanyExpense(currentCompanyId, currentUser.uid, {
@@ -160,6 +183,14 @@ const ExpenseTracker = () => {
           accountId: currentAccountId,
           createdAt: new Date().toISOString()
         });
+        
+        // Update account balance if financial account is linked
+        if (formData.financialAccountId && formData.amount) {
+          const amount = parseFloat(formData.amount || 0);
+          if (amount > 0) {
+            await updateAccountBalance(currentCompanyId, formData.financialAccountId, -amount, 'expense');
+          }
+        }
       }
 
       // Upload files if any
@@ -209,6 +240,7 @@ const ExpenseTracker = () => {
         amount: '',
         btw: 21,
         bankAccount: 'Business Checking',
+        financialAccountId: '',
         paymentMethod: 'Debit Card',
         notes: ''
       });
@@ -256,6 +288,7 @@ const ExpenseTracker = () => {
       amount: expense.amount,
       btw: expense.btw,
       bankAccount: expense.bankAccount || 'Business Checking',
+      financialAccountId: expense.financialAccountId || '',
       paymentMethod: expense.paymentMethod,
       notes: expense.notes || ''
     });
@@ -269,7 +302,57 @@ const ExpenseTracker = () => {
     setShowAttachmentsModal(true);
   };
 
-  // Calculate totals
+  // Helper function to get date range based on period type
+  const getDateRange = (periodType) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    switch (periodType) {
+      case 'today':
+        return {
+          startDate: today.toISOString().split('T')[0],
+          endDate: today.toISOString().split('T')[0]
+        };
+      case 'week':
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        return {
+          startDate: weekStart.toISOString().split('T')[0],
+          endDate: weekEnd.toISOString().split('T')[0]
+        };
+      case 'month':
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        return {
+          startDate: monthStart.toISOString().split('T')[0],
+          endDate: monthEnd.toISOString().split('T')[0]
+        };
+      case 'year':
+        const yearStart = new Date(today.getFullYear(), 0, 1);
+        const yearEnd = new Date(today.getFullYear(), 11, 31);
+        return {
+          startDate: yearStart.toISOString().split('T')[0],
+          endDate: yearEnd.toISOString().split('T')[0]
+        };
+      default:
+        return { startDate: '', endDate: '' };
+    }
+  };
+
+  // Update date range when period type changes
+  useEffect(() => {
+    if (filters.periodType && filters.periodType !== 'all' && filters.periodType !== 'custom') {
+      const dateRange = getDateRange(filters.periodType);
+      setFilters(prev => ({
+        ...prev,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate
+      }));
+    }
+  }, [filters.periodType]);
+
   // Filter expenses based on current filters
   const filteredExpenses = useMemo(() => {
     return expenses.filter(exp => {
@@ -281,6 +364,33 @@ const ExpenseTracker = () => {
       return true;
     });
   }, [expenses, filters]);
+
+  // Calculate totals
+  const totalExpense = useMemo(() => {
+    return filteredExpenses.reduce((sum, exp) => {
+      const amount = parseFloat(exp.amount) || 0;
+      // If amount is encrypted, skip calculation
+      if (typeof amount === 'string' && exp.amount_encrypted) return sum;
+      return sum + amount;
+    }, 0);
+  }, [filteredExpenses]);
+
+  const totalVAT = useMemo(() => {
+    return filteredExpenses.reduce((sum, exp) => {
+      const amount = parseFloat(exp.amount) || 0;
+      // If amount is encrypted, skip calculation
+      if (typeof amount === 'string' && exp.amount_encrypted) return sum;
+      const vatRate = parseFloat(exp.btw || 0) / 100;
+      return sum + (amount * vatRate);
+    }, 0);
+  }, [filteredExpenses]);
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('nl-NL', {
+      style: 'currency',
+      currency: 'EUR'
+    }).format(amount || 0);
+  };
 
   if (loading) {
     return (
@@ -507,20 +617,44 @@ const ExpenseTracker = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Bank Account
-                  </label>
-                  <select
-                    name="bankAccount"
-                    value={formData.bankAccount}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {bankAccounts.map(account => (
-                      <option key={account} value={account}>{account}</option>
-                    ))}
-                  </select>
+                  <FinancialAccountSelect
+                    value={formData.financialAccountId}
+                    onChange={(e) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        financialAccountId: e.target.value,
+                        // Auto-populate bankAccount for backward compatibility if account is selected
+                        bankAccount: e.target.value ? 'Financial Account' : prev.bankAccount
+                      }));
+                    }}
+                    filterBy={['expenses']}
+                    label="Financial Account"
+                    required={false}
+                    showBalance={true}
+                    onAddAccount={() => {
+                      // Open Settings page in a new tab or navigate
+                      window.open('/settings?tab=accounts', '_blank');
+                    }}
+                  />
+                  
+                  {/* Fallback: Legacy bank account dropdown (hidden if financial account is selected) */}
+                  {!formData.financialAccountId && (
+                    <div className="mt-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Bank Account (Legacy)
+                      </label>
+                      <select
+                        name="bankAccount"
+                        value={formData.bankAccount}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {bankAccounts.map(account => (
+                          <option key={account} value={account}>{account}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -611,62 +745,136 @@ const ExpenseTracker = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Add Expense Button */}
-        <div className="mb-6">
-          <button
-            onClick={() => {
-              if (!currentCompanyId) {
-                alert('Please select a company to add expenses.');
-                return;
-              }
-              setShowAddExpense(true);
-            }}
-            disabled={!currentCompanyId}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={!currentCompanyId ? 'Please select a company first' : ''}
-          >
-            <FaPlusCircle className="w-5 h-5 mr-2" />
-            Add Expense
-          </button>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Expense</p>
+                <p className="text-2xl font-bold text-red-600">{formatCurrency(totalExpense)}</p>
+              </div>
+              <FaChartLine className="w-8 h-8 text-red-600" />
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total VAT</p>
+                <p className="text-2xl font-bold text-blue-600">{formatCurrency(totalVAT)}</p>
+              </div>
+              <FaFileAlt className="w-8 h-8 text-blue-600" />
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Transactions</p>
+                <p className="text-2xl font-bold text-gray-900">{filteredExpenses.length}</p>
+              </div>
+              <FaFileAlt className="w-8 h-8 text-gray-600" />
+            </div>
+          </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap gap-4 mb-6">
-          <select
-            value={filters.category}
-            onChange={(e) => setFilters({...filters, category: e.target.value})}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            <option value="all">All Categories</option>
-            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-          </select>
+        {/* Filters and Add Button */}
+        <div className="bg-white rounded-lg shadow p-4 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap gap-4">
+              {/* Period Filter */}
+              <select
+                value={filters.periodType}
+                onChange={(e) => {
+                  const newPeriodType = e.target.value;
+                  if (newPeriodType === 'custom') {
+                    setFilters({...filters, periodType: 'custom'});
+                  } else {
+                    setFilters({...filters, periodType: newPeriodType});
+                  }
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="year">This Year</option>
+                <option value="custom">Custom Range</option>
+              </select>
 
-          <select
-            value={filters.bankAccount}
-            onChange={(e) => setFilters({...filters, bankAccount: e.target.value})}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            <option value="all">All Bank Accounts</option>
-            {bankAccounts.map(acc => <option key={acc} value={acc}>{acc}</option>)}
-          </select>
+              {/* Custom Date Range (shown when custom is selected) */}
+              {filters.periodType === 'custom' && (
+                <>
+                  <input
+                    type="date"
+                    value={filters.startDate}
+                    onChange={(e) => setFilters({...filters, startDate: e.target.value})}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="Start Date"
+                  />
+                  <span className="self-center text-gray-500">to</span>
+                  <input
+                    type="date"
+                    value={filters.endDate}
+                    onChange={(e) => setFilters({...filters, endDate: e.target.value})}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="End Date"
+                  />
+                </>
+              )}
 
-          <select
-            value={filters.paymentMethod}
-            onChange={(e) => setFilters({...filters, paymentMethod: e.target.value})}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            <option value="all">All Payment Methods</option>
-            {paymentMethods.map(method => <option key={method} value={method}>{method}</option>)}
-          </select>
+              <select
+                value={filters.category}
+                onChange={(e) => setFilters({...filters, category: e.target.value})}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="all">All Categories</option>
+                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+              </select>
 
-          {(filters.category !== 'all' || filters.bankAccount !== 'all' || filters.paymentMethod !== 'all') && (
+              <select
+                value={filters.bankAccount}
+                onChange={(e) => setFilters({...filters, bankAccount: e.target.value})}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="all">All Bank Accounts</option>
+                {bankAccounts.map(acc => <option key={acc} value={acc}>{acc}</option>)}
+              </select>
+
+              <select
+                value={filters.paymentMethod}
+                onChange={(e) => setFilters({...filters, paymentMethod: e.target.value})}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="all">All Payment Methods</option>
+                {paymentMethods.map(method => <option key={method} value={method}>{method}</option>)}
+              </select>
+
+              {(filters.category !== 'all' || filters.bankAccount !== 'all' || filters.paymentMethod !== 'all' || filters.periodType !== 'all') && (
+                <button
+                  onClick={() => setFilters({category: 'all', bankAccount: 'all', paymentMethod: 'all', periodType: 'all', startDate: '', endDate: ''})}
+                  className="px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+            
             <button
-              onClick={() => setFilters({category: 'all', bankAccount: 'all', paymentMethod: 'all', periodType: 'all', startDate: '', endDate: ''})}
-              className="px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+              onClick={() => {
+                if (!currentCompanyId) {
+                  alert('Please select a company to add expenses.');
+                  return;
+                }
+                setShowAddExpense(true);
+              }}
+              disabled={!currentCompanyId}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              title={!currentCompanyId ? 'Please select a company first' : ''}
             >
-              Clear Filters
+              <FaPlusCircle />
+              Add Expense
             </button>
-          )}
+          </div>
         </div>
 
         {/* Expenses Table */}

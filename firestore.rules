@@ -205,6 +205,48 @@ service cloud.firestore {
       }
       
       // ============================================
+      // COMPANY INCOME
+      // ============================================
+      
+      match /income/{incomeId} {
+        // Read: Any company member OR creator
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       (exists(/databases/$(database)/documents/companies/$(companyId)) &&
+                        request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy));
+        
+        // Create: Any company member OR creator can create income
+        allow create: if isAuthenticated() && 
+                        request.resource.data.createdBy == request.auth.uid &&
+                        isValidIncome() &&
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         (exists(/databases/$(database)/documents/companies/$(companyId)) &&
+                          request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy));
+        
+        // Update: Owner or the user who created it OR creator
+        allow update: if isAuthenticated() && 
+                        ((exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) &&
+                         (isOwner(companyId) || isResourceOwner())) ||
+                         (request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy && isResourceOwner())) &&
+                        isValidIncome();
+        
+        // Delete: Owner or the user who created it OR creator
+        allow delete: if isAuthenticated() && 
+                        ((exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) &&
+                         (isOwner(companyId) || isResourceOwner())) ||
+                         (request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy && isResourceOwner()));
+      }
+      
+      // ============================================
+      // FINANCIAL ACCOUNTS
+      // ============================================
+      
+      match /financialAccounts/{accountId} {
+        // OWNER ONLY: Financial accounts are sensitive and only owners can access
+        allow read, create, update, delete: if isAuthenticated() && isOwner(companyId);
+      }
+      
+      // ============================================
       // COMPANY EXPENSES (Direct Path)
       // ============================================
       
