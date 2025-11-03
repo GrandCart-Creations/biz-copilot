@@ -4,6 +4,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import OnboardingGate from '../Onboarding/OnboardingGate';
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser, loading } = useAuth();
@@ -23,7 +24,8 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  return children;
+  // Wrap children with OnboardingGate to check if onboarding is needed
+  return <OnboardingGate>{children}</OnboardingGate>;
 };
 
 export default ProtectedRoute;

@@ -12,8 +12,15 @@ export default function Login() {
   const navigate = useNavigate();
   const { handleFailedLogin, handleSuccessfulLogin, isAccountLocked } = useSecurityContext();
   
-  const [email, setEmail] = useState('');
+  // Check for email in URL params (from invitation flow)
+  const urlParams = new URLSearchParams(window.location.search);
+  const emailFromUrl = urlParams.get('email');
+  const [email, setEmail] = useState(emailFromUrl || '');
   const [password, setPassword] = useState('');
+  
+  // Check if there's a pending invitation
+  const pendingInvite = sessionStorage.getItem('pendingInvitation');
+  const hasPendingInvitation = !!pendingInvite;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -50,7 +57,14 @@ export default function Login() {
       handleSuccessfulLogin();
       
       setSuccess('Successfully signed in! Redirecting...');
-      setTimeout(() => navigate('/dashboard'), 1000);
+      
+      // Check if there's a pending invitation to accept
+      const invitationRedirect = sessionStorage.getItem('invitationRedirect');
+      if (invitationRedirect) {
+        setTimeout(() => window.location.href = invitationRedirect, 1000);
+      } else {
+        setTimeout(() => navigate('/dashboard'), 1000);
+      }
     } catch (err) {
       // Log failed login
       await logLogin(email, false);
@@ -85,7 +99,14 @@ export default function Login() {
       handleSuccessfulLogin();
       
       setSuccess('Successfully signed in! Redirecting...');
-      setTimeout(() => navigate('/dashboard'), 1000);
+      
+      // Check if there's a pending invitation to accept
+      const invitationRedirect = sessionStorage.getItem('invitationRedirect');
+      if (invitationRedirect) {
+        setTimeout(() => window.location.href = invitationRedirect, 1000);
+      } else {
+        setTimeout(() => navigate('/dashboard'), 1000);
+      }
     } catch (err) {
       // Log failed login
       await logAuditEvent(AUDIT_EVENTS.FAILED_LOGIN, {
@@ -235,6 +256,13 @@ export default function Login() {
             <div className="mb-4">
               <h2 className="text-xl font-bold text-gray-900 mb-0.5">Welcome Back</h2>
               <p className="text-xs text-gray-600">Sign in to your account</p>
+              {hasPendingInvitation && (
+                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs text-blue-700">
+                    You have a pending invitation. Sign in to accept it.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Success Message */}

@@ -1,0 +1,44 @@
+SENDGRID DNS RECORDS FOR biz-copilot.nl
+=========================================
+
+Copy these EXACTLY as shown below into GoDaddy:
+
+Record 1 (CNAME):
+Type: CNAME
+Name: em9205
+Value: u57083719.wl220.sendgrid.net
+TTL: 1/2 hour (or 3600 seconds)
+
+Record 2 (CNAME):
+Type: CNAME
+Name: s1._domainkey
+Value: s1.domainkey.u57083719.wl220.sendgrid.net
+TTL: 1/2 hour (or 3600 seconds)
+
+Record 3 (CNAME):
+Type: CNAME
+Name: s2._domainkey
+Value: s2.domainkey.u57083719.wl220.sendgrid.net
+TTL: 1/2 hour (or 3600 seconds)
+
+Record 4 (TXT):
+Type: TXT
+Name: _dmarc
+Value: v=DMARC1; p=quarantine; adkim=r; aspf=r; rua=mailto:dmarc_rua@onsecureserver.net;
+TTL: 1/2 hour (or 3600 seconds)
+
+IMPORTANT NOTES:
+================
+1. In GoDaddy, when entering the "Name" field:
+   - For Record 1: Enter ONLY "em9205" (GoDaddy will auto-add ".biz-copilot.nl")
+   - For Record 2: Enter ONLY "s1._domainkey" (GoDaddy will auto-add ".biz-copilot.nl")
+   - For Record 3: Enter ONLY "s2._domainkey" (GoDaddy will auto-add ".biz-copilot.nl")
+   - For Record 4: Enter ONLY "_dmarc" (GoDaddy will auto-add ".biz-copilot.nl")
+
+2. If GoDaddy/Biz-CoPilot shows a modal asking about domain name conversion:
+   - Select "Yes, change this and set the records to [correct format]"
+
+3. After saving, it may take 15-60 minutes for DNS changes to propagate.
+
+4. Then return to SendGrid and click "I've added these records" to verify.
+

@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { SecurityProvider } from './contexts/SecurityContext';
 import { CompanyProvider } from './contexts/CompanyContext';
+import { OnboardingProvider } from './contexts/OnboardingContext';
 import Signup from './components/Auth/Signup';
 import Login from './components/Auth/Login';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
@@ -21,6 +22,7 @@ import TermsOfService from './components/TermsOfService';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import CookiePolicy from './components/CookiePolicy';
 import CookieConsent from './components/CookieConsent';
+import AcceptInvitation from './components/AcceptInvitation';
 
 function App() {
   return (
@@ -28,8 +30,9 @@ function App() {
       <AuthProvider>
         <SecurityProvider>
           <CompanyProvider>
-            {/* Cookie Consent Banner - appears on all pages */}
-            <CookieConsent />
+            <OnboardingProvider>
+              {/* Cookie Consent Banner - appears on all pages */}
+              <CookieConsent />
           
           <Routes>
             {/* Public Routes */}
@@ -40,6 +43,16 @@ function App() {
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/cookies" element={<CookiePolicy />} />
+            
+            {/* Invitation Acceptance (Protected) */}
+            <Route 
+              path="/accept-invitation" 
+              element={
+                <ProtectedRoute>
+                  <AcceptInvitation />
+                </ProtectedRoute>
+              } 
+            />
             
             {/* Protected Route - Main Dashboard (Module Selection) */}
             <Route 
@@ -127,6 +140,7 @@ function App() {
             {/* Catch all - redirect to dashboard */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+            </OnboardingProvider>
           </CompanyProvider>
         </SecurityProvider>
       </AuthProvider>

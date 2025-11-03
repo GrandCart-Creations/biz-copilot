@@ -159,10 +159,15 @@ const PrivacyPolicy = () => {
                 <li><strong>Google Cloud Platform / Firebase:</strong> Cloud hosting and infrastructure (data centers in EU)</li>
                 <li><strong>Payment Processors:</strong> For subscription billing (Stripe, with PCI DSS compliance)</li>
                 <li><strong>Analytics Providers:</strong> Google Analytics (with IP anonymization)</li>
-                <li><strong>Email Services:</strong> For sending transactional and marketing emails</li>
+                <li><strong>Email Services:</strong> For sending transactional emails (invitations, notifications). We may use services like SendGrid, AWS SES, or Mailgun. These services process email addresses and content only for delivery purposes. They do NOT sell your data and are GDPR-compliant. We enter into Data Processing Agreements (DPAs) with all email service providers.</li>
               </ul>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-yellow-800">
+                  <strong>Email Service Privacy:</strong> Our email service providers (e.g., SendGrid, AWS SES) do NOT sell your email addresses or personal data. They process emails only for delivery purposes and comply with GDPR. Email content is processed temporarily for routing and is not stored long-term. For more details, see our <a href="/email-service-comparison" className="underline">Email Service Comparison</a> document.
+                </p>
+              </div>
               <p className="text-gray-700 mb-4">
-                All service providers are bound by strict data processing agreements and may only use data to provide services to us.
+                All service providers are bound by strict data processing agreements and may only use data to provide services to us. We regularly review our service providers to ensure they meet our privacy standards.
               </p>
 
               <h3 className="text-xl font-semibold text-gray-900 mb-3">6.3 Account Sharing</h3>

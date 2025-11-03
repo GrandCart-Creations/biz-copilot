@@ -7,9 +7,16 @@ import { FaChartLine, FaReceipt, FaShieldAlt, FaClock, FaFileInvoice, FaCalculat
 
 export default function Signup() {
   const navigate = useNavigate();
+  
+  // Check for email in URL params (from invitation flow)
+  const urlParams = new URLSearchParams(window.location.search);
+  const emailFromUrl = urlParams.get('email');
+  const pendingInvite = sessionStorage.getItem('pendingInvitation');
+  const inviteData = pendingInvite ? JSON.parse(pendingInvite) : null;
+  
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
+    email: emailFromUrl || inviteData?.invitationEmail || '',
     password: '',
     confirmPassword: ''
   });
@@ -60,10 +67,19 @@ export default function Signup() {
       setSuccess(result.message);
       setShowVerificationNotice(true);
       
-      // Redirect to dashboard after 3 seconds
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 3000);
+      // Check if there's a pending invitation to accept
+      const invitationRedirect = sessionStorage.getItem('invitationRedirect');
+      if (invitationRedirect) {
+        // Redirect to invitation acceptance after signup (shorter delay for better UX)
+        setTimeout(() => {
+          window.location.href = invitationRedirect;
+        }, 2000);
+      } else {
+        // Redirect to dashboard after 3 seconds
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 3000);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -218,6 +234,18 @@ export default function Signup() {
             <div className="mb-4">
               <h2 className="text-xl font-bold text-gray-900 mb-0.5">Create Your Account</h2>
               <p className="text-xs text-gray-600">Start managing your business finances today</p>
+              {pendingInvite && (
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs font-semibold text-blue-900 mb-1">🎉 You're joining a team!</p>
+                  <p className="text-xs text-blue-800 mb-2">
+                    You have a pending invitation for <strong>{inviteData?.invitationEmail}</strong>.
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    After creating your account, you'll be automatically redirected to accept the invitation and join the company. 
+                    <strong className="block mt-1">No company setup needed - you're joining an existing team!</strong>
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Success Message */}
