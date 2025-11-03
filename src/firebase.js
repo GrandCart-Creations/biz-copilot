@@ -1647,5 +1647,321 @@ export const deleteCompanyIncome = async (companyId, incomeId) => {
   }
 };
 
+// ==================== FUNDING & INVESTORS ====================
+
+/**
+ * Get all funding sources for a company (seed funds, loans, etc.)
+ * @param {string} companyId - Company ID
+ * @returns {Promise<Array>} Array of funding objects
+ */
+export const getCompanyFunding = async (companyId) => {
+  try {
+    const fundingRef = collection(db, 'companies', companyId, 'funding');
+    const q = query(fundingRef, orderBy('dateReceived', 'desc'));
+    const querySnapshot = await getDocs(q);
+    
+    const fundingList = [];
+    querySnapshot.forEach((doc) => {
+      fundingList.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return fundingList;
+  } catch (error) {
+    console.error('Error getting company funding:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add funding source to a company
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID (for audit)
+ * @param {object} fundingData - Funding data
+ * @returns {Promise<string>} Funding document ID
+ */
+export const addFunding = async (companyId, userId, fundingData) => {
+  try {
+    const fundingRef = collection(db, 'companies', companyId, 'funding');
+    const docRef = await addDoc(fundingRef, {
+      type: fundingData.type || 'seed_fund',
+      name: fundingData.name?.trim() || '',
+      amount: parseFloat(fundingData.amount || 0),
+      currency: fundingData.currency || 'EUR',
+      dateReceived: fundingData.dateReceived || new Date().toISOString().split('T')[0],
+      
+      // Investment/Equity Details
+      equityPercentage: fundingData.equityPercentage ? parseFloat(fundingData.equityPercentage) : 0,
+      interestRate: fundingData.interestRate ? parseFloat(fundingData.interestRate) : 0,
+      
+      // Account Linking
+      financialAccountId: fundingData.financialAccountId || '',
+      
+      // Agreement/Terms
+      agreementUrl: fundingData.agreementUrl || '',
+      agreementType: fundingData.agreementType || '',
+      signedDate: fundingData.signedDate || '',
+      
+      // Investor/Contact Details
+      investorContact: fundingData.investorContact || {
+        name: '',
+        email: '',
+        phone: ''
+      },
+      
+      // Terms
+      terms: fundingData.terms?.trim() || '',
+      restrictions: fundingData.restrictions?.trim() || '',
+      maturityDate: fundingData.maturityDate || '',
+      
+      // Status
+      status: fundingData.status || 'active',
+      
+      // Metadata
+      notes: fundingData.notes?.trim() || '',
+      createdBy: userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    // Update account balance if financial account is linked
+    if (fundingData.financialAccountId && fundingData.amount) {
+      const amount = parseFloat(fundingData.amount || 0);
+      if (amount > 0) {
+        try {
+          await updateAccountBalance(companyId, fundingData.financialAccountId, amount, 'income');
+        } catch (balanceError) {
+          console.error('Error updating account balance:', balanceError);
+        }
+      }
+    }
+    
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding funding:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update funding source
+ * @param {string} companyId - Company ID
+ * @param {string} fundingId - Funding ID
+ * @param {object} fundingData - Updated funding data
+ */
+export const updateFunding = async (companyId, fundingId, fundingData) => {
+  try {
+    const fundingRef = doc(db, 'companies', companyId, 'funding', fundingId);
+    
+    // Get existing funding to handle balance updates
+    const existingFunding = await getDoc(fundingRef);
+    const existingData = existingFunding.exists() ? existingFunding.data() : {};
+    
+    // Prepare update data
+    const updateData = {
+      ...fundingData,
+      updatedAt: serverTimestamp()
+    };
+    
+    // Remove undefined fields
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+    
+    await updateDoc(fundingRef, updateData);
+    
+    // Handle account balance updates if amount or account changed
+    const oldAmount = parseFloat(existingData.amount || 0);
+    const newAmount = parseFloat(fundingData.amount || oldAmount);
+    const oldAccountId = existingData.financialAccountId || '';
+    const newAccountId = fundingData.financialAccountId || oldAccountId;
+    
+    if (oldAccountId && oldAccountId !== newAccountId) {
+      // Account changed: reverse old, apply new
+      try {
+        await updateAccountBalance(companyId, oldAccountId, -oldAmount, 'income');
+        if (newAccountId) {
+          await updateAccountBalance(companyId, newAccountId, newAmount, 'income');
+        }
+      } catch (balanceError) {
+        console.error('Error updating account balances:', balanceError);
+      }
+    } else if (newAccountId && oldAmount !== newAmount) {
+      // Same account, different amount: adjust difference
+      const difference = newAmount - oldAmount;
+      if (difference !== 0) {
+        try {
+          await updateAccountBalance(companyId, newAccountId, difference, 'income');
+        } catch (balanceError) {
+          console.error('Error updating account balance:', balanceError);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error updating funding:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete funding source
+ * @param {string} companyId - Company ID
+ * @param {string} fundingId - Funding ID
+ */
+export const deleteFunding = async (companyId, fundingId) => {
+  try {
+    // Get existing funding to reverse balance update
+    const fundingRef = doc(db, 'companies', companyId, 'funding', fundingId);
+    const fundingDoc = await getDoc(fundingRef);
+    
+    if (fundingDoc.exists()) {
+      const fundingData = fundingDoc.data();
+      
+      // Reverse account balance if financial account was linked
+      if (fundingData.financialAccountId && fundingData.amount) {
+        const amount = parseFloat(fundingData.amount || 0);
+        if (amount > 0) {
+          try {
+            await updateAccountBalance(companyId, fundingData.financialAccountId, -amount, 'income');
+          } catch (balanceError) {
+            console.error('Error reversing account balance:', balanceError);
+          }
+        }
+      }
+    }
+    
+    // Delete the funding document
+    await deleteDoc(fundingRef);
+  } catch (error) {
+    console.error('Error deleting funding:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all investors for a company
+ * @param {string} companyId - Company ID
+ * @returns {Promise<Array>} Array of investor objects
+ */
+export const getCompanyInvestors = async (companyId) => {
+  try {
+    const investorsRef = collection(db, 'companies', companyId, 'investors');
+    const q = query(investorsRef, orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    
+    const investorsList = [];
+    querySnapshot.forEach((doc) => {
+      investorsList.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return investorsList;
+  } catch (error) {
+    console.error('Error getting company investors:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add investor to a company
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID (for audit)
+ * @param {object} investorData - Investor data
+ * @returns {Promise<string>} Investor document ID
+ */
+export const addInvestor = async (companyId, userId, investorData) => {
+  try {
+    const investorsRef = collection(db, 'companies', companyId, 'investors');
+    const docRef = await addDoc(investorsRef, {
+      name: investorData.name?.trim() || '',
+      type: investorData.type || 'Angel',
+      
+      // Investment History
+      totalInvested: parseFloat(investorData.totalInvested || 0),
+      currency: investorData.currency || 'EUR',
+      investments: investorData.investments || [],
+      
+      // Rights & Governance
+      boardSeat: investorData.boardSeat || false,
+      votingRights: investorData.votingRights || false,
+      equityPercentage: parseFloat(investorData.equityPercentage || 0),
+      
+      // Contact
+      contact: investorData.contact || {
+        name: '',
+        email: '',
+        phone: ''
+      },
+      
+      // Documents
+      documents: investorData.documents || [],
+      
+      // Communications Log
+      communications: investorData.communications || [],
+      
+      // Metadata
+      notes: investorData.notes?.trim() || '',
+      createdBy: userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding investor:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update investor
+ * @param {string} companyId - Company ID
+ * @param {string} investorId - Investor ID
+ * @param {object} investorData - Updated investor data
+ */
+export const updateInvestor = async (companyId, investorId, investorData) => {
+  try {
+    const investorRef = doc(db, 'companies', companyId, 'investors', investorId);
+    
+    const updateData = {
+      ...investorData,
+      updatedAt: serverTimestamp()
+    };
+    
+    // Remove undefined fields
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+    
+    await updateDoc(investorRef, updateData);
+  } catch (error) {
+    console.error('Error updating investor:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete investor
+ * @param {string} companyId - Company ID
+ * @param {string} investorId - Investor ID
+ */
+export const deleteInvestor = async (companyId, investorId) => {
+  try {
+    const investorRef = doc(db, 'companies', companyId, 'investors', investorId);
+    await deleteDoc(investorRef);
+  } catch (error) {
+    console.error('Error deleting investor:', error);
+    throw error;
+  }
+};
+
 // Export auth, db, and storage instances
 export { auth, db, storage };

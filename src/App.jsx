@@ -12,6 +12,7 @@ import Login from './components/Auth/Login';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 import ExpenseTracker from './components/ExpenseTracker';
 import IncomeTracker from './components/IncomeTracker';
+import FinancialDashboard from './components/FinancialDashboard';
 import ReportsDashboard from './components/ReportsDashboard';
 import SettingsDashboard from './components/SettingsDashboard';
 import SecurityDashboard from './components/SecurityDashboard';
@@ -80,6 +81,16 @@ function App() {
               element={
                 <ProtectedRoute>
                   <IncomeTracker />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Financial Dashboard */}
+            <Route 
+              path="/modules/financial-dashboard" 
+              element={
+                <ProtectedRoute>
+                  <FinancialDashboard />
                 </ProtectedRoute>
               } 
             />

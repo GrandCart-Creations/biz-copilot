@@ -30,6 +30,17 @@ export const MODULES = {
     requiredTier: 'lite',
     status: 'active'
   },
+  financialDashboard: {
+    id: 'financialDashboard',
+    name: 'Financial Dashboard',
+    description: 'Comprehensive financial insights and analytics',
+    icon: 'FaChartArea',
+    color: 'indigo',
+    route: '/modules/financial-dashboard',
+    requiredPermission: '*',
+    requiredTier: 'lite',
+    status: 'active'
+  },
   reports: {
     id: 'reports',
     name: 'Reports',

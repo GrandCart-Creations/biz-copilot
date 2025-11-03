@@ -94,7 +94,12 @@ const ModuleDashboard = () => {
     }
 
     // Navigate to module route
-    navigate(module.route);
+    console.log('Navigating to:', module.route, 'for module:', module.id);
+    if (module.route) {
+      navigate(module.route);
+    } else {
+      console.error('Module route is missing for:', module.id);
+    }
   };
 
   // Loading state

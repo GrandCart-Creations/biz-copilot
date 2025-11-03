@@ -247,6 +247,34 @@ service cloud.firestore {
       }
       
       // ============================================
+      // FUNDING & INVESTORS
+      // ============================================
+      
+      match /funding/{fundingId} {
+        // Read: Company members can read funding (owners and managers)
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update/Delete: Only owners and managers
+        allow create, update, delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager'])) &&
+                        request.resource.data.createdBy == request.auth.uid;
+      }
+      
+      match /investors/{investorId} {
+        // Read: Company members can read investor info (owners, managers, accountants)
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update/Delete: Only owners and managers
+        allow create, update, delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager'])) &&
+                        request.resource.data.createdBy == request.auth.uid;
+      }
+      
+      // ============================================
       // COMPANY EXPENSES (Direct Path)
       // ============================================
       

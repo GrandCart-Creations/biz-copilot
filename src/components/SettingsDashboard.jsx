@@ -13,13 +13,15 @@ import CompanySelector from './CompanySelector';
 import UserProfile from './UserProfile';
 import TeamManagement from './TeamManagement';
 import FinancialAccounts from './FinancialAccounts';
+import FundingAndInvestors from './FundingAndInvestors';
 import {
   FaCog,
   FaBuilding,
   FaUsers,
   FaBell,
   FaArrowLeft,
-  FaUniversity
+  FaUniversity,
+  FaSeedling
 } from 'react-icons/fa';
 
 const SettingsDashboard = () => {
@@ -27,7 +29,9 @@ const SettingsDashboard = () => {
   const { currentUser } = useAuth();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
   const [loading] = useState(false);
-  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'accounts'
+  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'accounts' | 'funding'
+  
+  const canManage = userRole === 'owner' || userRole === 'manager';
 
   if (loading) {
     return (
@@ -140,6 +144,23 @@ const SettingsDashboard = () => {
                   </div>
                 </button>
               )}
+              
+              {/* Funding & Investors tab - OWNER/MANAGER */}
+              {canManage && (
+                <button
+                  onClick={() => setActiveTab('funding')}
+                  className={`px-6 py-4 text-sm font-medium transition-colors ${
+                    activeTab === 'funding'
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <FaSeedling className="w-4 h-4" />
+                    Funding & Investors
+                  </div>
+                </button>
+              )}
             </nav>
           </div>
         </div>
@@ -148,6 +169,7 @@ const SettingsDashboard = () => {
         <div className="bg-white rounded-lg shadow p-6">
           {activeTab === 'team' && <TeamManagement />}
           {activeTab === 'accounts' && <FinancialAccounts />}
+          {activeTab === 'funding' && <FundingAndInvestors />}
         </div>
 
         {/* Coming Soon Features */}
