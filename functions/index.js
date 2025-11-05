@@ -77,9 +77,12 @@ exports.sendInvitationEmail = onDocumentCreated(
       };
       const roleName = roleNames[invitationData.role] || invitationData.role;
 
-      // Create invitation acceptance URL (trim any whitespace)
+      // Create invitation acceptance URL with company branding (trim any whitespace)
       const baseUrl = (APP_URL.value() || 'http://localhost:5173').trim();
+      // Include company ID in URL for branded login/signup pages
       const acceptUrl = `${baseUrl}/accept-invitation?company=${companyId}&invitation=${invitationId}`;
+      const loginUrl = `${baseUrl}/login?company=${companyId}&email=${encodeURIComponent(invitationData.email)}`;
+      const signupUrl = `${baseUrl}/signup?company=${companyId}&email=${encodeURIComponent(invitationData.email)}`;
 
       // Email content
       const emailSubject = `You've been invited to join ${companyName} on Biz-CoPilot`;
@@ -132,6 +135,22 @@ exports.sendInvitationEmail = onDocumentCreated(
                 </tr>
               </table>
               
+              <!-- Quick Access Links -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <tr>
+                  <td align="center" style="padding: 0 0 10px;">
+                    <p style="margin: 0; color: #6b7280; font-size: 14px;">Or use these quick links:</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding: 0 0 20px;">
+                    <a href="${loginUrl}" style="color: #9333ea; text-decoration: none; font-size: 14px; margin: 0 10px;">Sign In</a>
+                    <span style="color: #d1d5db;">|</span>
+                    <a href="${signupUrl}" style="color: #9333ea; text-decoration: none; font-size: 14px; margin: 0 10px;">Sign Up</a>
+                  </td>
+                </tr>
+              </table>
+              
               <p style="margin: 0 0 10px; color: #6b7280; font-size: 14px; line-height: 1.5;">
                 Or copy and paste this link into your browser:
               </p>
@@ -177,6 +196,10 @@ Biz-CoPilot is your intelligent business management platform for BENELUX entrepr
 
 Accept this invitation by clicking the link below:
 ${acceptUrl}
+
+Quick access links:
+- Sign In: ${loginUrl}
+- Sign Up: ${signupUrl}
 
 This invitation will expire in 7 days.
 

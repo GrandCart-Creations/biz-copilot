@@ -1,8 +1,9 @@
 // src/components/CompanySelector.jsx
 // Company Switcher Component for Multi-Company Support
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCompany } from '../contexts/CompanyContext';
+import { getCompanyBranding } from '../firebase';
 import { FaBuilding, FaPlus, FaCheck, FaTrash } from 'react-icons/fa';
 
 const CompanySelector = () => {
@@ -14,6 +15,30 @@ const CompanySelector = () => {
   const [deletingCompanyId, setDeletingCompanyId] = useState(null);
   const [newCompanyName, setNewCompanyName] = useState('');
   const [editingCompanyName, setEditingCompanyName] = useState('');
+  const [companyLogo, setCompanyLogo] = useState(null);
+
+  // Load company logo when current company changes
+  useEffect(() => {
+    const loadLogo = async () => {
+      if (currentCompany?.id) {
+        try {
+          const branding = await getCompanyBranding(currentCompany.id);
+          if (branding?.branding?.logoUrl) {
+            setCompanyLogo(branding.branding.logoUrl);
+          } else {
+            setCompanyLogo(null);
+          }
+        } catch (error) {
+          console.warn('Could not load company logo:', error);
+          setCompanyLogo(null);
+        }
+      } else {
+        setCompanyLogo(null);
+      }
+    };
+    
+    loadLogo();
+  }, [currentCompany?.id]);
 
   const handleSwitchCompany = async (companyId) => {
     await switchCompany(companyId);
@@ -97,7 +122,15 @@ const CompanySelector = () => {
         onClick={() => setShowDropdown(!showDropdown)}
         className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
       >
-        <FaBuilding className="w-4 h-4 text-gray-600" />
+        {companyLogo ? (
+          <img
+            src={companyLogo}
+            alt={currentCompany.name}
+            className="w-4 h-4 object-contain"
+          />
+        ) : (
+          <FaBuilding className="w-4 h-4 text-gray-600" />
+        )}
         <span className="font-medium text-gray-900">{currentCompany.name || 'My Business'}</span>
         <svg
           className={`w-4 h-4 text-gray-600 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
@@ -141,6 +174,8 @@ const CompanySelector = () => {
                       onClick={() => handleSwitchCompany(company.id)}
                       className="flex items-center gap-2 flex-1 text-left"
                     >
+                      {/* Note: Logo per company would require loading all company branding, 
+                          for now using generic icon for dropdown items */}
                       <FaBuilding className="w-4 h-4" />
                       <span className="font-medium">{company.name}</span>
                     </button>

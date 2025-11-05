@@ -876,7 +876,7 @@ export const getCompanyMembers = async (companyId) => {
  * @param {string} invitedBy - User ID of the person sending the invitation
  * @returns {Promise<string>} Invitation ID
  */
-export const inviteUserToCompany = async (companyId, email, role = 'employee', invitedBy) => {
+export const inviteUserToCompany = async (companyId, email, role = 'employee', invitedBy, fullName = '') => {
   try {
     // First check if user is already a member of the company
     const usersRef = collection(db, 'companies', companyId, 'users');
@@ -905,6 +905,7 @@ export const inviteUserToCompany = async (companyId, email, role = 'employee', i
       // Update existing pending invitation
       const existingInvite = pendingInvites[0];
       await updateDoc(doc(db, 'companies', companyId, 'invitations', existingInvite.id), {
+        fullName: fullName.trim() || '',
         role,
         status: 'pending',
         invitedBy,
@@ -930,8 +931,9 @@ export const inviteUserToCompany = async (companyId, email, role = 'employee', i
     
     // Create new invitation
     const invitationsRef = collection(db, 'companies', companyId, 'invitations');
-    const invitationRef = await addDoc(invitationsRef, {
+    const invitationData = {
       email: email.toLowerCase().trim(),
+      fullName: fullName.trim() || '',
       role,
       status: 'pending',
       invitedBy,
@@ -940,8 +942,9 @@ export const inviteUserToCompany = async (companyId, email, role = 'employee', i
       expiresAt: Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)), // 7 days
       acceptedAt: null,
       acceptedBy: null
-    });
+    };
     
+    const invitationRef = await addDoc(invitationsRef, invitationData);
     return invitationRef.id;
   } catch (error) {
     console.error('Error inviting user to company:', error);
@@ -1960,6 +1963,260 @@ export const deleteInvestor = async (companyId, investorId) => {
   } catch (error) {
     console.error('Error deleting investor:', error);
     throw error;
+  }
+};
+
+// ==================== COMPANY BRANDING ====================
+
+/**
+ * Get company branding (public - for login/signup pages)
+ * @param {string} companyId - Company ID
+ * @returns {Promise<object>} Company branding data
+ */
+export const getCompanyBranding = async (companyId) => {
+  try {
+    if (!companyId) {
+      return null;
+    }
+    
+    const companyRef = doc(db, 'companies', companyId);
+    const companyDoc = await getDoc(companyRef);
+    
+    if (!companyDoc.exists()) {
+      return null;
+    }
+    
+    const companyData = companyDoc.data();
+    return {
+      id: companyDoc.id,
+      name: companyData.name || 'Biz-CoPilot',
+      branding: companyData.branding || null
+    };
+  } catch (error) {
+    console.error('Error fetching company branding:', error);
+    // Return null instead of throwing - allows fallback to default branding
+    return null;
+  }
+};
+
+/**
+ * Update company branding
+ * @param {string} companyId - Company ID
+ * @param {object} brandingData - Branding data to update
+ * @returns {Promise<void>}
+ */
+export const updateCompanyBranding = async (companyId, brandingData) => {
+  try {
+    const companyRef = doc(db, 'companies', companyId);
+    await updateDoc(companyRef, {
+      branding: brandingData,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error('Error updating company branding:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get company onboarding settings
+ * @param {string} companyId - Company ID
+ * @returns {Promise<object>} Onboarding data
+ */
+export const getCompanyOnboarding = async (companyId) => {
+  try {
+    if (!companyId) return null;
+    
+    const companyRef = doc(db, 'companies', companyId);
+    const companyDoc = await getDoc(companyRef);
+    
+    if (!companyDoc.exists()) {
+      return null;
+    }
+    
+    const companyData = companyDoc.data();
+    return {
+      companyName: companyData.name || 'Biz-CoPilot',
+      chainOfCommand: companyData.onboarding?.chainOfCommand || {},
+      duties: companyData.onboarding?.duties || {},
+      schedule: companyData.onboarding?.schedule || {}
+    };
+  } catch (error) {
+    console.error('Error fetching company onboarding:', error);
+    return null;
+  }
+};
+
+/**
+ * Update company onboarding settings
+ * @param {string} companyId - Company ID
+ * @param {object} onboardingData - Onboarding data to save
+ * @returns {Promise<void>}
+ */
+export const updateCompanyOnboarding = async (companyId, onboardingData) => {
+  try {
+    if (!companyId) {
+      throw new Error('Company ID is required');
+    }
+    
+    const companyRef = doc(db, 'companies', companyId);
+    await updateDoc(companyRef, {
+      onboarding: onboardingData,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error('Error updating company onboarding:', error);
+    throw error;
+  }
+};
+
+/**
+ * Complete company onboarding for a user
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID (optional, defaults to current user)
+ * @returns {Promise<void>}
+ */
+export const completeCompanyOnboarding = async (companyId, userId) => {
+  try {
+    if (!companyId || !userId) {
+      console.warn('Missing companyId or userId for completing company onboarding');
+      return;
+    }
+    
+    const onboardingRef = doc(db, 'companies', companyId, 'onboarding', userId);
+    await setDoc(onboardingRef, {
+      completed: true,
+      completedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error completing company onboarding:', error);
+    throw error;
+  }
+};
+
+/**
+ * Check if user has completed company onboarding
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID (optional)
+ * @returns {Promise<boolean>}
+ */
+export const hasCompletedCompanyOnboarding = async (companyId, userId) => {
+  try {
+    if (!companyId || !userId) {
+      return false;
+    }
+    
+    const onboardingRef = doc(db, 'companies', companyId, 'onboarding', userId);
+    const onboardingDoc = await getDoc(onboardingRef);
+    
+    if (!onboardingDoc.exists()) {
+      return false;
+    }
+    
+    return onboardingDoc.data().completed === true;
+  } catch (error) {
+    console.error('Error checking company onboarding:', error);
+    return false;
+  }
+};
+
+/**
+ * Upload company logo to Firebase Storage
+ * @param {string} companyId - Company ID
+ * @param {File} file - Logo file (PNG, JPG, SVG)
+ * @param {function} onProgress - Optional progress callback
+ * @returns {Promise<object>} Upload result with download URL
+ */
+export const uploadCompanyLogo = async (companyId, file, onProgress = null) => {
+  try {
+    // Validate file size (max 2 MB for logos)
+    const maxSize = 2 * 1024 * 1024; // 2 MB
+    if (file.size > maxSize) {
+      throw new Error('Logo file size exceeds 2 MB limit');
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error('Invalid file type. Only PNG, JPG, and SVG files are allowed');
+    }
+
+    // Create a unique filename
+    const timestamp = Date.now();
+    const fileExtension = file.name.split('.').pop();
+    const fileName = `logo_${timestamp}.${fileExtension}`;
+    const filePath = `companies/${companyId}/branding/${fileName}`;
+
+    // Create storage reference
+    const storageRef = ref(storage, filePath);
+
+    // Upload with progress tracking if callback provided
+    if (onProgress) {
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      return new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            onProgress(progress);
+          },
+          (error) => {
+            console.error('Error uploading logo:', error);
+            reject(error);
+          },
+          async () => {
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve({
+                fileName: file.name,
+                fileUrl: downloadURL,
+                filePath: filePath,
+                fileType: file.type,
+                fileSize: file.size,
+                uploadedAt: new Date().toISOString()
+              });
+            } catch (error) {
+              reject(error);
+            }
+          }
+        );
+      });
+    } else {
+      // Simple upload without progress tracking
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+
+      return {
+        fileName: file.name,
+        fileUrl: downloadURL,
+        filePath: filePath,
+        fileType: file.type,
+        fileSize: file.size,
+        uploadedAt: new Date().toISOString()
+      };
+    }
+  } catch (error) {
+    console.error('Error uploading company logo:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete company logo from Firebase Storage
+ * @param {string} logoPath - Path to logo in storage
+ * @returns {Promise<void>}
+ */
+export const deleteCompanyLogo = async (logoPath) => {
+  try {
+    if (!logoPath) return;
+    
+    const storageRef = ref(storage, logoPath);
+    await deleteObject(storageRef);
+  } catch (error) {
+    console.error('Error deleting company logo:', error);
+    // Don't throw - logo might already be deleted
+    console.warn('Logo deletion failed (may already be deleted):', error);
   }
 };
 

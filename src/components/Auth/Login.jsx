@@ -1,7 +1,7 @@
 // src/components/Auth/Login.jsx - ENHANCED VERSION WITH SECURITY
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { signInWithEmail, signInWithGoogle, resetPassword } from '../../firebase';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { signInWithEmail, signInWithGoogle, resetPassword, getCompanyBranding } from '../../firebase';
 import { useSecurityContext } from '../../contexts/SecurityContext';
 import { validateEmail } from '../../utils/validation';
 import { logLogin, logAuditEvent, AUDIT_EVENTS } from '../../utils/auditLog';
@@ -10,13 +10,19 @@ import { FaChartLine, FaReceipt, FaShieldAlt, FaClock, FaFileInvoice, FaCalculat
 
 export default function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { handleFailedLogin, handleSuccessfulLogin, isAccountLocked } = useSecurityContext();
   
   // Check for email in URL params (from invitation flow)
-  const urlParams = new URLSearchParams(window.location.search);
-  const emailFromUrl = urlParams.get('email');
+  const emailFromUrl = searchParams.get('email');
+  const companyIdFromUrl = searchParams.get('company');
+  
   const [email, setEmail] = useState(emailFromUrl || '');
   const [password, setPassword] = useState('');
+  
+  // Company branding state
+  const [companyBranding, setCompanyBranding] = useState(null);
+  const [loadingBranding, setLoadingBranding] = useState(false);
   
   // Check if there's a pending invitation
   const pendingInvite = sessionStorage.getItem('pendingInvitation');
@@ -31,6 +37,27 @@ export default function Login() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState('');
   const [resetError, setResetError] = useState('');
+
+  // Load company branding if company ID is in URL
+  useEffect(() => {
+    const loadBranding = async () => {
+      if (companyIdFromUrl) {
+        setLoadingBranding(true);
+        try {
+          const branding = await getCompanyBranding(companyIdFromUrl);
+          setCompanyBranding(branding);
+        } catch (err) {
+          console.warn('Could not load company branding:', err);
+          // Fallback to default branding
+          setCompanyBranding(null);
+        } finally {
+          setLoadingBranding(false);
+        }
+      }
+    };
+    
+    loadBranding();
+  }, [companyIdFromUrl]);
 
   const handleEmailSignIn = async (e) => {
     e.preventDefault();
@@ -180,94 +207,137 @@ export default function Login() {
   ];
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 overflow-hidden">
-      <div className="min-h-screen w-full flex overflow-hidden">
+    <div className="h-screen w-full bg-gray-50 overflow-hidden flex flex-col">
+      <div className="flex-1 w-full flex overflow-hidden">
         {/* Left Side - Branding & Value Proposition (40% width) */}
-        <div className="hidden lg:flex lg:w-2/5 lg:flex-shrink-0 lg:flex-grow-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 p-4 flex-col justify-start relative overflow-hidden">
+        <div className="hidden lg:flex lg:w-2/5 lg:flex-shrink-0 lg:flex-grow-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 p-3 flex-col justify-between relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -mr-48 -mt-48"></div>
           <div className="absolute bottom-0 left-0 w-96 h-96 bg-white/5 rounded-full -ml-48 -mb-48"></div>
           
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
-                <span className="text-lg font-bold text-white">BC</span>
+          <div className="relative z-10 flex-1 flex flex-col">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                {companyBranding?.branding?.logoUrl ? (
+                  <img
+                    src={companyBranding.branding.logoUrl}
+                    alt={companyBranding.name}
+                    className="w-12 h-12 object-contain bg-white/20 rounded-lg p-1.5 backdrop-blur-sm"
+                  />
+                ) : (
+                  <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                    <span className="text-xl font-bold text-white">BC</span>
+                  </div>
+                )}
+                <h1 className="text-2xl font-bold text-white">
+                  {companyBranding?.name || 'Biz-CoPilot'}
+                </h1>
               </div>
-              <h1 className="text-lg font-bold text-white">Biz-CoPilot</h1>
-            </div>
-            
-            <div className="space-y-2 mb-3">
-              <h2 className="text-2xl font-bold text-white leading-tight">
-                Your Business Co-Pilot, Every Step of the Way
-              </h2>
-              <p className="text-sm text-indigo-100 leading-tight">
-                Intelligent business management for BENELUX entrepreneurs. Track expenses, manage invoices, and stay compliant with GDPR - all in one secure platform.
-              </p>
-            </div>
+              
+              <div className="space-y-1 mb-2">
+                <h2 className="text-xl font-semibold text-white leading-tight">
+                  {companyBranding?.branding?.tagline || 'Your Business Co-Pilot, Every Step of the Way'}
+                </h2>
+                <p className="text-xs text-indigo-100 leading-tight">
+                  {companyBranding?.branding?.aboutCompany 
+                    ? companyBranding.branding.aboutCompany
+                    : companyBranding?.branding?.tagline 
+                    ? 'Intelligent business management for BENELUX entrepreneurs.'
+                    : 'Intelligent business management for BENELUX entrepreneurs. Track expenses, manage invoices, and stay compliant with GDPR - all in one secure platform.'
+                  }
+                </p>
+              </div>
 
-            {/* Pain Points & Solutions */}
-            <div className="space-y-2 mb-2">
-              <h3 className="text-sm font-semibold text-white mb-2">Solve Your Daily Challenges</h3>
-              {painPoints.map((point, index) => (
-                <div key={index} className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20">
-                  <div className="flex items-start gap-2">
-                    <div className="w-6 h-6 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 text-white text-xs">
-                      {point.icon}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-white/90 text-xs font-medium mb-0.5 leading-tight">{point.solution}</p>
-                      <p className="text-indigo-200 text-xs leading-tight">{point.problem}</p>
+              {/* Pain Points & Solutions */}
+              <div className="space-y-1.5">
+                <h3 className="text-xs font-semibold text-white mb-1">Solve Your Daily Challenges</h3>
+                {painPoints.map((point, index) => (
+                  <div key={index} className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5 border border-white/20">
+                    <div className="flex items-start gap-1.5">
+                      <div className="w-5 h-5 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 text-white text-xs">
+                        {point.icon}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-white/90 text-xs font-medium mb-0.5 leading-tight">{point.solution}</p>
+                        <p className="text-indigo-200 text-xs leading-tight">{point.problem}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Bottom Features */}
-          <div className="relative z-10 mt-auto pt-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20">
-                <FaShieldAlt className="w-3 h-3 text-white mb-1" />
-                <p className="text-white text-xs font-medium">Enterprise Security</p>
-                <p className="text-indigo-200 text-xs">MFA & Encryption</p>
+                ))}
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20">
-                <FaSyncAlt className="w-3 h-3 text-white mb-1" />
-                <p className="text-white text-xs font-medium">Real-time Sync</p>
-                <p className="text-indigo-200 text-xs">Access Anywhere</p>
+            </div>
+
+            {/* Bottom Features */}
+            <div className="relative z-10 mt-auto">
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5 border border-white/20">
+                  <FaShieldAlt className="w-3 h-3 text-white mb-0.5" />
+                  <p className="text-white text-xs font-medium">Enterprise Security</p>
+                  <p className="text-indigo-200 text-xs">MFA & Encryption</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5 border border-white/20">
+                  <FaSyncAlt className="w-3 h-3 text-white mb-0.5" />
+                  <p className="text-white text-xs font-medium">Real-time Sync</p>
+                  <p className="text-indigo-200 text-xs">Access Anywhere</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Right Side - Login Form (60% width) */}
-        <div className="flex-1 lg:flex-none lg:w-3/5 lg:flex-shrink-0 lg:flex-grow-0 flex flex-col items-center justify-center p-4 bg-white overflow-hidden">
+        <div className="flex-1 lg:flex-none lg:w-3/5 lg:flex-shrink-0 lg:flex-grow-0 flex flex-col items-center justify-center p-3 bg-white overflow-y-auto">
           <div className="w-full max-w-md">
             {/* Logo for mobile */}
-            <div className="lg:hidden flex items-center justify-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <span className="text-lg font-bold text-white">BC</span>
-              </div>
-              <h1 className="text-lg font-bold text-gray-900">Biz-CoPilot</h1>
+            <div className="lg:hidden flex items-center justify-center gap-3 mb-2">
+              {companyBranding?.branding?.logoUrl ? (
+                <img
+                  src={companyBranding.branding.logoUrl}
+                  alt={companyBranding.name}
+                  className="w-12 h-12 object-contain"
+                />
+              ) : (
+                <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
+                  <span className="text-xl font-bold text-white">BC</span>
+                </div>
+              )}
+              <h1 className="text-2xl font-bold text-gray-900">
+                {companyBranding?.name || 'Biz-CoPilot'}
+              </h1>
             </div>
 
             {/* Welcome Card */}
-            <div className="mb-4">
-              <h2 className="text-xl font-bold text-gray-900 mb-0.5">Welcome Back</h2>
-              <p className="text-xs text-gray-600">Sign in to your account</p>
-              {hasPendingInvitation && (
-                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-xs text-blue-700">
-                    You have a pending invitation. Sign in to accept it.
-                  </p>
-                </div>
-              )}
+            <div className="mb-2">
+              <h2 className="text-xl font-bold text-gray-900 mb-0.5">
+                {hasPendingInvitation ? 'Welcome! Join the Team' : 'Welcome Back'}
+              </h2>
+              <p className="text-xs text-gray-600">
+                {hasPendingInvitation ? 'Sign in to accept your invitation' : 'Sign in to your account'}
+              </p>
+              {hasPendingInvitation && (() => {
+                const pendingInvite = JSON.parse(sessionStorage.getItem('pendingInvitation') || '{}');
+                const inviteEmail = pendingInvite.invitationEmail || emailFromUrl;
+                return (
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs font-semibold text-blue-900 mb-1">
+                      ✉️ You have a pending invitation
+                    </p>
+                    {inviteEmail && (
+                      <p className="text-xs text-blue-800 mb-1">
+                        Use <strong>{inviteEmail}</strong> to sign in
+                      </p>
+                    )}
+                    <p className="text-xs text-blue-700">
+                      After signing in, you'll automatically join the company.
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Success Message */}
             {success && (
-              <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+              <div className="mb-2 p-2 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
                 <svg className="w-3 h-3 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -277,7 +347,7 @@ export default function Login() {
 
             {/* Error Message */}
             {error && (
-              <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+              <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
                 <svg className="w-3 h-3 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -286,7 +356,7 @@ export default function Login() {
             )}
 
             {/* Login Form */}
-            <form onSubmit={handleEmailSignIn} className="space-y-2 mb-3">
+            <form onSubmit={handleEmailSignIn} className="space-y-2 mb-2">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">
                   Email Address
@@ -330,7 +400,25 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading || isAccountLocked}
-                className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-semibold rounded-lg hover:from-blue-700 hover:to-purple-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-2.5 text-white text-sm font-semibold rounded-lg focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                style={{
+                  background: companyBranding?.branding?.primaryColor 
+                    ? `linear-gradient(to right, ${companyBranding.branding.primaryColor}, ${companyBranding.branding.primaryColor}dd)`
+                    : 'linear-gradient(to right, #2563eb, #9333ea)',
+                  ...(companyBranding?.branding?.primaryColor && {
+                    '--tw-shadow': '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  })
+                }}
+                onMouseEnter={(e) => {
+                  if (companyBranding?.branding?.primaryColor) {
+                    e.target.style.opacity = '0.9';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (companyBranding?.branding?.primaryColor) {
+                    e.target.style.opacity = '1';
+                  }
+                }}
               >
                 {loading ? (
                   <>
@@ -347,7 +435,7 @@ export default function Login() {
             </form>
 
             {/* Divider */}
-            <div className="relative my-3">
+            <div className="relative my-2">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-300"></div>
               </div>
@@ -360,7 +448,7 @@ export default function Login() {
             <button
               onClick={handleGoogleSignIn}
               disabled={loading || isAccountLocked}
-              className="w-full py-2 px-3 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mb-3"
+              className="w-full py-2 px-3 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mb-2"
             >
               <svg className="w-3 h-3" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -372,7 +460,7 @@ export default function Login() {
             </button>
 
             {/* Sign Up Link */}
-            <div className="mt-3 text-center">
+            <div className="mt-2 text-center">
               <button
                 type="button"
                 onClick={() => navigate('/signup')}

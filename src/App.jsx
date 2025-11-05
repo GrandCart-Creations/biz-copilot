@@ -45,15 +45,8 @@ function App() {
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/cookies" element={<CookiePolicy />} />
             
-            {/* Invitation Acceptance (Protected) */}
-            <Route 
-              path="/accept-invitation" 
-              element={
-                <ProtectedRoute>
-                  <AcceptInvitation />
-                </ProtectedRoute>
-              } 
-            />
+            {/* Invitation Acceptance (Public - users need to see it before logging in) */}
+            <Route path="/accept-invitation" element={<AcceptInvitation />} />
             
             {/* Protected Route - Main Dashboard (Module Selection) */}
             <Route 

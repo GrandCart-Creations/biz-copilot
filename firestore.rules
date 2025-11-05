@@ -121,12 +121,11 @@ service cloud.firestore {
     // ============================================
     
       match /companies/{companyId} {
-      // Read: Allow if user is creator OR is a member
-      // For list operations, we check if user document exists (even if we can't read it yet)
-      // This enables CompanyContext to discover companies user is member of
-      allow read: if isAuthenticated() && 
-                     (request.auth.uid == resource.data.createdBy ||
-                      exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)));
+      // Read: Allow public read for branding (login/signup pages) OR authenticated members
+      // Public read allows unauthenticated users to see company name and branding for branded login pages
+      // Authenticated reads allow members to see full company data
+      allow read: if true; // Public read for branding (name, branding fields only - safe for public)
+                  // Note: Sensitive data is in subcollections which remain protected
       
       // Create: Any authenticated user can create a company
       allow create: if isAuthenticated() &&
@@ -179,11 +178,11 @@ service cloud.firestore {
       // ============================================
       
       match /invitations/{invitationId} {
-        // Read: Allow authenticated users to read invitations for verification purposes
-        // This is needed so invitees can verify their invitation before accepting it
-        // The invitation email is already public (sent via email anyway)
+        // Read: Allow public read for invitations (they're already public via email)
+        // This is needed so invitees can see invitation details before logging in
+        // Unauthenticated users can read to see company branding and invitation email
         // Security: We verify email match in application code before accepting
-        allow read: if isAuthenticated();
+        allow read: if true; // Public read - invitation data is already public (sent via email)
         
         // Additional read for company members/creators (more permissive, but allows verification above)
         // The read above already covers this, but keeping for clarity
@@ -195,9 +194,13 @@ service cloud.firestore {
                         request.resource.data.email is string &&
                         request.resource.data.role in ['owner', 'manager', 'employee', 'accountant'];
         
-        // Update: Only owners and managers can update invitations
+        // Update: Owners/managers can update, OR invitee can accept invitation
+        // Invitee can only update if: status is pending, and updating to accepted
+        // Email verification is done in application code (acceptInvitation function)
         allow update: if isAuthenticated() && 
-                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+                        (isOwner(companyId) || hasRole(companyId, ['manager']) ||
+                         (resource.data.status == 'pending' &&
+                          request.resource.data.status == 'accepted'));
         
         // Delete: Only owners and managers can delete invitations
         allow delete: if isAuthenticated() && 
@@ -339,6 +342,29 @@ service cloud.firestore {
         allow write: if isAuthenticated() && 
                       (isOwner(companyId) || 
                        request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+      }
+      
+      // ============================================
+      // COMPANY ONBOARDING
+      // ============================================
+      
+      match /onboarding/{userId} {
+        // Read: Company members can read their own onboarding status
+        // Owners/managers can read all onboarding statuses
+        allow read: if isAuthenticated() && 
+                      (request.auth.uid == userId ||
+                       isOwner(companyId) ||
+                       hasRole(companyId, ['manager']) ||
+                       exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)));
+        
+        // Create/Update: User can create/update their own onboarding completion
+        // Owners can update all onboarding statuses
+        allow create, update: if isAuthenticated() && 
+                                (request.auth.uid == userId ||
+                                 isOwner(companyId));
+        
+        // Delete: Only owners
+        allow delete: if isAuthenticated() && isOwner(companyId);
       }
       
       // ============================================

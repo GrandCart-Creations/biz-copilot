@@ -53,6 +53,7 @@ const TeamManagement = () => {
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteFullName, setInviteFullName] = useState('');
   const [inviteRole, setInviteRole] = useState('employee');
   const [inviting, setInviting] = useState(false);
   
@@ -233,7 +234,8 @@ const TeamManagement = () => {
         currentCompanyId,
         inviteEmail.trim(),
         inviteRole,
-        currentUser.uid
+        currentUser.uid,
+        inviteFullName.trim()
       );
       
       // Show success message (in a real app, you'd send email here)
@@ -241,6 +243,7 @@ const TeamManagement = () => {
       
       // Reset form
       setInviteEmail('');
+      setInviteFullName('');
       setInviteRole('employee');
       setShowInviteModal(false);
       
@@ -465,45 +468,55 @@ const TeamManagement = () => {
 
   return (
     <div className="space-y-6">
-      {/* My Pending Invitations */}
-      {userPendingInvites.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-blue-900 mb-3">Your Pending Invitations</h3>
-          <div className="space-y-2">
-            {userPendingInvites.map((invitation) => (
-              <div
-                key={invitation.id}
-                className="flex items-center justify-between bg-white rounded-lg p-3 border border-blue-200"
-              >
-                <div className="flex items-center gap-3">
-                  <FaEnvelope className="w-5 h-5 text-blue-600" />
-                  <div>
-                    <p className="font-medium text-gray-900">{invitation.companyName}</p>
-                    <p className="text-sm text-gray-500">Role: {invitation.role}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleAcceptInvitation(invitation)}
-                  disabled={acceptingInvite === invitation.id}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2 disabled:opacity-50"
+      {/* My Pending Invitations - Only show invitations for OTHER companies (not current company) */}
+      {(() => {
+        // Filter to only show invitations for OTHER companies (security: clear separation)
+        const otherCompanyInvites = userPendingInvites.filter(inv => 
+          inv.companyId !== currentCompanyId
+        );
+        
+        return otherCompanyInvites.length > 0 ? (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-blue-900 mb-3">Your Pending Invitations from Other Companies</h3>
+            <p className="text-xs text-blue-800 mb-3">
+              You have pending invitations from other companies. Switch to that company's environment to accept them.
+            </p>
+            <div className="space-y-2">
+              {otherCompanyInvites.map((invitation) => (
+                <div
+                  key={invitation.id}
+                  className="flex items-center justify-between bg-white rounded-lg p-3 border border-blue-200"
                 >
-                  {acceptingInvite === invitation.id ? (
-                    <>
-                      <FaSpinner className="w-4 h-4 animate-spin" />
-                      Accepting...
-                    </>
-                  ) : (
-                    <>
-                      <FaCheck className="w-4 h-4" />
-                      Accept
-                    </>
-                  )}
-                </button>
+                  <div className="flex items-center gap-3">
+                    <FaEnvelope className="w-5 h-5 text-blue-600" />
+                    <div>
+                      <p className="font-medium text-gray-900">{invitation.companyName}</p>
+                      <p className="text-sm text-gray-500">Role: {invitation.role}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleAcceptInvitation(invitation)}
+                    disabled={acceptingInvite === invitation.id}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {acceptingInvite === invitation.id ? (
+                      <>
+                        <FaSpinner className="w-4 h-4 animate-spin" />
+                        Accepting...
+                      </>
+                    ) : (
+                      <>
+                        <FaCheck className="w-4 h-4" />
+                        Accept
+                      </>
+                    )}
+                  </button>
               </div>
             ))}
           </div>
         </div>
-      )}
+        ) : null;
+      })()}
 
       {/* Header with Invite Button */}
       <div className="flex items-center justify-between">
@@ -675,6 +688,7 @@ const TeamManagement = () => {
                   onClick={() => {
                     setShowInviteModal(false);
                     setInviteEmail('');
+                    setInviteFullName('');
                     setInviteRole('employee');
                   }}
                   className="text-gray-400 hover:text-gray-600"
@@ -686,6 +700,19 @@ const TeamManagement = () => {
             <form onSubmit={handleInviteUser} className="px-6 py-4">
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={inviteFullName}
+                  onChange={(e) => setInviteFullName(e.target.value)}
+                  placeholder="John Doe"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  autoFocus
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Email Address
                 </label>
                 <input
@@ -695,7 +722,6 @@ const TeamManagement = () => {
                   placeholder="user@example.com"
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  autoFocus
                 />
               </div>
               <div className="mb-6">

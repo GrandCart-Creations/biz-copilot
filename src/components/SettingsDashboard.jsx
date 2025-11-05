@@ -14,6 +14,8 @@ import UserProfile from './UserProfile';
 import TeamManagement from './TeamManagement';
 import FinancialAccounts from './FinancialAccounts';
 import FundingAndInvestors from './FundingAndInvestors';
+import CompanyBranding from './CompanyBranding';
+import CompanyOnboarding from './CompanyOnboarding';
 import {
   FaCog,
   FaBuilding,
@@ -21,7 +23,9 @@ import {
   FaBell,
   FaArrowLeft,
   FaUniversity,
-  FaSeedling
+  FaSeedling,
+  FaPaintBrush,
+  FaRocket
 } from 'react-icons/fa';
 
 const SettingsDashboard = () => {
@@ -29,7 +33,7 @@ const SettingsDashboard = () => {
   const { currentUser } = useAuth();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
   const [loading] = useState(false);
-  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'accounts' | 'funding'
+  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'accounts' | 'funding' | 'branding' | 'onboarding'
   
   const canManage = userRole === 'owner' || userRole === 'manager';
 
@@ -161,6 +165,40 @@ const SettingsDashboard = () => {
                   </div>
                 </button>
               )}
+              
+              {/* Branding tab - OWNER ONLY */}
+              {userRole === 'owner' && (
+                <button
+                  onClick={() => setActiveTab('branding')}
+                  className={`px-6 py-4 text-sm font-medium transition-colors ${
+                    activeTab === 'branding'
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <FaPaintBrush className="w-4 h-4" />
+                    Branding
+                  </div>
+                </button>
+              )}
+              
+              {/* Onboarding tab - OWNER ONLY */}
+              {userRole === 'owner' && (
+                <button
+                  onClick={() => setActiveTab('onboarding')}
+                  className={`px-6 py-4 text-sm font-medium transition-colors ${
+                    activeTab === 'onboarding'
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <FaRocket className="w-4 h-4" />
+                    Onboarding
+                  </div>
+                </button>
+              )}
             </nav>
           </div>
         </div>
@@ -170,6 +208,8 @@ const SettingsDashboard = () => {
           {activeTab === 'team' && <TeamManagement />}
           {activeTab === 'accounts' && <FinancialAccounts />}
           {activeTab === 'funding' && <FundingAndInvestors />}
+          {activeTab === 'branding' && <CompanyBranding />}
+          {activeTab === 'onboarding' && <CompanyOnboarding />}
         </div>
 
         {/* Coming Soon Features */}

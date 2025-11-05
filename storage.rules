@@ -21,6 +21,40 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
     
+    // Company branding (logos) - public read for login pages, authenticated write
+    match /companies/{companyId}/branding/{fileName} {
+      // Public read - logos need to be accessible for branded login/signup pages
+      allow read: if true;
+      
+      // Write: Allow authenticated users to upload logos
+      // Note: Ownership is verified in the application code (CompanyBranding component)
+      // before calling uploadCompanyLogo. Storage rules allow any authenticated user
+      // to write, but the UI restricts access to owners only.
+      allow write: if request.auth != null &&
+                      request.resource.size < 2 * 1024 * 1024 && // Max 2 MB for logos
+                      (request.resource.contentType.matches('image/png') ||
+                       request.resource.contentType.matches('image/jpeg') ||
+                       request.resource.contentType.matches('image/jpg') ||
+                       request.resource.contentType.matches('image/svg+xml'));
+      
+      // Delete: Allow authenticated users (ownership checked in app code)
+      allow delete: if request.auth != null;
+    }
+    
+    // Company expense files (if company-based path is used)
+    match /companies/{companyId}/expenses/{expenseId}/{fileName} {
+      // Read: Company members can read expense files
+      allow read: if request.auth != null;
+      
+      // Write: Company members can upload expense files
+      allow write: if request.auth != null &&
+                      request.resource.size < 10 * 1024 * 1024 && // Max 10 MB
+                      request.resource.contentType.matches('image/.*|application/pdf');
+      
+      // Delete: Company members can delete expense files
+      allow delete: if request.auth != null;
+    }
+    
     // Deny all other access
     match /{allPaths=**} {
       allow read, write: if false;

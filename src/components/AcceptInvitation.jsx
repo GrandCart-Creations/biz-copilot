@@ -9,8 +9,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
 import { useOnboarding } from '../contexts/OnboardingContext';
-import { acceptInvitation, getCompanyInvitations } from '../firebase';
+import { acceptInvitation, getCompanyInvitations, getCompanyBranding, hasCompletedCompanyOnboarding } from '../firebase';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { FaCheckCircle, FaTimesCircle, FaSpinner, FaSignOutAlt, FaInfoCircle } from 'react-icons/fa';
+import TeamMemberWelcomeWizard from './Onboarding/TeamMemberWelcomeWizard';
 
 const AcceptInvitation = () => {
   const [searchParams] = useSearchParams();
@@ -25,6 +28,11 @@ const AcceptInvitation = () => {
   const [status, setStatus] = useState('loading'); // loading, success, error, needsLogin
   const [message, setMessage] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [invitationEmail, setInvitationEmail] = useState('');
+  const [invitationFullName, setInvitationFullName] = useState('');
+  const [companyBranding, setCompanyBranding] = useState(null);
+  const [showWelcomeWizard, setShowWelcomeWizard] = useState(false);
+  const [userRole, setUserRole] = useState(null);
 
   useEffect(() => {
     // Immediately mark that user is in invitation flow to prevent onboarding
@@ -53,25 +61,56 @@ const AcceptInvitation = () => {
       return;
     }
 
-    // If user is not logged in, show login/signup prompt
+    // If user is not logged in, fetch invitation and company details first (using public read access)
     if (!currentUser) {
+      let fetchedInvitationEmail = null;
+      let fetchedBranding = null;
+      let fetchedCompanyName = 'the company';
+      
+      try {
+        // Try to fetch invitation details (public read access for invitations)
+        const invitationDocRef = doc(db, 'companies', companyId, 'invitations', invitationId);
+        const invitationDoc = await getDoc(invitationDocRef);
+        
+        if (invitationDoc.exists()) {
+          const invitation = invitationDoc.data();
+          if (invitation.status === 'pending') {
+            fetchedInvitationEmail = invitation.email;
+            setInvitationEmail(invitation.email);
+            setInvitationFullName(invitation.fullName || '');
+            
+            // Fetch company branding (public read access)
+            try {
+              const branding = await getCompanyBranding(companyId);
+              fetchedBranding = branding;
+              fetchedCompanyName = branding?.name || 'the company';
+              setCompanyBranding(branding);
+              setCompanyName(fetchedCompanyName);
+            } catch (err) {
+              console.warn('Could not load company branding:', err);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Could not fetch invitation details:', error);
+      }
+      
       setStatus('needsLogin');
       
       // CRITICAL: Ensure invitation flow flag is set BEFORE redirecting to login/signup
       // This prevents OnboardingContext from initializing onboarding during signup
       sessionStorage.setItem('invitationFlow', 'true');
       
-      // Get invitation email to show in message
-      // When user is not logged in, we can't read Firestore, so just show generic message
-      // The invitation will be verified after they log in
-      setMessage('Please log in to accept this invitation.');
+      setMessage('Please log in or create an account to accept this invitation.');
       
       // Store invitation details from URL for redirect after login
-      // We'll read the invitation email after login
-      sessionStorage.setItem('pendingInvitation', JSON.stringify({ 
+      // Use the fetched email value directly (not state, which is async)
+      const pendingInviteData = { 
         companyId, 
-        invitationId
-      }));
+        invitationId,
+        invitationEmail: fetchedInvitationEmail
+      };
+      sessionStorage.setItem('pendingInvitation', JSON.stringify(pendingInviteData));
       // Store the invitation URL for redirect after login
       sessionStorage.setItem('invitationRedirect', window.location.href);
       return;
@@ -79,8 +118,6 @@ const AcceptInvitation = () => {
 
     try {
       // Get invitation to verify email matches - read directly from Firestore
-      const { getDoc, doc } = await import('firebase/firestore');
-      const { db } = await import('../firebase');
       const invitationDocRef = doc(db, 'companies', companyId, 'invitations', invitationId);
       const invitationDoc = await getDoc(invitationDocRef);
       
@@ -114,14 +151,16 @@ const AcceptInvitation = () => {
         return;
       }
 
-      // Accept the invitation
+      // Accept the invitation and get role
       await acceptInvitation(companyId, invitationId, currentUser.uid, currentUser.email);
+
+      // Get role from the invitation we already fetched
+      const assignedRole = invitation.role || 'employee';
+      setUserRole(assignedRole);
 
       // Get company name for the success message
       let fetchedCompanyName = 'the company';
       try {
-        const { getDoc, doc } = await import('firebase/firestore');
-        const { db } = await import('../firebase');
         const companyDoc = await getDoc(doc(db, 'companies', companyId));
         if (companyDoc.exists()) {
           fetchedCompanyName = companyDoc.data().name || 'the company';
@@ -131,8 +170,8 @@ const AcceptInvitation = () => {
         console.warn('Could not fetch company name:', error);
       }
 
-      // Mark onboarding as completed FIRST (before loading companies)
-      // This ensures OnboardingContext knows to skip onboarding for invited users
+      // Mark global onboarding as completed FIRST (before loading companies)
+      // This ensures OnboardingContext knows to skip company creation onboarding for invited users
       try {
         await completeOnboarding();
       } catch (error) {
@@ -151,18 +190,28 @@ const AcceptInvitation = () => {
       // Wait another moment to ensure everything is loaded
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      setStatus('success');
-      setMessage(`Invitation accepted! You've been added to ${fetchedCompanyName}. Redirecting to dashboard...`);
-
-      // Clear invitation flags immediately
-      sessionStorage.removeItem('pendingInvitation');
-      sessionStorage.removeItem('invitationRedirect');
-      sessionStorage.removeItem('invitationFlow');
+      // Check if user has completed company onboarding
+      const hasCompleted = await hasCompletedCompanyOnboarding(companyId, currentUser.uid);
       
-      // Redirect to dashboard after a short delay
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
+      if (!hasCompleted) {
+        // Show welcome wizard
+        setShowWelcomeWizard(true);
+        setStatus('success');
+      } else {
+        // Already completed, go straight to dashboard
+        setStatus('success');
+        setMessage(`Invitation accepted! You've been added to ${fetchedCompanyName}. Redirecting to dashboard...`);
+
+        // Clear invitation flags immediately
+        sessionStorage.removeItem('pendingInvitation');
+        sessionStorage.removeItem('invitationRedirect');
+        sessionStorage.removeItem('invitationFlow');
+        
+        // Redirect to dashboard after a short delay
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 2000);
+      }
     } catch (error) {
       console.error('Error accepting invitation:', error);
       setStatus('error');
@@ -170,31 +219,80 @@ const AcceptInvitation = () => {
     }
   };
 
+  // Show welcome wizard if user just joined
+  if (showWelcomeWizard && companyId && userRole) {
+    return (
+      <TeamMemberWelcomeWizard
+        companyId={companyId}
+        userRole={userRole}
+        onComplete={() => {
+          // Clear invitation flags
+          sessionStorage.removeItem('pendingInvitation');
+          sessionStorage.removeItem('invitationRedirect');
+          sessionStorage.removeItem('invitationFlow');
+          // Navigate to dashboard
+          navigate('/dashboard');
+        }}
+      />
+    );
+  }
+
   if (status === 'needsLogin') {
-    // Try to get invitation email from sessionStorage
-    const pendingInvite = sessionStorage.getItem('pendingInvitation');
-    const inviteEmail = pendingInvite ? JSON.parse(pendingInvite).invitationEmail : null;
+    const inviteEmail = invitationEmail || (sessionStorage.getItem('pendingInvitation') ? JSON.parse(sessionStorage.getItem('pendingInvitation')).invitationEmail : null);
     
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
-          <FaTimesCircle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Account Required</h2>
-          <p className="text-gray-600 mb-2">{message}</p>
-          {inviteEmail && (
-            <p className="text-gray-500 text-sm mb-6">
-              This invitation is for <strong>{inviteEmail}</strong>. You'll need to sign in or create an account with this email address.
-            </p>
+      <div className="h-screen flex items-center justify-center bg-gray-50 px-4 py-4">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6 text-center">
+          {/* Company Logo/Name if available */}
+          {companyBranding && (
+            <div className="mb-4">
+              {companyBranding.branding?.logoUrl && (
+                <img
+                  src={companyBranding.branding.logoUrl}
+                  alt={companyBranding.name}
+                  className="w-14 h-14 mx-auto mb-2 object-contain"
+                />
+              )}
+              <h3 className="text-lg font-bold text-gray-900 mb-1">{companyBranding.name}</h3>
+              {companyBranding.branding?.tagline && (
+                <p className="text-xs text-gray-600 mb-2">{companyBranding.branding.tagline}</p>
+              )}
+              {companyBranding.branding?.aboutCompany && (
+                <p className="text-xs text-gray-500 leading-relaxed">{companyBranding.branding.aboutCompany}</p>
+              )}
+            </div>
           )}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <div className="flex items-start gap-3">
-              <FaInfoCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-left">
-                <p className="text-sm font-semibold text-blue-900 mb-1">What happens next?</p>
-                <ol className="text-xs text-blue-800 space-y-1 list-decimal list-inside">
-                  <li>Sign in or create an account with <strong>{inviteEmail}</strong></li>
+          
+          <FaInfoCircle className="w-10 h-10 text-blue-500 mx-auto mb-3" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            {companyName ? `Join ${companyName}` : 'Join the Team'}
+          </h2>
+          <p className="text-sm text-gray-600 mb-3">{message}</p>
+          
+          {inviteEmail && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <p className="text-xs font-semibold text-blue-900 mb-1">
+                📧 This invitation was sent to:
+              </p>
+              <p className="text-sm font-bold text-blue-700 mb-2">
+                {invitationFullName ? `${invitationFullName} at ` : ''}{inviteEmail}
+              </p>
+              <p className="text-xs text-blue-800">
+                You must use <strong>this exact email address</strong> to sign in or create your account.
+              </p>
+            </div>
+          )}
+          
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 text-left">
+            <div className="flex items-start gap-2">
+              <FaInfoCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-green-900 mb-1.5">What happens next?</p>
+                <ol className="text-xs text-green-800 space-y-1 list-decimal list-inside">
+                  <li>Sign in or create an account using <strong>{inviteEmail || 'the invited email address'}</strong></li>
+                  <li>If you're new to Biz-CoPilot, you'll create a password (no temporary password needed)</li>
                   <li>You'll be automatically redirected back here</li>
-                  <li>Your invitation will be accepted and you'll join the company</li>
+                  <li>Your invitation will be accepted and you'll join {companyName || 'the company'}</li>
                   <li>You'll be taken directly to the company dashboard (no company setup needed!)</li>
                 </ol>
               </div>
@@ -204,9 +302,11 @@ const AcceptInvitation = () => {
           <div className="flex flex-col gap-3">
             <button
               onClick={() => {
-                // Pre-fill email if available
-                const emailParam = inviteEmail ? `?email=${encodeURIComponent(inviteEmail)}` : '';
-                navigate(`/login${emailParam}`);
+                // Include company ID for branded login page
+                const params = new URLSearchParams();
+                if (companyId) params.set('company', companyId);
+                if (inviteEmail) params.set('email', inviteEmail);
+                navigate(`/login?${params.toString()}`);
               }}
               className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all"
             >
@@ -214,9 +314,11 @@ const AcceptInvitation = () => {
             </button>
             <button
               onClick={() => {
-                // Pre-fill email if available
-                const emailParam = inviteEmail ? `?email=${encodeURIComponent(inviteEmail)}` : '';
-                navigate(`/signup${emailParam}`);
+                // Include company ID for branded signup page
+                const params = new URLSearchParams();
+                if (companyId) params.set('company', companyId);
+                if (inviteEmail) params.set('email', inviteEmail);
+                navigate(`/signup?${params.toString()}`);
               }}
               className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all"
             >
