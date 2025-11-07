@@ -6,10 +6,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useCompany } from '../../contexts/CompanyContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { getCompanyOnboarding, completeCompanyOnboarding, getCompanyMembers } from '../../firebase';
+import { getCompanyOnboarding, completeCompanyOnboarding, getCompanyMembers, storeLegalAcceptance, sendEmailVerificationToUser } from '../../firebase';
 import { 
   FaCheckCircle, 
   FaArrowRight, 
@@ -22,7 +22,11 @@ import {
   FaCog,
   FaRocket,
   FaUserTie,
-  FaUserShield
+  FaUserShield,
+  FaFileContract,
+  FaLock,
+  FaEnvelope,
+  FaExclamationTriangle
 } from 'react-icons/fa';
 
 const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
@@ -33,10 +37,19 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
   const [onboardingData, setOnboardingData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [teamMembers, setTeamMembers] = useState([]);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(currentUser?.emailVerified || false);
+  const [emailVerificationSent, setEmailVerificationSent] = useState(false);
+  const [verifyingEmail, setVerifyingEmail] = useState(false);
 
   useEffect(() => {
     loadOnboardingData();
-  }, [companyId]);
+    // Check email verification status
+    if (currentUser) {
+      setEmailVerified(currentUser.emailVerified || false);
+    }
+  }, [companyId, currentUser]);
 
   const loadOnboardingData = async () => {
     if (!companyId) return;
@@ -58,9 +71,44 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
     }
   };
 
+  const handleSendVerificationEmail = async () => {
+    if (!currentUser) return;
+    
+    setVerifyingEmail(true);
+    try {
+      await sendEmailVerificationToUser(currentUser);
+      setEmailVerificationSent(true);
+    } catch (error) {
+      console.error('Error sending verification email:', error);
+      alert(error.message || 'Failed to send verification email. Please try again.');
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
+
+  const checkEmailVerification = async () => {
+    if (!currentUser) return;
+    
+    // Reload user to get latest verification status
+    await currentUser.reload();
+    const verified = currentUser.emailVerified || false;
+    setEmailVerified(verified);
+    
+    if (verified) {
+      setEmailVerificationSent(false); // Reset sent flag if verified
+    }
+  };
+
   const handleComplete = async () => {
     try {
       if (currentUser?.uid && companyId) {
+        // Store legal acceptance
+        await storeLegalAcceptance(companyId, currentUser.uid, {
+          termsAccepted,
+          privacyAccepted
+        });
+        
+        // Complete onboarding
         await completeCompanyOnboarding(companyId, currentUser.uid);
       }
       if (onComplete) {
@@ -170,6 +218,88 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
           </div>
         </div>
       )
+    },
+    {
+      title: 'Legal & Compliance',
+      content: (
+        <div className="space-y-6">
+          <div className="text-center mb-6">
+            <FaFileContract className="w-12 h-12 text-blue-600 mx-auto mb-3" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Terms & Privacy Agreement
+            </h3>
+            <p className="text-gray-600">
+              Please review and accept our legal documents to continue.
+            </p>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="p-4 bg-gray-50 rounded-lg border-2 border-gray-200">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900">
+                    I have read and agree to the{' '}
+                    <Link 
+                      to="/terms" 
+                      target="_blank"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Terms of Service
+                    </Link>
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    By checking this box, you acknowledge that you understand and agree to be bound by our Terms of Service.
+                  </p>
+                </div>
+              </label>
+            </div>
+            
+            <div className="p-4 bg-gray-50 rounded-lg border-2 border-gray-200">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={privacyAccepted}
+                  onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                  className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900">
+                    I acknowledge the{' '}
+                    <Link 
+                      to="/privacy" 
+                      target="_blank"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Privacy Policy
+                    </Link>
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    You understand how we collect, use, and protect your personal data in accordance with GDPR regulations.
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+          
+          {(!termsAccepted || !privacyAccepted) && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <FaExclamationTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-yellow-800">
+                  <strong>Required:</strong> You must accept both the Terms of Service and Privacy Policy to continue.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      ),
+      canProceed: () => termsAccepted && privacyAccepted
     },
     {
       title: 'Your Role & Access',
@@ -293,6 +423,114 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
       )
     },
     {
+      title: 'Security Setup',
+      content: (
+        <div className="space-y-6">
+          <div className="text-center mb-6">
+            <FaLock className="w-12 h-12 text-green-600 mx-auto mb-3" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Secure Your Account
+            </h3>
+            <p className="text-gray-600">
+              Let's make sure your account is secure before you get started.
+            </p>
+          </div>
+          
+          {/* Email Verification Section */}
+          <div className={`p-6 rounded-lg border-2 ${
+            emailVerified 
+              ? 'bg-green-50 border-green-200' 
+              : 'bg-yellow-50 border-yellow-200'
+          }`}>
+            <div className="flex items-start gap-4">
+              <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${
+                emailVerified ? 'bg-green-100' : 'bg-yellow-100'
+              }`}>
+                <FaEnvelope className={`w-6 h-6 ${
+                  emailVerified ? 'text-green-600' : 'text-yellow-600'
+                }`} />
+              </div>
+              <div className="flex-1">
+                <h4 className="font-semibold text-gray-900 mb-2">
+                  Email Verification {emailVerified ? '✓ Verified' : '⚠ Required'}
+                </h4>
+                {emailVerified ? (
+                  <p className="text-sm text-gray-700">
+                    Your email address has been verified. Your account is secure!
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-700">
+                      Please verify your email address ({currentUser?.email}) to secure your account and enable password recovery.
+                    </p>
+                    {emailVerificationSent ? (
+                      <div className="space-y-3">
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+                          <p className="text-sm text-blue-800 mb-2">
+                            <strong>✓ Verification email sent!</strong> Please check your inbox and click the verification link.
+                          </p>
+                        </div>
+                        <button
+                          onClick={checkEmailVerification}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors text-sm"
+                        >
+                          ✓ I've Verified My Email
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleSendVerificationEmail}
+                        disabled={verifyingEmail}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {verifyingEmail ? 'Sending...' : 'Send Verification Email'}
+                      </button>
+                    )}
+                    <p className="text-xs text-gray-600">
+                      <strong>Note:</strong> You can continue without verification, but we recommend verifying your email for account security.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Security Tips */}
+          <div className="p-6 bg-blue-50 rounded-lg border border-blue-200">
+            <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <FaShieldAlt className="text-blue-600" />
+              Security Best Practices
+            </h4>
+            <ul className="text-sm text-gray-700 space-y-2">
+              <li className="flex items-start gap-2">
+                <FaCheckCircle className="text-green-600 flex-shrink-0 mt-0.5" />
+                <span>Use a strong, unique password</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <FaCheckCircle className="text-green-600 flex-shrink-0 mt-0.5" />
+                <span>Never share your login credentials</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <FaCheckCircle className="text-green-600 flex-shrink-0 mt-0.5" />
+                <span>Log out when using shared devices</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <FaCheckCircle className="text-green-600 flex-shrink-0 mt-0.5" />
+                <span>Report suspicious activity immediately</span>
+              </li>
+            </ul>
+          </div>
+          
+          {/* Future 2FA Option */}
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-sm text-gray-600">
+              <strong>Coming Soon:</strong> Two-factor authentication (2FA) will be available in your account settings for enhanced security.
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
       title: "You're All Set! 🚀",
       content: (
         <div className="text-center space-y-6">
@@ -332,6 +570,12 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
   ];
 
   const nextStep = () => {
+    // Check if current step has a validation function
+    const currentStepData = steps[currentStep];
+    if (currentStepData?.canProceed && !currentStepData.canProceed()) {
+      return; // Don't proceed if validation fails
+    }
+    
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
@@ -385,7 +629,8 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
             
             <button
               onClick={nextStep}
-              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all flex items-center gap-2 shadow-lg"
+              disabled={steps[currentStep]?.canProceed && !steps[currentStep].canProceed()}
+              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {currentStep < steps.length - 1 ? (
                 <>

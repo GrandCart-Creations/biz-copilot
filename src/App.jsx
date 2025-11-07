@@ -10,13 +10,15 @@ import { OnboardingProvider } from './contexts/OnboardingContext';
 import Signup from './components/Auth/Signup';
 import Login from './components/Auth/Login';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
-import ExpenseTracker from './components/ExpenseTracker';
-import IncomeTracker from './components/IncomeTracker';
-import FinancialDashboard from './components/FinancialDashboard';
-import ReportsDashboard from './components/ReportsDashboard';
-import SettingsDashboard from './components/SettingsDashboard';
-import SecurityDashboard from './components/SecurityDashboard';
-import MFASetup from './components/MFASetup';
+// Lazy load heavy components for better performance
+import { lazy, Suspense } from 'react';
+const ExpenseTracker = lazy(() => import('./components/ExpenseTracker'));
+const IncomeTracker = lazy(() => import('./components/IncomeTracker'));
+const FinancialDashboard = lazy(() => import('./components/FinancialDashboard'));
+const ReportsDashboard = lazy(() => import('./components/ReportsDashboard'));
+const SettingsDashboard = lazy(() => import('./components/SettingsDashboard'));
+const SecurityDashboard = lazy(() => import('./components/SecurityDashboard'));
+const MFASetup = lazy(() => import('./components/MFASetup'));
 import ModuleDashboard from './components/ModuleDashboard';
 import SubscriptionGateWrapper from './components/SubscriptionGateWrapper';
 import TermsOfService from './components/TermsOfService';
@@ -63,7 +65,16 @@ function App() {
               path="/modules/expenses" 
               element={
                 <ProtectedRoute>
-                  <ExpenseTracker />
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Expenses...</p>
+                      </div>
+                    </div>
+                  }>
+                    <ExpenseTracker />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
@@ -73,7 +84,16 @@ function App() {
               path="/modules/income" 
               element={
                 <ProtectedRoute>
-                  <IncomeTracker />
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Income...</p>
+                      </div>
+                    </div>
+                  }>
+                    <IncomeTracker />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
@@ -83,7 +103,16 @@ function App() {
               path="/modules/financial-dashboard" 
               element={
                 <ProtectedRoute>
-                  <FinancialDashboard />
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Dashboard...</p>
+                      </div>
+                    </div>
+                  }>
+                    <FinancialDashboard />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
@@ -93,7 +122,16 @@ function App() {
               path="/modules/reports" 
               element={
                 <ProtectedRoute>
-                  <ReportsDashboard />
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Reports...</p>
+                      </div>
+                    </div>
+                  }>
+                    <ReportsDashboard />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
@@ -103,7 +141,16 @@ function App() {
               path="/modules/settings" 
               element={
                 <ProtectedRoute>
-                  <SettingsDashboard />
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Settings...</p>
+                      </div>
+                    </div>
+                  }>
+                    <SettingsDashboard />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
@@ -123,7 +170,16 @@ function App() {
               path="/security/dashboard" 
               element={
                 <ProtectedRoute>
-                  <SecurityDashboard />
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Security...</p>
+                      </div>
+                    </div>
+                  }>
+                    <SecurityDashboard />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
@@ -133,7 +189,16 @@ function App() {
               path="/settings/mfa" 
               element={
                 <ProtectedRoute>
-                  <MFASetup />
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading MFA Setup...</p>
+                      </div>
+                    </div>
+                  }>
+                    <MFASetup />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />

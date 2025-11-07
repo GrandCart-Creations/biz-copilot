@@ -202,6 +202,24 @@ export const resendVerificationEmail = async () => {
   }
 };
 
+// Send email verification (accepts user object)
+export const sendEmailVerificationToUser = async (user) => {
+  try {
+    if (!user) {
+      throw new Error('User is required.');
+    }
+    if (user.emailVerified) {
+      throw new Error('Your email is already verified.');
+    }
+    // Use the imported sendEmailVerification from firebase/auth
+    await sendEmailVerification(user);
+    return 'Verification email sent! Check your inbox.';
+  } catch (error) {
+    console.error('Error sending verification email:', error);
+    throw new Error(error.message);
+  }
+};
+
 // Sign out
 export const logoutUser = async () => {
   try {
@@ -2117,6 +2135,35 @@ export const hasCompletedCompanyOnboarding = async (companyId, userId) => {
   } catch (error) {
     console.error('Error checking company onboarding:', error);
     return false;
+  }
+};
+
+/**
+ * Store legal acceptance for a user in a company
+ * @param {string} companyId - Company ID
+ * @param {string} userId - User ID
+ * @param {Object} acceptance - Object with termsAccepted, privacyAccepted, and timestamps
+ * @returns {Promise<void>}
+ */
+export const storeLegalAcceptance = async (companyId, userId, acceptance) => {
+  try {
+    if (!companyId || !userId) {
+      throw new Error('Company ID and User ID are required');
+    }
+    
+    const onboardingRef = doc(db, 'companies', companyId, 'onboarding', userId);
+    await setDoc(onboardingRef, {
+      legalAcceptance: {
+        termsAccepted: acceptance.termsAccepted || false,
+        privacyAccepted: acceptance.privacyAccepted || false,
+        termsAcceptedAt: acceptance.termsAccepted ? serverTimestamp() : null,
+        privacyAcceptedAt: acceptance.privacyAccepted ? serverTimestamp() : null
+      },
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error storing legal acceptance:', error);
+    throw error;
   }
 };
 
