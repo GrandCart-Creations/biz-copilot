@@ -39,15 +39,31 @@ export const sanitizeString = (str, maxLength = 1000) => {
   if (!str) return '';
   if (typeof str !== 'string') return String(str);
   
-  // Remove HTML tags
-  let clean = str.replace(/<[^>]*>/g, '');
-  
-  // Remove null bytes
-  clean = clean.replace(/\0/g, '');
-  
+  let clean = str;
+
+  try {
+    if (typeof window !== 'undefined' && window.document && window.document.createElement) {
+      const template = window.document.createElement('template');
+      template.innerHTML = str;
+      clean = template.content.textContent || '';
+    } else if (typeof DOMParser !== 'undefined') {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(`<div>${str}</div>`, 'text/html');
+      clean = doc.body.textContent || '';
+    } else {
+      // Fallback: strip tags via regex when DOM APIs are unavailable
+      clean = str.replace(/<\/?[^>]+(>|$)/g, '');
+    }
+  } catch {
+    clean = str.replace(/<\/?[^>]+(>|$)/g, '');
+  }
+
+  // Remove null bytes and other control characters
+  clean = clean.replace(/[\u0000-\u001F\u007F]/g, '');
+
   // Trim and limit length
   clean = clean.trim().substring(0, maxLength);
-  
+
   return clean;
 };
 

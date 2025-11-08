@@ -40,17 +40,27 @@ import {
 } from 'firebase/storage';
 import { encryptSensitiveFields, decryptSensitiveFields } from './utils/encryption';
 
-// Firebase configuration from environment variables
-// In production, these should be set via environment variables
-// For development, fallback to hardcoded values (will be removed in production)
+const readEnv = (key) => {
+  const value = import.meta.env[key];
+  if (!value) {
+    const message = `Missing required Firebase environment variable: ${key}`;
+    if (import.meta.env.DEV) {
+      console.warn(message);
+    } else {
+      throw new Error(message);
+    }
+  }
+  return value;
+};
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDvSZZ1rWL8eAaTrRtMAsBj1D1rxp34zVo",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "expense-tracker-prod-475813.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "expense-tracker-prod-475813",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "expense-tracker-prod-475813.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "366675970251",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:366675970251:web:b31fe0f2ea3930d388734e",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-CVCYBMQ2SY"
+  apiKey: readEnv('VITE_FIREBASE_API_KEY'),
+  authDomain: readEnv('VITE_FIREBASE_AUTH_DOMAIN'),
+  projectId: readEnv('VITE_FIREBASE_PROJECT_ID'),
+  storageBucket: readEnv('VITE_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: readEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: readEnv('VITE_FIREBASE_APP_ID'),
+  measurementId: readEnv('VITE_FIREBASE_MEASUREMENT_ID')
 };
 
 // Initialize Firebase

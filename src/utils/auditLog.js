@@ -158,10 +158,30 @@ const getCurrentCompanyId = () => {
 const getSessionId = () => {
   let sessionId = sessionStorage.getItem('sessionId');
   if (!sessionId) {
-    sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    sessionId = generateSecureSessionId();
     sessionStorage.setItem('sessionId', sessionId);
   }
   return sessionId;
+};
+
+const generateSecureSessionId = () => {
+  if (typeof crypto !== 'undefined') {
+    if (typeof crypto.randomUUID === 'function') {
+      return `session_${crypto.randomUUID()}`;
+    }
+    if (typeof crypto.getRandomValues === 'function') {
+      const array = new Uint32Array(4);
+      crypto.getRandomValues(array);
+      return (
+        'session_' +
+        Array.from(array)
+          .map((val) => val.toString(16).padStart(8, '0'))
+          .join('')
+      );
+    }
+  }
+  // Fallback (very rare environments)
+  return `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 };
 
 // Helper: Sanitize sensitive details before logging
