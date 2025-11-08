@@ -17,7 +17,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "security:audit": "npm audit",
+    "security:audit:prod": "npm audit --production"
   },
   "dependencies": {
     "crypto-browserify": "^3.12.1",
