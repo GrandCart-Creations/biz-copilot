@@ -15,7 +15,7 @@
 ### Step 3: Update Repository Description
 While you're there, update the description to:
 ```
-Biz-CoPilot - Your Business Co-Pilot for expense tracking, invoice management, and financial insights. Built for Dutch entrepreneurs.
+Biz-CoPilot - Your Business Co-Pilot for expense tracking, invoice management, and financial insights. Built for Benelux entrepreneurs.
 ```
 
 ### Step 4: Update Your Local Git Remote

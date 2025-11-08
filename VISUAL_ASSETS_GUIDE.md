@@ -121,7 +121,7 @@ Project: Logo for Biz-CoPilot
 Tagline: "Your Business Co-Pilot, Every Step of the Way"
 
 What we do:
-Intelligent business management platform for Dutch entrepreneurs.
+Intelligent business management platform for Benelux entrepreneurs.
 We help small businesses manage expenses, invoices, and operations with
 enterprise-grade security and side-by-side assistance.
 

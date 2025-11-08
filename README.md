@@ -2,7 +2,7 @@
 
 **Your Business Co-Pilot, Every Step of the Way**
 
-Biz-CoPilot is an intelligent business management platform designed specifically for Dutch entrepreneurs and small businesses. We provide enterprise-grade security, intelligent automation, and side-by-side assistance to help you manage every aspect of your business.
+Biz-CoPilot is an intelligent business management platform designed specifically for Benelux entrepreneurs and small businesses. We provide enterprise-grade security, intelligent automation, and side-by-side assistance to help you manage every aspect of your business.
 
 ## ✨ Features
 
@@ -20,7 +20,7 @@ Biz-CoPilot is an intelligent business management platform designed specifically
 - **Role-Based Access Control** - User permissions and roles
 
 ### 📊 **Smart Features**
-- **BTW Compliance** - Built for Dutch tax requirements (0%, 9%, 21%)
+- **BTW Compliance** - Built for Benelux tax requirements (0%, 9%, 21%)
 - **Real-time Analytics** - Dashboard with insights and reports
 - **Data Export** - Export to CSV, PDF, and Excel
 - **Intelligent Automation** - Smart categorization and suggestions
@@ -111,7 +111,7 @@ Visit your app at: `https://biz-copilot.nl`
 
 Copyright © 2025 GrandCart Creations. All rights reserved.
 
-Built with ❤️ for Dutch entrepreneurs.
+Built with ❤️ for Benelux entrepreneurs.
 
 ---
 

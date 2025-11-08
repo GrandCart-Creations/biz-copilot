@@ -97,7 +97,7 @@
 - [ ] Rename GitHub repository
   - Settings → Repository name → `biz-copilot`
 - [ ] Update repository description
-  - "Intelligent business management platform for Dutch entrepreneurs"
+  - "Intelligent business management platform for Benelux entrepreneurs"
 - [ ] Commit all changes
   ```bash
   git add .
@@ -195,4 +195,4 @@ Just let me know! I'm here to help every step of the way. 🚀
 ---
 
 **Built with ❤️ by GrandCart Creations**
-*Making business management intelligent and accessible for Dutch entrepreneurs*
+*Making business management intelligent and accessible for Benelux entrepreneurs*

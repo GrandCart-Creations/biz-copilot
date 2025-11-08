@@ -553,15 +553,27 @@ const ExpenseTracker = () => {
     }
 
     // Vendor detection
-    const vendorCandidate = lines.find(line => {
+    let vendorCandidateIndex = -1;
+    const vendorCandidate = lines.find((line, index) => {
       const lowerLine = line.toLowerCase();
       if (lowerLine.includes('invoice') || lowerLine.includes('date') || lowerLine.includes('amount') || lowerLine.includes('total')) {
         return false;
       }
-      return /[a-z]{2,}/i.test(line) && line.length <= 70;
+      const isLikelyVendor = /[a-z]{2,}/i.test(line) && line.length <= 70;
+      if (isLikelyVendor) {
+        vendorCandidateIndex = index;
+      }
+      return isLikelyVendor;
     });
     if (vendorCandidate) {
       fields.vendor = vendorCandidate;
+    }
+
+    if (vendorCandidateIndex !== -1) {
+      const possibleAddress = lines[vendorCandidateIndex + 1];
+      if (possibleAddress && /\d+/.test(possibleAddress) && possibleAddress.length <= 100) {
+        fields.vendorAddress = possibleAddress;
+      }
     }
 
     // Description
@@ -605,6 +617,7 @@ const ExpenseTracker = () => {
 
     assignIfEmpty('vendor', extracted.vendor);
     assignIfEmpty('invoiceNumber', extracted.invoiceNumber);
+    assignIfEmpty('vendorAddress', extracted.vendorAddress);
     assignIfEmpty('description', extracted.description);
     assignIfEmpty('date', extracted.date);
     assignIfEmpty('notes', extracted.notes);
@@ -795,6 +808,7 @@ const ExpenseTracker = () => {
     date: new Date().toISOString().split('T')[0],
     category: 'Subscriptions',
     vendor: '',
+  vendorAddress: '',
     invoiceNumber: '',
     vatNumber: '',
     chamberOfCommerceNumber: '',
@@ -954,6 +968,7 @@ const ExpenseTracker = () => {
         date: new Date().toISOString().split('T')[0],
         category: 'Subscriptions',
         vendor: '',
+        vendorAddress: '',
         invoiceNumber: '',
         vatNumber: '',
         chamberOfCommerceNumber: '',
@@ -1008,6 +1023,7 @@ const ExpenseTracker = () => {
       date: expense.date,
       category: expense.category,
       vendor: expense.vendor,
+      vendorAddress: expense.vendorAddress || '',
       invoiceNumber: expense.invoiceNumber || '',
       vatNumber: expense.vatNumber || '',
       chamberOfCommerceNumber: expense.chamberOfCommerceNumber || '',
@@ -1083,6 +1099,7 @@ const ExpenseTracker = () => {
               date: '',
               category: '',
               vendor: '',
+              vendorAddress: '',
               description: '',
               amount: '',
               paymentMethod: '',
@@ -1116,6 +1133,8 @@ const ExpenseTracker = () => {
                 expense.category = value || 'Other';
               } else if (header.includes('vendor') || header.includes('service')) {
                 expense.vendor = value;
+              } else if (header.includes('address')) {
+                expense.vendorAddress = value;
               } else if (header.includes('description')) {
                 expense.description = value;
               } else if (header.includes('amount') && !header.includes('vat')) {
@@ -1298,6 +1317,7 @@ const ExpenseTracker = () => {
             date: expenseData.date,
             category: expenseData.category || 'Other',
             vendor: expenseData.vendor,
+            vendorAddress: expenseData.vendorAddress || '',
             invoiceNumber: expenseData.invoiceNumber || '',
             description: expenseData.description || expenseData.vendor,
             amount: expenseData.amount.toString(),
@@ -1487,6 +1507,7 @@ const ExpenseTracker = () => {
                       date: new Date().toISOString().split('T')[0],
                       category: 'Subscriptions',
                       vendor: '',
+          vendorAddress: '',
                       invoiceNumber: '',
                       vatNumber: '',
                       chamberOfCommerceNumber: '',
@@ -1558,6 +1579,20 @@ const ExpenseTracker = () => {
                         required
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Vendor name"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Vendor Address (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        name="vendorAddress"
+                        value={formData.vendorAddress}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Street, City, Country"
                       />
                     </div>
 

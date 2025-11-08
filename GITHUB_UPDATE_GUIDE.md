@@ -36,8 +36,8 @@
    - Look for "Description" field (also available on main repo page)
    
 2. **Update Description**
-   - Change to: **"Intelligent business management platform for Dutch entrepreneurs and small businesses"**
-   - Or shorter version: **"Your Business Co-Pilot - Intelligent business management for Dutch entrepreneurs"**
+   - Change to: **"Intelligent business management platform for Benelux entrepreneurs and small businesses"**
+   - Or shorter version: **"Your Business Co-Pilot - Intelligent business management for Benelux entrepreneurs"**
    
 3. **Add Topics/Tags** (helps with discoverability)
    - Click "Add topics" on main repository page

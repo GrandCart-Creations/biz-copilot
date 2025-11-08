@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Biz-CoPilot** is a comprehensive business management platform designed specifically for Dutch entrepreneurs. The platform provides tools for expense tracking, financial management, and business insights to help entrepreneurs manage their businesses more effectively.
+**Biz-CoPilot** is a comprehensive business management platform designed specifically for Benelux entrepreneurs. The platform provides tools for expense tracking, financial management, and business insights to help entrepreneurs manage their businesses more effectively.
 
 **Important**: This project was previously named `expense-tracker-app` but has been rebranded to `biz-copilot`. You may see references to the old name in some configuration files and comments.
 
@@ -25,7 +25,7 @@
 
 - **Color Scheme**: Gradient branding from Indigo → Purple → Pink
 - **Logo**: Professional Biz-CoPilot logo (located in `public/` and `src/assets/`)
-- **Target Audience**: Dutch entrepreneurs and small business owners
+- **Target Audience**: Benelux entrepreneurs and small business owners
 - **Language**: Dutch (primary), with English for technical documentation
 
 ## Project Structure
@@ -127,7 +127,7 @@ Based on recent commits:
 
 2. **Branding Consistency**: Always use the gradient color scheme (Indigo → Purple → Pink) for brand consistency. The logo files are available in multiple formats and should be used consistently across the application.
 
-3. **Target Market**: Content and features should be tailored for Dutch entrepreneurs. Keep the user experience simple and focused on business management needs.
+3. **Target Market**: Content and features should be tailored for Benelux entrepreneurs. Keep the user experience simple and focused on business management needs.
 
 4. **Firebase Configuration**: The Firebase project ID remains `expense-tracker-prod-475813` despite the rebranding. This is intentional to maintain deployment continuity.
 
