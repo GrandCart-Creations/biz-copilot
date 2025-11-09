@@ -1995,7 +1995,7 @@ const ExpenseTracker = () => {
       {showAddExpense && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b">
+            <div className="px-5 py-3 border-b">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-medium">
                   {editingExpense ? 'Edit Expense' : 'Add New Expense'}
@@ -2035,7 +2035,7 @@ const ExpenseTracker = () => {
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="px-6 py-4 flex-1">
+            <form onSubmit={handleSubmit} className="px-5 py-3 flex-1">
               <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1.45fr)] gap-6 lg:h-[75vh]">
                 <div className="space-y-4 overflow-y-auto pr-2 lg:max-h-[72vh]">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2416,7 +2416,7 @@ const ExpenseTracker = () => {
                 </div>
               )}
 
-              <div className="flex justify-end space-x-3 pt-6">
+              <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
                   onClick={() => {
