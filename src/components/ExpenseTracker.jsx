@@ -180,14 +180,14 @@ const AttachmentPanel = ({
 
     if (currentPreview.type === 'application/pdf') {
       const zoomValue = Math.round(clampedZoom * 100);
-      const pdfSrc = `${currentPreview.url}#toolbar=0&navpanes=0&scrollbar=1&zoom=${zoomValue}`;
+      const pdfSrc = `${currentPreview.url}#toolbar=0&navpanes=0&view=FitH&zoom=${zoomValue}`;
       return (
         <iframe
           key={pdfSrc}
           src={pdfSrc}
           title={currentPreview.name}
-          className="w-full bg-gray-200 border-0"
-          style={{ height: '72vh' }}
+          className="w-full h-full bg-gray-200 border-0"
+          style={{ minHeight: '60vh' }}
         />
       );
     }
@@ -216,8 +216,8 @@ const AttachmentPanel = ({
           : '');
 
   return (
-    <div className={`flex flex-col gap-4 pb-4 ${className}`}>
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+    <div className={`flex h-full flex-col gap-4 pb-4 ${className}`}>
+      <div className="flex flex-col flex-1 min-h-[60vh] max-h-[78vh] bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-3 border-b bg-gray-50 sticky top-0 z-10">
           <div className="min-w-[180px]">
             <p className="text-sm font-semibold text-gray-800">Attachment Preview</p>
@@ -293,13 +293,11 @@ const AttachmentPanel = ({
             </button>
           </div>
         </div>
-        <div className="bg-gray-100">
-          <div
-            ref={previewContainerRef}
-            className="max-h-[72vh] overflow-auto"
-          >
-            {renderPreview()}
-          </div>
+        <div
+          ref={previewContainerRef}
+          className="flex-1 overflow-auto bg-gray-100"
+        >
+          {renderPreview()}
         </div>
         <div className="px-3 sm:px-4 py-3 border-t bg-white">
           {previewItems.length > 0 ? (
