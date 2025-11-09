@@ -426,6 +426,33 @@ const ExpenseTracker = () => {
   const bankAccounts = ['Business Checking', 'Business Savings', 'Credit Card - Business', 'Cash', 'Personal (Reimbursable)'];
   const paymentMethods = ['Debit Card', 'Credit Card', 'Bank Transfer', 'Cash', 'PayPal', 'Other'];
   const todayIso = useMemo(() => new Date().toISOString().split('T')[0], []);
+const documentTypeOptions = [
+  { value: 'all', label: 'All Documents' },
+  { value: 'invoice', label: 'Invoices' },
+  { value: 'receipt', label: 'Receipts' },
+  { value: 'statement', label: 'Statements' },
+  { value: 'other', label: 'Other' }
+];
+
+const documentTypeStyles = {
+  invoice: { label: 'Invoice', classes: 'bg-blue-100 text-blue-800' },
+  receipt: { label: 'Receipt', classes: 'bg-green-100 text-green-800' },
+  statement: { label: 'Statement', classes: 'bg-purple-100 text-purple-800' },
+  other: { label: 'Other', classes: 'bg-gray-200 text-gray-700' }
+};
+
+const paymentStatusOptions = [
+  { value: 'all', label: 'All Statuses' },
+  { value: 'open', label: 'Open' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'late', label: 'Late' }
+];
+
+const paymentStatusStyles = {
+  open: { label: 'Open', classes: 'bg-yellow-100 text-yellow-800' },
+  paid: { label: 'Paid', classes: 'bg-green-100 text-green-800' },
+  late: { label: 'Late', classes: 'bg-red-100 text-red-800' }
+};
 
   // State Management
   const [expenses, setExpenses] = useState([]);
@@ -1059,6 +1086,8 @@ const ExpenseTracker = () => {
     category: 'all',
     bankAccount: 'all',
     paymentMethod: 'all',
+    documentType: 'all',
+    paymentStatus: 'all',
     periodType: 'all', // 'all', 'today', 'week', 'month', 'year', 'custom'
     startDate: '',
     endDate: ''
@@ -1969,6 +1998,10 @@ const ExpenseTracker = () => {
       if (filters.category !== 'all' && exp.category !== filters.category) return false;
       if (filters.bankAccount !== 'all' && exp.bankAccount !== filters.bankAccount) return false;
       if (filters.paymentMethod !== 'all' && exp.paymentMethod !== filters.paymentMethod) return false;
+      const docType = (exp.documentType || 'invoice').toLowerCase();
+      if (filters.documentType !== 'all' && docType !== filters.documentType) return false;
+      const paymentStatus = (exp.paymentStatus || 'open').toLowerCase();
+      if (filters.paymentStatus !== 'all' && paymentStatus !== filters.paymentStatus) return false;
       if (filters.startDate && exp.date < filters.startDate) return false;
       if (filters.endDate && exp.date > filters.endDate) return false;
       return true;
@@ -2497,7 +2530,7 @@ const ExpenseTracker = () => {
       )}
 
       {/* Main Content */}
-      <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-10 py-8">
+      <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-12 py-8">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           {loading ? (
@@ -2649,9 +2682,38 @@ const ExpenseTracker = () => {
                 {paymentMethods.map(method => <option key={method} value={method}>{method}</option>)}
               </select>
 
-              {(filters.category !== 'all' || filters.bankAccount !== 'all' || filters.paymentMethod !== 'all' || filters.periodType !== 'all') && (
+              <select
+                value={filters.documentType}
+                onChange={(e) => setFilters({...filters, documentType: e.target.value})}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                {documentTypeOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+
+              <select
+                value={filters.paymentStatus}
+                onChange={(e) => setFilters({...filters, paymentStatus: e.target.value})}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                {paymentStatusOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+
+              {(filters.category !== 'all' || filters.bankAccount !== 'all' || filters.paymentMethod !== 'all' || filters.periodType !== 'all' || filters.documentType !== 'all' || filters.paymentStatus !== 'all') && (
                 <button
-                  onClick={() => setFilters({category: 'all', bankAccount: 'all', paymentMethod: 'all', periodType: 'all', startDate: '', endDate: ''})}
+                  onClick={() => setFilters({
+                    category: 'all',
+                    bankAccount: 'all',
+                    paymentMethod: 'all',
+                    documentType: 'all',
+                    paymentStatus: 'all',
+                    periodType: 'all',
+                    startDate: '',
+                    endDate: ''
+                  })}
                   className="px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
                 >
                   Clear Filters
@@ -2749,8 +2811,14 @@ const ExpenseTracker = () => {
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                       Vendor
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                       Invoice #
+                    </th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
+                      Document
+                    </th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
+                      Status
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Description
@@ -2781,6 +2849,8 @@ const ExpenseTracker = () => {
                         <td className="px-3 py-4"><div className="h-6 bg-gray-200 rounded w-20"></div></td>
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-32"></div></td>
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-28"></div></td>
+                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-48"></div></td>
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-36"></div></td>
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
@@ -2791,7 +2861,7 @@ const ExpenseTracker = () => {
                     ))
                   ) : filteredExpenses.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="px-6 py-8 text-center">
+                      <td colSpan="12" className="px-6 py-8 text-center">
                         <div className="flex flex-col items-center gap-4">
                           {!currentCompanyId ? (
                             <>
@@ -2836,7 +2906,16 @@ const ExpenseTracker = () => {
                             <>
                               <p className="text-gray-500">No expenses match your current filters.</p>
                               <button
-                                onClick={() => setFilters({category: 'all', bankAccount: 'all', paymentMethod: 'all', periodType: 'all', startDate: '', endDate: ''})}
+                                onClick={() => setFilters({
+                                  category: 'all',
+                                  bankAccount: 'all',
+                                  paymentMethod: 'all',
+                                  documentType: 'all',
+                                  paymentStatus: 'all',
+                                  periodType: 'all',
+                                  startDate: '',
+                                  endDate: ''
+                                })}
                                 className="px-4 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
                               >
                                 Clear Filters
@@ -2847,78 +2926,101 @@ const ExpenseTracker = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredExpenses.map((expense) => (
-                      <tr key={expense.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {new Date(expense.date).toLocaleDateString()}
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap">
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                            {expense.category}
-                          </span>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <div className="max-w-[120px] truncate" title={expense.vendor}>
-                            {expense.vendor}
-                          </div>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <div className="max-w-[120px] truncate" title={expense.invoiceNumber || '-'}>
-                            {expense.invoiceNumber || '-'}
-                          </div>
-                        </td>
-                        <td className="px-3 py-4 text-sm text-gray-900">
-                          <div className="max-w-xs break-words">
-                            {expense.description}
-                          </div>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <div className="max-w-[140px] truncate" title={expense.bankAccount || 'N/A'}>
-                            {expense.bankAccount || 'N/A'}
-                          </div>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {expense.paymentMethod}
-                          {expense.paymentMethodDetails && (
-                            <span className="ml-2 text-xs text-gray-400">
-                              ({expense.paymentMethodDetails})
+                    filteredExpenses.map((expense) => {
+                      const documentTypeKey = (expense.documentType || 'invoice').toLowerCase();
+                      const documentMeta = documentTypeStyles[documentTypeKey] || documentTypeStyles.invoice;
+                      const paymentStatusKey = (expense.paymentStatus || 'open').toLowerCase();
+                      const paymentMeta = paymentStatusStyles[paymentStatusKey] || paymentStatusStyles.open;
+                      const paymentDetailsRecorded = paymentStatusKey === 'paid' && (expense.paymentMethod || expense.paymentMethodDetails);
+                      return (
+                        <tr key={expense.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {new Date(expense.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap">
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                              {expense.category}
                             </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
-                          €{parseFloat(expense.amount).toFixed(2)}
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center text-sm">
-                          {expense.attachments && expense.attachments.length > 0 ? (
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <div className="max-w-[120px] truncate" title={expense.vendor}>
+                              {expense.vendor}
+                            </div>
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <div className="max-w-[120px] truncate" title={expense.invoiceNumber || '-'}>
+                              {expense.invoiceNumber || '-'}
+                            </div>
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-sm">
+                            <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
+                              {documentMeta.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-sm">
+                            <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${paymentMeta.classes}`}>
+                              {paymentMeta.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-4 text-sm text-gray-900">
+                            <div className="max-w-xs break-words">
+                              {expense.description}
+                            </div>
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <div className="max-w-[140px] truncate" title={expense.bankAccount || 'N/A'}>
+                              {expense.bankAccount || 'N/A'}
+                            </div>
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {paymentDetailsRecorded ? (
+                              <>
+                                {expense.paymentMethod || 'Recorded'}
+                                {expense.paymentMethodDetails && (
+                                  <span className="ml-2 text-xs text-gray-400">
+                                    ({expense.paymentMethodDetails})
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-gray-400">Pending</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
+                            €{parseFloat(expense.amount).toFixed(2)}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-center text-sm">
+                            {expense.attachments && expense.attachments.length > 0 ? (
+                              <button
+                                onClick={() => handleViewAttachments(expense)}
+                                className="inline-flex items-center text-blue-600 hover:text-blue-900"
+                              >
+                                <FaPaperclip className="w-4 h-4 mr-1" />
+                                <span>{expense.attachments.length}</span>
+                              </button>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-medium">
                             <button
-                              onClick={() => handleViewAttachments(expense)}
-                              className="inline-flex items-center text-blue-600 hover:text-blue-900"
+                              onClick={() => handleEditExpense(expense)}
+                              className="text-blue-600 hover:text-blue-900 mr-3"
+                              title="Edit"
                             >
-                              <FaPaperclip className="w-4 h-4 mr-1" />
-                              <span>{expense.attachments.length}</span>
+                              <FaEdit className="w-4 h-4 inline" />
                             </button>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-medium">
-                          <button
-                            onClick={() => handleEditExpense(expense)}
-                            className="text-blue-600 hover:text-blue-900 mr-3"
-                            title="Edit"
-                          >
-                            <FaEdit className="w-4 h-4 inline" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteExpense(expense.id)}
-                            className="text-red-600 hover:text-red-900"
-                            title="Delete"
-                          >
-                            <FaTrash className="w-4 h-4 inline" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                            <button
+                              onClick={() => handleDeleteExpense(expense.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Delete"
+                            >
+                              <FaTrash className="w-4 h-4 inline" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
