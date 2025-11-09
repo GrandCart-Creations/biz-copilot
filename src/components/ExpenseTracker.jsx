@@ -218,7 +218,7 @@ const AttachmentPanel = ({
   return (
     <div className={`flex flex-col gap-4 pb-4 ${className}`}>
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-3 border-b bg-gray-50">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-3 border-b bg-gray-50 sticky top-0 z-10">
           <div className="min-w-[180px]">
             <p className="text-sm font-semibold text-gray-800">Attachment Preview</p>
             <p className="text-xs text-gray-500">
@@ -293,7 +293,10 @@ const AttachmentPanel = ({
             </button>
           </div>
         </div>
-        <div ref={previewContainerRef} className="h-[78vh] bg-gray-100">
+        <div
+          ref={previewContainerRef}
+          className="min-h-[60vh] max-h-[72vh] bg-gray-100 overflow-auto"
+        >
           {renderPreview()}
         </div>
         <div className="px-3 sm:px-4 py-3 border-t bg-white">
@@ -325,7 +328,7 @@ const AttachmentPanel = ({
       </div>
 
       {showOptions && (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-4">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-3 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -381,7 +384,7 @@ const AttachmentPanel = ({
           </div>
 
           {existingAttachments?.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
               <p className="text-xs text-blue-800">
                 Existing attachments remain linked. Uploading new files will add to them.
               </p>
@@ -2033,8 +2036,8 @@ const ExpenseTracker = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="px-6 py-4 flex-1">
-              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-6 lg:h-[75vh]">
-                <div className="space-y-4 overflow-y-auto pr-2 lg:max-h-[75vh]">
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)] gap-6 lg:h-[75vh]">
+                <div className="space-y-4 overflow-y-auto pr-2 lg:max-h-[72vh]">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2369,7 +2372,7 @@ const ExpenseTracker = () => {
                   </div>
                 </div>
 
-                <div className="overflow-y-auto pr-2 lg:max-h-[75vh]">
+                <div className="overflow-y-auto pr-2 lg:max-h-[72vh]">
                   <AttachmentPanel
                     label="Attachments (Optional)"
                     selectedFiles={selectedFiles}
