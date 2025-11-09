@@ -41,9 +41,9 @@ import {
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { encryptSensitiveFields, decryptSensitiveFields } from './utils/encryption';
 
-const readEnv = (key) => {
+const readEnv = (key, optional = false) => {
   const value = import.meta.env[key];
-  if (!value) {
+  if (!value && !optional) {
     const message = `Missing required Firebase environment variable: ${key}`;
     if (import.meta.env.DEV) {
       console.warn(message);
@@ -61,7 +61,7 @@ const firebaseConfig = {
   storageBucket: readEnv('VITE_FIREBASE_STORAGE_BUCKET'),
   messagingSenderId: readEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
   appId: readEnv('VITE_FIREBASE_APP_ID'),
-  measurementId: readEnv('VITE_FIREBASE_MEASUREMENT_ID')
+  measurementId: readEnv('VITE_FIREBASE_MEASUREMENT_ID', true) // Optional - only needed for Analytics
 };
 
 // Initialize Firebase
