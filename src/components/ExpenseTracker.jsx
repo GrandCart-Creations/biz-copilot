@@ -44,9 +44,9 @@ import {
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 3;
-const ZOOM_STEP = 0.1;
-const DEFAULT_ZOOM = 2;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 0.2;
+const DEFAULT_ZOOM = 1.5;
 
 const EU_COUNTRY_OPTIONS = [
   { code: 'BE', label: 'Belgium' },
@@ -173,13 +173,14 @@ const AttachmentPanel = ({
 
     if (currentPreview.type === 'application/pdf') {
       const zoomValue = Math.round(clampedZoom * 100);
-      const pdfSrc = `${currentPreview.url}#toolbar=0&navpanes=0&view=FitH&zoom=${zoomValue}`;
+      const pdfSrc = `${currentPreview.url}#toolbar=0&navpanes=0&scrollbar=1&view=FitV&zoom=${zoomValue}`;
       return (
         <iframe
           key={pdfSrc}
           src={pdfSrc}
           title={currentPreview.name}
-          className="w-full h-full bg-gray-200"
+          className="w-full h-full bg-gray-200 border-0"
+          style={{ minHeight: '100%' }}
         />
       );
     }
@@ -290,25 +291,32 @@ const AttachmentPanel = ({
               type="button"
               onClick={() => adjustZoom(-ZOOM_STEP)}
               disabled={!hasPreview}
-              className="p-2 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+              className="p-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Zoom out"
             >
               <FaSearchMinus className="w-4 h-4" />
             </button>
-            <input
-              type="range"
-              min={MIN_ZOOM}
-              max={MAX_ZOOM}
-              step={ZOOM_STEP}
-              value={clampedZoom}
-              onChange={(e) => handleZoomSlider(e.target.value)}
-              disabled={!hasPreview}
-              className="w-32"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min={MIN_ZOOM}
+                max={MAX_ZOOM}
+                step={ZOOM_STEP}
+                value={clampedZoom}
+                onChange={(e) => handleZoomSlider(e.target.value)}
+                disabled={!hasPreview}
+                className="w-32"
+              />
+              <span className="text-xs font-medium text-gray-700 min-w-[3rem] text-center">
+                {Math.round(clampedZoom * 100)}%
+              </span>
+            </div>
             <button
               type="button"
               onClick={() => adjustZoom(ZOOM_STEP)}
               disabled={!hasPreview}
-              className="p-2 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+              className="p-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Zoom in"
             >
               <FaSearchPlus className="w-4 h-4" />
             </button>
@@ -316,14 +324,14 @@ const AttachmentPanel = ({
               type="button"
               onClick={openInNewTab}
               disabled={!hasPreview}
-              className="p-2 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
-              title="Open full size"
+              className="p-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Open in new tab"
             >
               <FaExternalLinkAlt className="w-4 h-4" />
             </button>
           </div>
         </div>
-        <div ref={previewContainerRef} className="h-[62vh] bg-gray-100">
+        <div ref={previewContainerRef} className="h-[75vh] bg-gray-100">
           {renderPreview()}
         </div>
         <div className="px-3 sm:px-4 py-3 border-t bg-gray-50">
@@ -2005,8 +2013,8 @@ const ExpenseTracker = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="px-6 py-4 flex-1">
-              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] gap-6 lg:h-[65vh]">
-                <div className="space-y-4 overflow-y-auto pr-2 lg:max-h-[65vh]">
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-6 lg:h-[75vh]">
+                <div className="space-y-4 overflow-y-auto pr-2 lg:max-h-[75vh]">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2341,7 +2349,7 @@ const ExpenseTracker = () => {
                   </div>
                 </div>
 
-                <div className="overflow-y-auto pr-2 lg:max-h-[65vh]">
+                <div className="overflow-y-auto pr-2 lg:max-h-[75vh]">
                   <AttachmentPanel
                     label="Attachments (Optional)"
                     selectedFiles={selectedFiles}
