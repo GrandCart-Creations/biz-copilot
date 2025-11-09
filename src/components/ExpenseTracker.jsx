@@ -180,14 +180,14 @@ const AttachmentPanel = ({
 
     if (currentPreview.type === 'application/pdf') {
       const zoomValue = Math.round(clampedZoom * 100);
-      const pdfSrc = `${currentPreview.url}#toolbar=0&navpanes=0&scrollbar=1&view=FitV&zoom=${zoomValue}`;
+      const pdfSrc = `${currentPreview.url}#toolbar=0&navpanes=0&scrollbar=1&zoom=${zoomValue}`;
       return (
         <iframe
           key={pdfSrc}
           src={pdfSrc}
           title={currentPreview.name}
-          className="w-full h-full bg-gray-200 border-0"
-          style={{ minHeight: '100%' }}
+          className="w-full bg-gray-200 border-0"
+          style={{ height: '72vh' }}
         />
       );
     }
@@ -293,11 +293,13 @@ const AttachmentPanel = ({
             </button>
           </div>
         </div>
-        <div
-          ref={previewContainerRef}
-          className="min-h-[60vh] max-h-[72vh] bg-gray-100 overflow-auto"
-        >
-          {renderPreview()}
+        <div className="bg-gray-100">
+          <div
+            ref={previewContainerRef}
+            className="max-h-[72vh] overflow-auto"
+          >
+            {renderPreview()}
+          </div>
         </div>
         <div className="px-3 sm:px-4 py-3 border-t bg-white">
           {previewItems.length > 0 ? (
@@ -2036,7 +2038,7 @@ const ExpenseTracker = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="px-6 py-4 flex-1">
-              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)] gap-6 lg:h-[75vh]">
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1.45fr)] gap-6 lg:h-[75vh]">
                 <div className="space-y-4 overflow-y-auto pr-2 lg:max-h-[72vh]">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
