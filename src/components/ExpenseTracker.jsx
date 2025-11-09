@@ -101,6 +101,7 @@ const AttachmentPanel = ({
   autoFillProgress,
   className = ''
 }) => {
+  const [showOptions, setShowOptions] = useState(() => previewItems.length === 0);
   const currentPreview = useMemo(() => (
     previewItems.find(item => item.id === currentPreviewId) || null
   ), [previewItems, currentPreviewId]);
@@ -113,6 +114,12 @@ const AttachmentPanel = ({
       previewContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [hasPreview, currentPreviewId]);
+
+  useEffect(() => {
+    if (previewItems.length === 0) {
+      setShowOptions(true);
+    }
+  }, [previewItems]);
 
   const clampedZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomLevel));
 
@@ -210,83 +217,38 @@ const AttachmentPanel = ({
 
   return (
     <div className={`flex flex-col gap-4 pb-4 ${className}`}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Document Type
-          </label>
-          <select
-            value={documentType}
-            onChange={(e) => onDocumentTypeChange(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            <option value="invoice">Invoice</option>
-            <option value="receipt">Receipt</option>
-            <option value="statement">Bank Statement</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Expense Status
-          </label>
-          <select
-            value={paymentStatus}
-            onChange={(e) => onPaymentStatusChange(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            <option value="open">Open</option>
-            <option value="paid">Paid</option>
-            <option value="late">Late</option>
-          </select>
-        </div>
-      </div>
-
-      {autoFillStatus !== 'idle' && autoFillDisplayMessage && (
-        <div className={`border rounded-md px-3 py-2 text-xs flex items-center justify-between gap-3 ${autoFillStatusClasses[autoFillStatus] || 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-          <span className="font-medium">{autoFillDisplayMessage}</span>
-          {autoFillStatus === 'processing' && (
-            <span className="shrink-0 font-semibold">
-              {Math.min(100, Math.max(0, Math.round(autoFillProgress)))}%
-            </span>
-          )}
-        </div>
-      )}
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {label}
-        </label>
-        <FileUpload
-          files={selectedFiles}
-          onFilesChange={onFilesChange}
-          maxFiles={5}
-        />
-      </div>
-
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-3 sm:px-4 py-3 border-b">
-          <div>
-            <p className="text-sm font-medium text-gray-800">Attachment Preview</p>
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-3 border-b bg-gray-50">
+          <div className="min-w-[180px]">
+            <p className="text-sm font-semibold text-gray-800">Attachment Preview</p>
             <p className="text-xs text-gray-500">
-              {previewItems.length > 0 ? 'Select a file below to view it side-by-side.' : 'Upload a file to preview it here.'}
+              {previewItems.length > 0 ? 'Latest upload opens automatically.' : 'Upload a file to preview it here.'}
             </p>
-            <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+            <div className="mt-2 flex items-center gap-2 text-xs">
               <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-700 uppercase tracking-wide">
                 {documentTypeLabel}
               </span>
-              <span className={`inline-flex items-center px-2 py-1 rounded-full uppercase tracking-wide ${
-                paymentStatus === 'paid'
-                  ? 'bg-green-100 text-green-700'
-                  : paymentStatus === 'late'
-                    ? 'bg-red-100 text-red-700'
-                    : 'bg-yellow-100 text-yellow-700'
-              }`}>
+              <span
+                className={`inline-flex items-center px-2 py-1 rounded-full uppercase tracking-wide ${
+                  paymentStatus === 'paid'
+                    ? 'bg-green-100 text-green-700'
+                    : paymentStatus === 'late'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-yellow-100 text-yellow-700'
+                }`}
+              >
                 {paymentStatusLabel}
               </span>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setShowOptions(prev => !prev)}
+              className="inline-flex items-center px-3 py-2 text-xs font-medium border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
+            >
+              {showOptions ? 'Hide attachment options' : 'Show attachment options'}
+            </button>
             <button
               type="button"
               onClick={() => adjustZoom(-ZOOM_STEP)}
@@ -331,10 +293,10 @@ const AttachmentPanel = ({
             </button>
           </div>
         </div>
-        <div ref={previewContainerRef} className="h-[75vh] bg-gray-100">
+        <div ref={previewContainerRef} className="h-[78vh] bg-gray-100">
           {renderPreview()}
         </div>
-        <div className="px-3 sm:px-4 py-3 border-t bg-gray-50">
+        <div className="px-3 sm:px-4 py-3 border-t bg-white">
           {previewItems.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {previewItems.map(item => (
@@ -348,11 +310,11 @@ const AttachmentPanel = ({
                   className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                     currentPreviewId === item.id
                       ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                      : 'bg-gray-100 text-gray-700 border-gray-300 hover:border-blue-400'
                   }`}
                   title={item.name}
                 >
-                  {item.name.length > 22 ? `${item.name.slice(0, 20)}…` : item.name}
+                  {item.name.length > 26 ? `${item.name.slice(0, 24)}…` : item.name}
                 </button>
               ))}
             </div>
@@ -362,26 +324,84 @@ const AttachmentPanel = ({
         </div>
       </div>
 
-      {existingAttachments?.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <p className="text-xs text-blue-800">
-            Existing attachments remain linked. Uploading new files will add to them.
-          </p>
+      {showOptions && (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Document Type
+              </label>
+              <select
+                value={documentType}
+                onChange={(e) => onDocumentTypeChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="invoice">Invoice</option>
+                <option value="receipt">Receipt</option>
+                <option value="statement">Bank Statement</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Expense Status
+              </label>
+              <select
+                value={paymentStatus}
+                onChange={(e) => onPaymentStatusChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="open">Open</option>
+                <option value="paid">Paid</option>
+                <option value="late">Late</option>
+              </select>
+            </div>
+          </div>
+
+          {autoFillStatus !== 'idle' && autoFillDisplayMessage && (
+            <div className={`border rounded-md px-3 py-2 text-xs flex items-center justify-between gap-3 ${autoFillStatusClasses[autoFillStatus] || 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+              <span className="font-medium">{autoFillDisplayMessage}</span>
+              {autoFillStatus === 'processing' && (
+                <span className="shrink-0 font-semibold">
+                  {Math.min(100, Math.max(0, Math.round(autoFillProgress)))}%
+                </span>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {label}
+            </label>
+            <FileUpload
+              files={selectedFiles}
+              onFilesChange={onFilesChange}
+              maxFiles={5}
+            />
+          </div>
+
+          {existingAttachments?.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-800">
+                Existing attachments remain linked. Uploading new files will add to them.
+              </p>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Notes (Optional)
+            </label>
+            <textarea
+              value={notesValue}
+              onChange={(e) => onNotesChange(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[3rem]"
+              placeholder="Add quick notes (expand for more detail)"
+            />
+          </div>
         </div>
       )}
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Notes (Optional)
-        </label>
-        <textarea
-          value={notesValue}
-          onChange={(e) => onNotesChange(e.target.value)}
-          rows={4}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Additional notes..."
-        />
-      </div>
     </div>
   );
 };
