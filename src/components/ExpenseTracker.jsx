@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { createWorker } from 'tesseract.js';
+import parseExpensesWithExcelJS from '../utils/importers/exceljsExpenseParser';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import {
@@ -1054,6 +1055,21 @@ const ExpenseTracker = () => {
 
   // Handle Excel file import
   const handleExcelImport = async (file) => {
+    const useExcelJs = true;
+
+    if (useExcelJs) {
+      try {
+        const mappedData = await parseExpensesWithExcelJS(file);
+        if (Array.isArray(mappedData) && mappedData.length > 0) {
+          setImportedData(mappedData);
+          setShowImportModal(true);
+          return;
+        }
+      } catch (excelJsError) {
+        console.warn('[ExcelJS] Falling back to SheetJS importer:', excelJsError);
+      }
+    }
+
     try {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -1106,7 +1122,8 @@ const ExpenseTracker = () => {
               paymentMethodDetails: '',
               notes: '',
               frequency: '',
-              invoiceNumber: ''
+              invoiceNumber: '',
+              documentType: 'invoice'
             };
             
             // Map columns based on header names
