@@ -1097,6 +1097,21 @@ const ExpenseTracker = () => {
     lastChecked: null
   });
 
+  const previousPaymentStatusRef = useRef(formData.paymentStatus);
+
+  useEffect(() => {
+    if (previousPaymentStatusRef.current === 'paid' && formData.paymentStatus !== 'paid') {
+      setFormData(prev => ({
+        ...prev,
+        financialAccountId: '',
+        paymentMethodDetails: ''
+      }));
+    }
+    previousPaymentStatusRef.current = formData.paymentStatus;
+  }, [formData.paymentStatus]);
+
+  const paymentSectionVisible = formData.paymentStatus === 'paid';
+
   // Load expenses from Firebase when component mounts or company changes
   useEffect(() => {
     if (!currentUser || !currentCompanyId) {
@@ -1282,6 +1297,16 @@ const ExpenseTracker = () => {
         payload.invoiceDate = payload.date;
       }
 
+      const isMarkedAsPaid = payload.paymentStatus === 'paid';
+      const expensePayload = {
+        ...payload,
+        financialAccountId: isMarkedAsPaid ? payload.financialAccountId : '',
+        paymentMethod: isMarkedAsPaid ? payload.paymentMethod : '',
+        paymentMethodDetails: isMarkedAsPaid ? payload.paymentMethodDetails : ''
+      };
+      const newAmount = parseFloat(formData.amount || 0);
+      const newAccountId = isMarkedAsPaid ? expensePayload.financialAccountId : '';
+
       if (!currentCompanyId) {
         alert('Please select a company to add expenses.');
         setUploadingFiles(false);
@@ -1292,43 +1317,52 @@ const ExpenseTracker = () => {
         // Update existing expense
         expenseId = editingExpense.id;
         const oldAmount = parseFloat(editingExpense.amount || 0);
-        const newAmount = parseFloat(formData.amount || 0);
-        const oldAccountId = editingExpense.financialAccountId;
-        const newAccountId = formData.financialAccountId;
+        const oldAccountId = editingExpense.financialAccountId || '';
+        const wasPreviouslyPaid = editingExpense.paymentStatus === 'paid';
         
         await updateCompanyExpense(currentCompanyId, expenseId, {
-          ...payload,
+          ...expensePayload,
           updatedAt: new Date().toISOString()
         });
         
-        // Update account balances if financial account is linked
-        if (oldAccountId && oldAccountId !== newAccountId) {
-          // Account changed: reverse old, apply new
-          await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
-          if (newAccountId) {
+        // Update account balances when payment state changes
+        if (wasPreviouslyPaid && !isMarkedAsPaid) {
+          if (oldAccountId && oldAmount > 0) {
+            await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
+          }
+        } else if (!wasPreviouslyPaid && isMarkedAsPaid) {
+          if (newAccountId && newAmount > 0) {
             await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
           }
-        } else if (newAccountId && oldAmount !== newAmount) {
-          // Same account, different amount: adjust difference
-          const difference = oldAmount - newAmount;
-          if (difference !== 0) {
-            await updateAccountBalance(currentCompanyId, newAccountId, difference, 'expense');
+        } else if (wasPreviouslyPaid && isMarkedAsPaid) {
+          if (oldAccountId && oldAccountId !== newAccountId) {
+            if (oldAccountId && oldAmount > 0) {
+              await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
+            }
+            if (newAccountId && newAmount > 0) {
+              await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
+            }
+          } else if (newAccountId && oldAmount !== newAmount) {
+            const difference = oldAmount - newAmount;
+            if (difference !== 0) {
+              await updateAccountBalance(currentCompanyId, newAccountId, difference, 'expense');
+            }
+          } else if (!newAccountId && oldAccountId && oldAmount > 0) {
+            // Payment account removed while remaining paid — reverse previous deduction
+            await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
           }
         }
       } else {
         // Add new expense
         expenseId = await addCompanyExpense(currentCompanyId, currentUser.uid, {
-          ...payload,
+          ...expensePayload,
           accountId: currentAccountId,
           createdAt: new Date().toISOString()
         });
         
-        // Update account balance if financial account is linked
-        if (payload.financialAccountId && payload.amount) {
-          const amount = parseFloat(payload.amount || 0);
-          if (amount > 0) {
-            await updateAccountBalance(currentCompanyId, payload.financialAccountId, -amount, 'expense');
-          }
+        // Update account balance only when marking as paid
+        if (isMarkedAsPaid && newAccountId && newAmount > 0) {
+          await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
         }
       }
 
@@ -1358,10 +1392,21 @@ const ExpenseTracker = () => {
         }
 
         // Update expense with file metadata
+        const priorAttachments = editingExpense
+          ? (existingAttachments && existingAttachments.length > 0
+            ? existingAttachments
+            : (editingExpense.attachments || []))
+          : [];
+        const mergedAttachments = [...priorAttachments, ...uploadedFiles];
+        const uniqueAttachments = mergedAttachments.filter((attachment, index, self) =>
+          self.findIndex(item => item.fileUrl === attachment.fileUrl) === index
+        );
+
         await updateCompanyExpense(currentCompanyId, expenseId, {
-          attachments: uploadedFiles,
+          attachments: uniqueAttachments,
           updatedAt: new Date().toISOString()
         });
+        setExistingAttachments(uniqueAttachments);
       }
 
       // Reload expenses
@@ -2298,78 +2343,85 @@ const ExpenseTracker = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <FinancialAccountSelect
-                        value={formData.financialAccountId}
-                        onChange={(e) => {
-                          setFormData(prev => ({
-                            ...prev,
-                            financialAccountId: e.target.value,
-                            bankAccount: e.target.value ? 'Financial Account' : prev.bankAccount
-                          }));
-                        }}
-                        filterBy={['expenses']}
-                        label="Financial Account"
-                        required={false}
-                        showBalance={true}
-                        onAddAccount={() => {
-                          window.open('/settings?tab=accounts', '_blank');
-                        }}
-                      />
-                      {!formData.financialAccountId && (
-                        <div className="mt-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Bank Account (Legacy)
-                          </label>
-                          <select
-                            name="bankAccount"
-                            value={formData.bankAccount}
-                            onChange={handleInputChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            {bankAccounts.map(account => (
-                              <option key={account} value={account}>{account}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                  {paymentSectionVisible ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <FinancialAccountSelect
+                          value={formData.financialAccountId}
+                          onChange={(e) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              financialAccountId: e.target.value,
+                              bankAccount: e.target.value ? 'Financial Account' : prev.bankAccount
+                            }));
+                          }}
+                          filterBy={['expenses']}
+                          label="Financial Account"
+                          required={false}
+                          showBalance={true}
+                          onAddAccount={() => {
+                            window.open('/settings?tab=accounts', '_blank');
+                          }}
+                        />
+                        {!formData.financialAccountId && (
+                          <div className="mt-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Bank Account (Legacy)
+                            </label>
+                            <select
+                              name="bankAccount"
+                              value={formData.bankAccount}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              {bankAccounts.map(account => (
+                                <option key={account} value={account}>{account}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Payment Method
+                        </label>
+                        <select
+                          name="paymentMethod"
+                          value={formData.paymentMethod}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {paymentMethods.map(method => (
+                            <option key={method} value={method}>{method}</option>
+                          ))}
+                        </select>
+                        {(formData.paymentMethod === 'Debit Card' || formData.paymentMethod === 'Credit Card') && (
+                          <div className="mt-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Card Details (Optional)
+                            </label>
+                            <input
+                              type="text"
+                              name="paymentMethodDetails"
+                              value={formData.paymentMethodDetails}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="e.g., MC #5248***2552, Visa #4532****1234"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                              Enter card type and last 4 digits (e.g., MC #5248***2552)
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Payment Method
-                      </label>
-                      <select
-                        name="paymentMethod"
-                        value={formData.paymentMethod}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {paymentMethods.map(method => (
-                          <option key={method} value={method}>{method}</option>
-                        ))}
-                      </select>
-                      {(formData.paymentMethod === 'Debit Card' || formData.paymentMethod === 'Credit Card') && (
-                        <div className="mt-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Card Details (Optional)
-                          </label>
-                          <input
-                            type="text"
-                            name="paymentMethodDetails"
-                            value={formData.paymentMethodDetails}
-                            onChange={handleInputChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="e.g., MC #5248***2552, Visa #4532****1234"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">
-                            Enter card type and last 4 digits (e.g., MC #5248***2552)
-                          </p>
-                        </div>
-                      )}
+                  ) : (
+                    <div className="bg-blue-50 border border-blue-200 text-sm text-blue-700 rounded-md px-3 py-3">
+                      Mark the expense as <span className="font-semibold">Paid</span> to record payment
+                      details and update linked account balances. Until then the invoice remains open.
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="overflow-y-auto pr-2 lg:max-h-[72vh]">
