@@ -46,6 +46,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.1;
+const DEFAULT_ZOOM = 1.6;
 
 const EU_COUNTRY_OPTIONS = [
   { code: 'BE', label: 'Belgium' },
@@ -334,7 +335,7 @@ const AttachmentPanel = ({
                   type="button"
                   onClick={() => {
                     setCurrentPreviewId(item.id);
-                    setZoomLevel(1);
+                    setZoomLevel(DEFAULT_ZOOM);
                   }}
                   className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                     currentPreviewId === item.id
@@ -445,14 +446,14 @@ const ExpenseTracker = () => {
   useEffect(() => {
     if (previewItems.length === 0) {
       setCurrentPreviewId(null);
-      setZoomLevel(1);
+      setZoomLevel(DEFAULT_ZOOM);
       return;
     }
 
     setCurrentPreviewId(prev => {
       const newest = previewItems[previewItems.length - 1];
       if (newest && newest.source === 'new') {
-        setZoomLevel(1);
+        setZoomLevel(DEFAULT_ZOOM);
         return newest.id;
       }
 
@@ -460,13 +461,13 @@ const ExpenseTracker = () => {
         return prev;
       }
 
-      setZoomLevel(1);
+      setZoomLevel(DEFAULT_ZOOM);
       return previewItems[0].id;
     });
   }, [previewItems]);
 
   const [currentPreviewId, setCurrentPreviewId] = useState(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
 
   const getFileSignature = (file) => `${file.name}-${file.size}-${file.lastModified}`;
 
@@ -545,6 +546,8 @@ const ExpenseTracker = () => {
       .map(line => line.trim())
       .filter(Boolean);
 
+    const collapsedLines = lines.map(line => line.replace(/\s{2,}/g, ' ').trim()).filter(Boolean);
+
     // Document type inference
     if (lower.includes('invoice')) {
       fields.documentType = 'invoice';
@@ -552,51 +555,73 @@ const ExpenseTracker = () => {
       fields.documentType = 'receipt';
     } else if (lower.includes('statement')) {
       fields.documentType = 'statement';
+    } else if (lower.includes('bill')) {
+      fields.documentType = 'invoice';
     }
 
     // Invoice number
-    const invoiceMatch = lower.match(/invoice\s*(number|no\.?|#)\s*[-:]?\s*([a-z0-9-]+)/i);
-    if (invoiceMatch && invoiceMatch[2]) {
-      fields.invoiceNumber = invoiceMatch[2].toUpperCase();
+    const invoiceMatch = normalized.match(/invoice\s*(?:number|no\.?|#)\s*[-:]?\s*([a-z0-9][a-z0-9\-_/]+)/i);
+    if (invoiceMatch && invoiceMatch[1]) {
+      fields.invoiceNumber = invoiceMatch[1].toUpperCase();
+    } else {
+      const invoiceLine = collapsedLines.find(line => /^invoice\s*(?:number|no\.?|#)/i.test(line));
+      if (invoiceLine) {
+        const cleaned = invoiceLine.replace(/^invoice\s*(?:number|no\.?|#)\s*[-:]?/i, '').trim();
+        const tokenMatch = cleaned.match(/[A-Z0-9]+(?:[-/][A-Z0-9]+)*/i);
+        if (tokenMatch) {
+          fields.invoiceNumber = tokenMatch[0].toUpperCase();
+        }
+      }
     }
 
     // Date detection
-    const dateRegexp = /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/;
-    const dateMatch = normalized.match(dateRegexp);
-    if (dateMatch) {
-      const isoDate = normalizeDateString(dateMatch[1]);
-      if (isoDate) {
-        fields.date = isoDate;
+    const normalizeForDate = (value) => value.replace(/(\d+)(st|nd|rd|th)/gi, '$1').trim();
+    const shortDateRegexp = /\b(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})\b/g;
+    const shortDateMatches = [...normalized.matchAll(shortDateRegexp)].map(match => match[1]);
+    if (shortDateMatches.length > 0) {
+      const isoShort = normalizeDateString(normalizeForDate(shortDateMatches[0]));
+      if (isoShort) {
+        fields.date = isoShort;
+      }
+      if (shortDateMatches[1]) {
+        const isoSecond = normalizeDateString(normalizeForDate(shortDateMatches[1]));
+        if (isoSecond && !fields.invoiceDate) {
+          fields.invoiceDate = isoSecond;
+        }
       }
     }
 
-    const longDateRegexp = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b/gi;
-    const longDateMatches = [...normalized.matchAll(longDateRegexp)];
+    const longDateRegexp = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2},?\s+\d{4}\b/gi;
+    const longDateMatches = [...normalized.matchAll(longDateRegexp)].map(match => match[0]);
+
     const issueMatch = normalized.match(/date of issue\s*[-:]?\s*([^\n]+)/i);
     if (issueMatch) {
-      const isoIssue = normalizeDateString(issueMatch[1]);
+      const isoIssue = normalizeDateString(normalizeForDate(issueMatch[1]));
       if (isoIssue) {
         fields.invoiceDate = isoIssue;
       }
-    }
-    const dueMatch = normalized.match(/date due\s*[-:]?\s*([^\n]+)/i);
-    if (dueMatch) {
-      const isoDue = normalizeDateString(dueMatch[1]);
-      if (isoDue) {
-        fields.dueDate = isoDue;
-      }
-    }
-    if (!fields.invoiceDate && longDateMatches[0]) {
-      const iso = normalizeDateString(longDateMatches[0][0]);
+    } else if (longDateMatches[0]) {
+      const iso = normalizeDateString(normalizeForDate(longDateMatches[0]));
       if (iso) {
         fields.invoiceDate = iso;
       }
     }
-    if (!fields.dueDate && longDateMatches[1]) {
-      const iso = normalizeDateString(longDateMatches[1][0]);
+
+    const dueMatch = normalized.match(/date due\s*[-:]?\s*([^\n]+)/i);
+    if (dueMatch) {
+      const isoDue = normalizeDateString(normalizeForDate(dueMatch[1]));
+      if (isoDue) {
+        fields.dueDate = isoDue;
+      }
+    } else if (longDateMatches[1]) {
+      const iso = normalizeDateString(normalizeForDate(longDateMatches[1]));
       if (iso) {
         fields.dueDate = iso;
       }
+    }
+
+    if (!fields.date && fields.invoiceDate) {
+      fields.date = fields.invoiceDate;
     }
 
     // Amount detection
@@ -631,32 +656,64 @@ const ExpenseTracker = () => {
     }
 
     // Vendor detection
-    let vendorCandidateIndex = -1;
-    const vendorCandidate = lines.find((line, index) => {
-      const lowerLine = line.toLowerCase();
-      if (lowerLine.includes('invoice') || lowerLine.includes('date') || lowerLine.includes('amount') || lowerLine.includes('total')) {
-        return false;
+    const billToIndex = collapsedLines.findIndex(line => /^bill to\b/i.test(line));
+    if (billToIndex > 0) {
+      const vendorBlock = [];
+      for (let idx = billToIndex - 1; idx >= 0; idx -= 1) {
+        const line = collapsedLines[idx];
+        if (!line || /^bill to\b/i.test(line) || /^invoice\b/i.test(line) || /^page\s+/i.test(line)) {
+          break;
+        }
+        if (/invoice\s*(?:number|no\.?|#)/i.test(line)) continue;
+        if (/date (of issue|due)/i.test(line)) continue;
+        if (/amount|total|tax|subtotal/i.test(line)) continue;
+        vendorBlock.unshift(line);
       }
-      const isLikelyVendor = /[a-z]{2,}/i.test(line) && line.length <= 70;
-      if (isLikelyVendor) {
-        vendorCandidateIndex = index;
+      const sanitizedBlock = vendorBlock.filter(Boolean);
+      if (sanitizedBlock.length) {
+        fields.vendor = sanitizedBlock[0];
+        if (sanitizedBlock.length > 1) {
+          const uniqueAddressLines = sanitizedBlock
+            .slice(1)
+            .filter((line, index, arr) => arr.indexOf(line) === index);
+          if (uniqueAddressLines.length) {
+            fields.vendorAddress = uniqueAddressLines.join(', ');
+          }
+        }
       }
-      return isLikelyVendor;
-    });
-    if (vendorCandidate) {
-      fields.vendor = vendorCandidate;
     }
 
-    if (vendorCandidateIndex !== -1) {
-      const possibleAddress = lines[vendorCandidateIndex + 1];
-      if (possibleAddress && /\d+/.test(possibleAddress) && possibleAddress.length <= 100) {
-        fields.vendorAddress = possibleAddress;
+    if (!fields.vendor) {
+      const vendorFallback = collapsedLines.find(line =>
+        /(limited|inc|llc|bv|b\.v\.|gmbh|s\.a\.|sarl|oy|ab|ltd|plc|pte|company|co\.)/i.test(line)
+      );
+      if (vendorFallback) {
+        fields.vendor = vendorFallback;
+        const vendorIndex = collapsedLines.indexOf(vendorFallback);
+        const addressCandidates = collapsedLines
+          .slice(vendorIndex + 1, vendorIndex + 5)
+          .filter(line => line && !/invoice|bill to|description|qty|unit price|subtotal|total|vat/i.test(line));
+        if (addressCandidates.length) {
+          fields.vendorAddress = addressCandidates.join(', ');
+        }
+      }
+    }
+
+    if (fields.vendor && !fields.vendorAddress) {
+      const vendorIndex = collapsedLines.indexOf(fields.vendor);
+      if (vendorIndex !== -1) {
+        const addressCandidates = collapsedLines
+          .slice(vendorIndex + 1, vendorIndex + 5)
+          .filter(line => line && !/invoice|bill to|description|qty|unit price|subtotal|total|vat/i.test(line));
+        if (addressCandidates.length) {
+          fields.vendorAddress = addressCandidates.join(', ');
+        }
       }
     }
 
     if (!fields.vendorCountry) {
-      const vendorSection = lines.slice(0, Math.min(lines.length, vendorCandidateIndex + 5)).join(' ').toLowerCase();
-      const countryMatch = EU_COUNTRY_OPTIONS.find(country => vendorSection.includes(country.label.toLowerCase()));
+      const vendorText = `${fields.vendor || ''} ${fields.vendorAddress || ''}`.toLowerCase();
+      const countryMatch = EU_COUNTRY_OPTIONS.find(country => vendorText.includes(country.label.toLowerCase()));
       if (countryMatch) {
         fields.vendorCountry = countryMatch.code;
       }
@@ -686,21 +743,55 @@ const ExpenseTracker = () => {
       fields.reverseCharge = true;
     }
 
-    // Description
-    const descriptionLine = lines.find(line => line.toLowerCase().includes('description'));
-    if (descriptionLine) {
-      const parts = descriptionLine.split(':');
-      if (parts.length > 1) {
-        fields.description = parts.slice(1).join(':').trim();
-      } else {
-        fields.description = descriptionLine.trim();
+    // Description extraction
+    const descriptionHeaderIndex = collapsedLines.findIndex(line => /^description(\s+qty.*)?$/i.test(line));
+    if (descriptionHeaderIndex !== -1) {
+      const descriptionLines = [];
+      for (let i = descriptionHeaderIndex + 1; i < collapsedLines.length; i += 1) {
+        const candidate = collapsedLines[i];
+        if (!candidate || /^(qty|unit price|amount|tax|subtotal|total|vat|amount due|bill to)/i.test(candidate)) {
+          break;
+        }
+        descriptionLines.push(candidate);
+        if (descriptionLines.length >= 2) {
+          const joined = descriptionLines.join(' ');
+          if (joined.length > 12) break;
+        }
       }
-    } else if (fields.vendor) {
+      if (descriptionLines.length) {
+        fields.description = descriptionLines.join(' ').replace(/\s{2,}/g, ' ').trim();
+      }
+    }
+
+    if (!fields.description) {
+      const descriptionSection = normalized.match(/description\s+([\s\S]+?)\bsubtotal\b/i);
+      if (descriptionSection) {
+        const snippet = descriptionSection[1]
+          .split('\n')
+          .map(line => line.trim())
+          .filter(Boolean)
+          .slice(0, 2)
+          .join(' ');
+        if (snippet) {
+          fields.description = snippet.replace(/\s{2,}/g, ' ').trim();
+        }
+      }
+    }
+
+    if (!fields.description && fields.vendor) {
       fields.description = `Invoice from ${fields.vendor}`;
     }
 
-    if (!fields.documentType && lower.includes('bill')) {
-      fields.documentType = 'invoice';
+    if (fields.vendor) {
+      fields.vendor = fields.vendor.replace(/\s{2,}/g, ' ').trim();
+    }
+    if (fields.vendorAddress) {
+      fields.vendorAddress = fields.vendorAddress
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean)
+        .filter((part, index, arr) => arr.indexOf(part) === index)
+        .join(', ');
     }
 
     if (!fields.paymentStatus) {
@@ -1077,12 +1168,12 @@ const ExpenseTracker = () => {
 
     try {
       const result = await validateVatNumber(countryForLookup, formData.vatNumber);
-      if (!result?.success || !result?.data) {
-        setVatValidationState({
-          status: 'error',
-          message: 'Unable to validate VAT number at the moment.',
-          lastChecked: null
-        });
+    if (!result?.success || !result?.data) {
+      setVatValidationState({
+        status: 'error',
+        message: result?.error || 'VAT validation service is temporarily unavailable. Please try again shortly.',
+        lastChecked: null
+      });
         return;
       }
 
@@ -1113,9 +1204,15 @@ const ExpenseTracker = () => {
       });
     } catch (error) {
       console.error('VAT validation failed:', error);
+      let friendlyMessage = error?.message || 'VIES validation failed. Please try again later.';
+      if (error?.code === 'functions/not-found' || /function.*not found/i.test(friendlyMessage)) {
+        friendlyMessage = 'VAT validation function is not deployed yet. Run "firebase deploy --only functions:validateVat" and try again.';
+      } else if (/internal/i.test(friendlyMessage)) {
+        friendlyMessage = 'VAT validation service is temporarily unavailable. Please retry in a moment.';
+      }
       setVatValidationState({
         status: 'error',
-        message: error.message || 'VIES validation failed. Please try again later.',
+        message: friendlyMessage,
         lastChecked: null
       });
     }
@@ -1254,7 +1351,7 @@ const ExpenseTracker = () => {
       setUploadProgress(0);
       setExistingAttachments([]);
       setCurrentPreviewId(null);
-      setZoomLevel(1);
+      setZoomLevel(DEFAULT_ZOOM);
 
       setShowAddExpense(false);
       setEditingExpense(null);
@@ -1330,7 +1427,7 @@ const ExpenseTracker = () => {
     setExistingAttachments(expense.attachments || []);
     setSelectedFiles([]);
     setCurrentPreviewId(null);
-    setZoomLevel(1);
+    setZoomLevel(DEFAULT_ZOOM);
   };
 
   // Handle view attachments
@@ -1553,7 +1650,7 @@ const ExpenseTracker = () => {
     
     // Common patterns for Dutch bank statements (ING, etc.)
     // Date pattern: DD-MM-YYYY or DD/MM/YYYY
-    const datePattern = /(\d{2}[-\/]\d{2}[-\/]\d{4})/;
+    const datePattern = /(\d{2}[-/]\d{2}[-/]\d{4})/;
     // Amount pattern: EUR amounts with +/- and decimals
     const amountPattern = /([+-]?\s*\d+[.,]\d{2})\s*EUR/i;
     // Card number pattern: Kaartnummer: 5248********2552
@@ -1606,7 +1703,7 @@ const ExpenseTracker = () => {
         // Extract vendor/merchant name (usually before amount)
         if (!currentTransaction.vendor && !amountMatch) {
           // Common merchant patterns
-          const merchantPattern = /([A-Z][A-Z0-9\s\.]+(?:INC|COM|BV|B\.V\.|LTD|LLC|NL|EU|USA)?)/;
+          const merchantPattern = /([A-Z][A-Z0-9\s.]+(?:INC|COM|BV|B\.V\.|LTD|LLC|NL|EU|USA)?)/;
           const merchantMatch = line.match(merchantPattern);
           if (merchantMatch && merchantMatch[1].length > 3) {
             currentTransaction.vendor = merchantMatch[1].trim();
@@ -1654,22 +1751,34 @@ const ExpenseTracker = () => {
         
         try {
           // Map to form data structure
+          const parsedAmount = typeof expenseData.amount === 'number'
+            ? expenseData.amount
+            : parseNumericAmount(expenseData.amount);
           const expenseToAdd = {
             date: expenseData.date,
+            invoiceDate: expenseData.invoiceDate || expenseData.date,
+            dueDate: expenseData.dueDate || '',
             category: expenseData.category || 'Other',
+            currency: expenseData.currency || 'EUR',
             vendor: expenseData.vendor,
             vendorAddress: expenseData.vendorAddress || '',
+            vendorCountry: expenseData.vendorCountry || companyCountry,
             invoiceNumber: expenseData.invoiceNumber || '',
+            vatNumber: expenseData.vatNumber || '',
+            chamberOfCommerceNumber: expenseData.chamberOfCommerceNumber || '',
             description: expenseData.description || expenseData.vendor,
-            amount: expenseData.amount.toString(),
-            btw: 21, // Default VAT rate
+            amount: Number.isFinite(parsedAmount) ? parsedAmount.toFixed(2) : '0',
+            btw: typeof expenseData.btw === 'number' ? expenseData.btw : 21,
+            reverseCharge: Boolean(expenseData.reverseCharge),
             bankAccount: 'Business Checking',
             financialAccountId: '',
             paymentMethod: expenseData.paymentMethod || 'Debit Card',
             paymentMethodDetails: expenseData.paymentMethodDetails || '',
-            documentType: importType === 'ocr' ? 'statement' : 'invoice',
-            paymentStatus: 'open',
+            documentType: importType === 'ocr' ? 'statement' : (expenseData.documentType || 'invoice'),
+            paymentStatus: expenseData.paymentStatus || 'open',
             notes: expenseData.notes || '',
+            vatValidationStatus: 'idle',
+            vatValidatedAt: '',
             createdAt: new Date().toISOString()
           };
           
@@ -1714,7 +1823,7 @@ const ExpenseTracker = () => {
           startDate: today.toISOString().split('T')[0],
           endDate: today.toISOString().split('T')[0]
         };
-      case 'week':
+      case 'week': {
         const weekStart = new Date(today);
         weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
         const weekEnd = new Date(weekStart);
@@ -1723,20 +1832,23 @@ const ExpenseTracker = () => {
           startDate: weekStart.toISOString().split('T')[0],
           endDate: weekEnd.toISOString().split('T')[0]
         };
-      case 'month':
+      }
+      case 'month': {
         const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
         const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         return {
           startDate: monthStart.toISOString().split('T')[0],
           endDate: monthEnd.toISOString().split('T')[0]
         };
-      case 'year':
+      }
+      case 'year': {
         const yearStart = new Date(today.getFullYear(), 0, 1);
         const yearEnd = new Date(today.getFullYear(), 11, 31);
         return {
           startDate: yearStart.toISOString().split('T')[0],
           endDate: yearEnd.toISOString().split('T')[0]
         };
+      }
       default:
         return { startDate: '', endDate: '' };
     }
@@ -1843,7 +1955,7 @@ const ExpenseTracker = () => {
                     setSelectedFiles([]);
                     setExistingAttachments([]);
                     setCurrentPreviewId(null);
-                    setZoomLevel(1);
+                    setZoomLevel(DEFAULT_ZOOM);
                     setFormData({
                       date: new Date().toISOString().split('T')[0],
                       category: 'Subscriptions',
@@ -2261,7 +2373,7 @@ const ExpenseTracker = () => {
                     setExistingAttachments([]);
                     setSelectedFiles([]);
                     setCurrentPreviewId(null);
-                    setZoomLevel(1);
+                    setZoomLevel(DEFAULT_ZOOM);
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
@@ -2470,7 +2582,7 @@ const ExpenseTracker = () => {
                 setExistingAttachments([]);
                 setSelectedFiles([]);
                 setCurrentPreviewId(null);
-                setZoomLevel(1);
+                setZoomLevel(DEFAULT_ZOOM);
                 setEditingExpense(null);
                 setShowAddExpense(true);
               }}
