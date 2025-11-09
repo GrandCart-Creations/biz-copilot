@@ -54,16 +54,23 @@ export const parseExpensesWithExcelJS = async (file) => {
     const expense = {
       rowIndex,
       date: '',
+      invoiceDate: '',
+      dueDate: '',
       category: '',
       vendor: '',
       vendorAddress: '',
+      vendorCountry: '',
       description: '',
       amount: '',
+      currency: 'EUR',
       paymentMethod: '',
       paymentMethodDetails: '',
       notes: '',
       frequency: '',
       invoiceNumber: '',
+      vatNumber: '',
+      btw: 21,
+      reverseCharge: false,
       documentType: guessDocumentType(worksheet),
     };
 
@@ -72,13 +79,23 @@ export const parseExpensesWithExcelJS = async (file) => {
 
       if (header.includes('date')) {
         const excelDate = values[index];
-        if (excelDate instanceof Date) {
-          expense.date = excelDate.toISOString().split('T')[0];
-        } else if (value) {
-          const parsedDate = new Date(value);
-          if (!Number.isNaN(parsedDate.getTime())) {
-            expense.date = parsedDate.toISOString().split('T')[0];
+        const assignDateValue = (targetKey) => {
+          if (excelDate instanceof Date) {
+            expense[targetKey] = excelDate.toISOString().split('T')[0];
+          } else if (value) {
+            const parsedDate = new Date(value);
+            if (!Number.isNaN(parsedDate.getTime())) {
+              expense[targetKey] = parsedDate.toISOString().split('T')[0];
+            }
           }
+        };
+
+        if (header.includes('invoice')) {
+          assignDateValue('invoiceDate');
+        } else if (header.includes('due')) {
+          assignDateValue('dueDate');
+        } else {
+          assignDateValue('date');
         }
       } else if (header.includes('category')) {
         expense.category = value || 'Other';
@@ -86,11 +103,29 @@ export const parseExpensesWithExcelJS = async (file) => {
         expense.vendor = value;
       } else if (header.includes('address')) {
         expense.vendorAddress = value;
+      } else if (header.includes('country')) {
+        expense.vendorCountry = value.slice(0, 2).toUpperCase();
       } else if (header.includes('description')) {
         expense.description = value;
       } else if (header.includes('amount') && !header.includes('vat')) {
         const amountStr = value.replace(/[€$£,\s]/g, '').replace(',', '.');
         expense.amount = parseFloat(amountStr) || 0;
+        if (value.includes('$')) {
+          expense.currency = 'USD';
+        } else if (value.includes('£')) {
+          expense.currency = 'GBP';
+        } else if (value.includes('€')) {
+          expense.currency = 'EUR';
+        }
+      } else if (header.includes('currency')) {
+        expense.currency = value.toUpperCase();
+      } else if ((header.includes('vat') || header.includes('btw')) && header.includes('rate')) {
+        const numericRate = parseInt(value, 10);
+        if (!Number.isNaN(numericRate)) {
+          expense.btw = numericRate;
+        }
+      } else if (header.includes('vat') && !header.includes('rate')) {
+        expense.vatNumber = value.toUpperCase().replace(/\s+/g, '');
       } else if (header.includes('payment') && header.includes('method')) {
         const paymentParts = value.split('#');
         if (paymentParts.length > 1) {
@@ -105,8 +140,15 @@ export const parseExpensesWithExcelJS = async (file) => {
         expense.frequency = value;
       } else if (header.includes('invoice')) {
         expense.invoiceNumber = value;
+      } else if (header.includes('reverse') && header.includes('charge')) {
+        const lowerValue = value.toLowerCase();
+        expense.reverseCharge = lowerValue.includes('true') || lowerValue.includes('yes');
       }
     });
+
+    if (!expense.date && expense.invoiceDate) {
+      expense.date = expense.invoiceDate;
+    }
 
     return expense;
   });

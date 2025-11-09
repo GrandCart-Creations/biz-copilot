@@ -38,6 +38,7 @@ import {
   deleteObject,
   listAll
 } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { encryptSensitiveFields, decryptSensitiveFields } from './utils/encryption';
 
 const readEnv = (key) => {
@@ -69,6 +70,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
+const functions = getFunctions(app, 'europe-west1');
 
 // ==================== ERROR HANDLING ====================
 
@@ -2275,6 +2277,18 @@ export const deleteCompanyLogo = async (logoPath) => {
     // Don't throw - logo might already be deleted
     console.warn('Logo deletion failed (may already be deleted):', error);
   }
+};
+
+/**
+ * Validate a VAT number using Firebase callable function (VIES proxy)
+ */
+export const validateVatNumber = async (countryCode, vatNumber) => {
+  const callable = httpsCallable(functions, 'validateVat');
+  const response = await callable({
+    countryCode,
+    vatNumber
+  });
+  return response.data;
 };
 
 // Export auth, db, and storage instances

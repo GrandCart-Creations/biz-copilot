@@ -37,8 +37,8 @@ import {
   updateCompanyExpense,
   deleteCompanyExpense,
   uploadExpenseFile,
-  deleteExpenseFile,
-  updateAccountBalance
+  updateAccountBalance,
+  validateVatNumber
 } from '../firebase';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -46,6 +46,38 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.1;
+
+const EU_COUNTRY_OPTIONS = [
+  { code: 'BE', label: 'Belgium' },
+  { code: 'BG', label: 'Bulgaria' },
+  { code: 'CZ', label: 'Czech Republic' },
+  { code: 'DK', label: 'Denmark' },
+  { code: 'DE', label: 'Germany' },
+  { code: 'EE', label: 'Estonia' },
+  { code: 'IE', label: 'Ireland' },
+  { code: 'EL', label: 'Greece' },
+  { code: 'ES', label: 'Spain' },
+  { code: 'FR', label: 'France' },
+  { code: 'HR', label: 'Croatia' },
+  { code: 'IT', label: 'Italy' },
+  { code: 'CY', label: 'Cyprus' },
+  { code: 'LV', label: 'Latvia' },
+  { code: 'LT', label: 'Lithuania' },
+  { code: 'LU', label: 'Luxembourg' },
+  { code: 'HU', label: 'Hungary' },
+  { code: 'MT', label: 'Malta' },
+  { code: 'NL', label: 'Netherlands' },
+  { code: 'AT', label: 'Austria' },
+  { code: 'PL', label: 'Poland' },
+  { code: 'PT', label: 'Portugal' },
+  { code: 'RO', label: 'Romania' },
+  { code: 'SI', label: 'Slovenia' },
+  { code: 'SK', label: 'Slovakia' },
+  { code: 'FI', label: 'Finland' },
+  { code: 'SE', label: 'Sweden' }
+];
+
+const CURRENCY_OPTIONS = ['EUR', 'USD', 'GBP', 'CHF', 'SEK'];
 
 const AttachmentPanel = ({
   label,
@@ -73,6 +105,13 @@ const AttachmentPanel = ({
   ), [previewItems, currentPreviewId]);
 
   const hasPreview = Boolean(currentPreview);
+  const previewContainerRef = useRef(null);
+
+  useEffect(() => {
+    if (hasPreview && previewContainerRef.current) {
+      previewContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [hasPreview, currentPreviewId]);
 
   const clampedZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomLevel));
 
@@ -283,7 +322,7 @@ const AttachmentPanel = ({
             </button>
           </div>
         </div>
-        <div className="h-[62vh] bg-gray-100">
+        <div ref={previewContainerRef} className="h-[62vh] bg-gray-100">
           {renderPreview()}
         </div>
         <div className="px-3 sm:px-4 py-3 border-t bg-gray-50">
@@ -342,7 +381,8 @@ const AttachmentPanel = ({
 const ExpenseTracker = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { currentCompany, currentCompanyId, userRole, performExpenseMigration } = useCompany();
+  const { currentCompany, currentCompanyId, performExpenseMigration } = useCompany();
+  const companyCountry = currentCompany?.country || 'NL';
   
   // Migration state
   const [isMigrating, setIsMigrating] = useState(false);
@@ -515,7 +555,7 @@ const ExpenseTracker = () => {
     }
 
     // Invoice number
-    const invoiceMatch = lower.match(/invoice\s*(number|no\.?|#)\s*[:\-]?\s*([a-z0-9\-]+)/i);
+    const invoiceMatch = lower.match(/invoice\s*(number|no\.?|#)\s*[-:]?\s*([a-z0-9-]+)/i);
     if (invoiceMatch && invoiceMatch[2]) {
       fields.invoiceNumber = invoiceMatch[2].toUpperCase();
     }
@@ -527,6 +567,35 @@ const ExpenseTracker = () => {
       const isoDate = normalizeDateString(dateMatch[1]);
       if (isoDate) {
         fields.date = isoDate;
+      }
+    }
+
+    const longDateRegexp = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b/gi;
+    const longDateMatches = [...normalized.matchAll(longDateRegexp)];
+    const issueMatch = normalized.match(/date of issue\s*[-:]?\s*([^\n]+)/i);
+    if (issueMatch) {
+      const isoIssue = normalizeDateString(issueMatch[1]);
+      if (isoIssue) {
+        fields.invoiceDate = isoIssue;
+      }
+    }
+    const dueMatch = normalized.match(/date due\s*[-:]?\s*([^\n]+)/i);
+    if (dueMatch) {
+      const isoDue = normalizeDateString(dueMatch[1]);
+      if (isoDue) {
+        fields.dueDate = isoDue;
+      }
+    }
+    if (!fields.invoiceDate && longDateMatches[0]) {
+      const iso = normalizeDateString(longDateMatches[0][0]);
+      if (iso) {
+        fields.invoiceDate = iso;
+      }
+    }
+    if (!fields.dueDate && longDateMatches[1]) {
+      const iso = normalizeDateString(longDateMatches[1][0]);
+      if (iso) {
+        fields.dueDate = iso;
       }
     }
 
@@ -553,6 +622,14 @@ const ExpenseTracker = () => {
       fields.amount = highestAmount.toFixed(2);
     }
 
+    if (normalized.includes('€') || /eur/i.test(normalized)) {
+      fields.currency = 'EUR';
+    } else if (normalized.includes('$') || /usd/i.test(normalized)) {
+      fields.currency = 'USD';
+    } else if (normalized.includes('£') || /gbp|pounds?/i.test(normalized)) {
+      fields.currency = 'GBP';
+    }
+
     // Vendor detection
     let vendorCandidateIndex = -1;
     const vendorCandidate = lines.find((line, index) => {
@@ -575,6 +652,38 @@ const ExpenseTracker = () => {
       if (possibleAddress && /\d+/.test(possibleAddress) && possibleAddress.length <= 100) {
         fields.vendorAddress = possibleAddress;
       }
+    }
+
+    if (!fields.vendorCountry) {
+      const vendorSection = lines.slice(0, Math.min(lines.length, vendorCandidateIndex + 5)).join(' ').toLowerCase();
+      const countryMatch = EU_COUNTRY_OPTIONS.find(country => vendorSection.includes(country.label.toLowerCase()));
+      if (countryMatch) {
+        fields.vendorCountry = countryMatch.code;
+      }
+    }
+
+    const vatInlineRegex = /\b([A-Z]{2})\s*VAT\s*([A-Z0-9]+)\b/i;
+    const vatNumberRegex = /\bVAT\s*(?:number|no\.|nr)?\s*[-:]?\s*([A-Z0-9]{8,})\b/i;
+    const vatMatch = normalized.match(vatInlineRegex) || normalized.match(vatNumberRegex);
+    if (vatMatch) {
+      if (vatMatch.length === 3) {
+        fields.vatNumber = `${vatMatch[1].toUpperCase()}${vatMatch[2].toUpperCase()}`;
+        fields.vendorCountry = fields.vendorCountry || vatMatch[1].toUpperCase();
+      } else if (vatMatch[1]) {
+        fields.vatNumber = vatMatch[1].toUpperCase().replace(/\s+/g, '');
+      }
+    }
+
+    const vatRateMatch = normalized.match(/(\d{1,2})\s*%\s*(?:vat|btw)/i);
+    if (vatRateMatch) {
+      const rate = parseInt(vatRateMatch[1], 10);
+      if (!Number.isNaN(rate)) {
+        fields.btw = rate;
+      }
+    }
+
+    if (lower.includes('reverse charge')) {
+      fields.reverseCharge = true;
     }
 
     // Description
@@ -618,13 +727,22 @@ const ExpenseTracker = () => {
 
     assignIfEmpty('vendor', extracted.vendor);
     assignIfEmpty('invoiceNumber', extracted.invoiceNumber);
+    assignIfEmpty('invoiceDate', extracted.invoiceDate || extracted.date);
+    assignIfEmpty('dueDate', extracted.dueDate);
     assignIfEmpty('vendorAddress', extracted.vendorAddress);
     assignIfEmpty('description', extracted.description);
     assignIfEmpty('date', extracted.date);
     assignIfEmpty('notes', extracted.notes);
+    assignIfEmpty('vendorCountry', extracted.vendorCountry);
+    assignIfEmpty('vatNumber', extracted.vatNumber);
+    assignIfEmpty('currency', extracted.currency);
 
     if (extracted.amount && (!current.amount || parseFloat(current.amount) === 0)) {
       updated.amount = extracted.amount;
+    }
+
+    if (typeof extracted.btw === 'number' && (!current.btw || current.btw === 0)) {
+      updated.btw = extracted.btw;
     }
 
     if (extracted.documentType) {
@@ -633,6 +751,10 @@ const ExpenseTracker = () => {
 
     if (extracted.paymentStatus) {
       updated.paymentStatus = extracted.paymentStatus;
+    }
+
+    if (typeof extracted.reverseCharge === 'boolean') {
+      updated.reverseCharge = extracted.reverseCharge;
     }
 
     return updated;
@@ -807,22 +929,34 @@ const ExpenseTracker = () => {
   // Form State
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
+    invoiceDate: new Date().toISOString().split('T')[0],
+    dueDate: '',
     category: 'Subscriptions',
+    currency: 'EUR',
     vendor: '',
-  vendorAddress: '',
+    vendorAddress: '',
+    vendorCountry: companyCountry,
     invoiceNumber: '',
     vatNumber: '',
     chamberOfCommerceNumber: '',
     description: '',
     amount: '',
     btw: 21,
+    reverseCharge: false,
     bankAccount: 'Business Checking', // Keep for backward compatibility
-    financialAccountId: '', // NEW: Link to financial accounts
+    financialAccountId: '', // Link to financial accounts
     paymentMethod: 'Debit Card',
-    paymentMethodDetails: '', // NEW: Card details like "MC #5248***2552"
+    paymentMethodDetails: '',
     documentType: 'invoice',
     paymentStatus: 'open',
+    vatValidationStatus: 'idle',
+    vatValidatedAt: '',
     notes: ''
+  });
+  const [vatValidationState, setVatValidationState] = useState({
+    status: 'idle',
+    message: '',
+    lastChecked: null
   });
 
   // Load expenses from Firebase when component mounts or company changes
@@ -841,6 +975,24 @@ const ExpenseTracker = () => {
       loadExpenses();
     }
   }, [currentUser, currentCompanyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!editingExpense) {
+      setFormData(prev => ({
+        ...prev,
+        vendorCountry: prev.vendorCountry || companyCountry
+      }));
+    }
+  }, [companyCountry, editingExpense]);
+
+  useEffect(() => {
+    if (formData.vendorCountry && formData.vendorCountry !== 'OTHER' && formData.vendorCountry === companyCountry && formData.reverseCharge) {
+      setFormData(prev => ({
+        ...prev,
+        reverseCharge: false
+      }));
+    }
+  }, [formData.vendorCountry, companyCountry, formData.reverseCharge]);
 
   const loadExpenses = async () => {
     if (!currentCompanyId) {
@@ -864,11 +1016,109 @@ const ExpenseTracker = () => {
 
   // Handle form input changes
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type } = e.target;
+    let nextValue = value;
+
+    if (name === 'vendorCountry') {
+      nextValue = value ? value.toUpperCase() : '';
+    }
+
+    if (name === 'btw') {
+      nextValue = Number(value);
+    }
+
+    if (type === 'number' && name !== 'btw') {
+      nextValue = value;
+    }
+
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: nextValue
     }));
+  };
+
+  const handleReverseChargeChange = (e) => {
+    const { checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      reverseCharge: checked
+    }));
+  };
+
+  const handleVatValidation = async () => {
+    if (!formData.vatNumber) {
+      setVatValidationState({
+        status: 'error',
+        message: 'Please enter a VAT number to validate.',
+        lastChecked: null
+      });
+      return;
+    }
+
+    const normalizedVendorCountry = formData.vendorCountry && formData.vendorCountry !== 'OTHER'
+      ? formData.vendorCountry.slice(0, 2).toUpperCase()
+      : '';
+    const vatPrefix = formData.vatNumber.slice(0, 2).toUpperCase();
+    const countryForLookup = normalizedVendorCountry || (/[A-Z]{2}/.test(vatPrefix) ? vatPrefix : '');
+    if (!countryForLookup || countryForLookup.length !== 2) {
+      setVatValidationState({
+        status: 'error',
+        message: 'Select a vendor country (two-letter code) before validating.',
+        lastChecked: null
+      });
+      return;
+    }
+
+    setVatValidationState({
+      status: 'loading',
+      message: 'Validating VAT number via VIES…',
+      lastChecked: null
+    });
+
+    try {
+      const result = await validateVatNumber(countryForLookup, formData.vatNumber);
+      if (!result?.success || !result?.data) {
+        setVatValidationState({
+          status: 'error',
+          message: 'Unable to validate VAT number at the moment.',
+          lastChecked: null
+        });
+        return;
+      }
+
+      const { data } = result;
+      const formattedAddress = data.address ? data.address.replace(/\n+/g, ', ').replace(/\s{2,}/g, ' ').trim() : '';
+      const cleanedName = data.name && data.name !== '---' ? data.name : '';
+      const vatCountry = (data.countryCode || countryForLookup || '').toUpperCase();
+      const existingVatDigits = formData.vatNumber.replace(/^[A-Za-z]{2}/, '');
+      const vatDigits = (data.vatNumber || existingVatDigits).toUpperCase();
+      const combinedVat = vatCountry && vatDigits ? `${vatCountry}${vatDigits}` : formData.vatNumber.toUpperCase();
+      const reverseChargeApplies = data.valid && vatCountry && vatCountry !== companyCountry;
+
+      setFormData(prev => ({
+        ...prev,
+        vendor: prev.vendor || cleanedName,
+        vendorAddress: prev.vendorAddress || formattedAddress,
+        vendorCountry: vatCountry || prev.vendorCountry || countryForLookup,
+        vatNumber: combinedVat,
+        vatValidationStatus: data.valid ? 'valid' : 'invalid',
+        vatValidatedAt: data.requestDate || new Date().toISOString(),
+        reverseCharge: data.valid ? reverseChargeApplies : false
+      }));
+
+      setVatValidationState({
+        status: data.valid ? 'success' : 'error',
+        message: data.valid ? 'VAT number validated via VIES.' : 'VAT number is invalid according to VIES.',
+        lastChecked: data.requestDate || new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('VAT validation failed:', error);
+      setVatValidationState({
+        status: 'error',
+        message: error.message || 'VIES validation failed. Please try again later.',
+        lastChecked: null
+      });
+    }
   };
 
   // Handle form submission
@@ -878,6 +1128,10 @@ const ExpenseTracker = () => {
     try {
       setUploadingFiles(true);
       let expenseId;
+      const payload = {
+        ...formData,
+        vendorCountry: formData.vendorCountry === 'OTHER' ? '' : formData.vendorCountry
+      };
 
       if (!currentCompanyId) {
         alert('Please select a company to add expenses.');
@@ -894,7 +1148,7 @@ const ExpenseTracker = () => {
         const newAccountId = formData.financialAccountId;
         
         await updateCompanyExpense(currentCompanyId, expenseId, {
-          ...formData,
+          ...payload,
           updatedAt: new Date().toISOString()
         });
         
@@ -915,16 +1169,16 @@ const ExpenseTracker = () => {
       } else {
         // Add new expense
         expenseId = await addCompanyExpense(currentCompanyId, currentUser.uid, {
-          ...formData,
+          ...payload,
           accountId: currentAccountId,
           createdAt: new Date().toISOString()
         });
         
         // Update account balance if financial account is linked
-        if (formData.financialAccountId && formData.amount) {
-          const amount = parseFloat(formData.amount || 0);
+        if (payload.financialAccountId && payload.amount) {
+          const amount = parseFloat(payload.amount || 0);
           if (amount > 0) {
-            await updateAccountBalance(currentCompanyId, formData.financialAccountId, -amount, 'expense');
+            await updateAccountBalance(currentCompanyId, payload.financialAccountId, -amount, 'expense');
           }
         }
       }
@@ -967,22 +1221,34 @@ const ExpenseTracker = () => {
       // Reset form
       setFormData({
         date: new Date().toISOString().split('T')[0],
+        invoiceDate: new Date().toISOString().split('T')[0],
+        dueDate: '',
         category: 'Subscriptions',
+        currency: 'EUR',
         vendor: '',
         vendorAddress: '',
+        vendorCountry: companyCountry,
         invoiceNumber: '',
         vatNumber: '',
         chamberOfCommerceNumber: '',
         description: '',
         amount: '',
         btw: 21,
+        reverseCharge: false,
         bankAccount: 'Business Checking',
         financialAccountId: '',
         paymentMethod: 'Debit Card',
         paymentMethodDetails: '',
         documentType: 'invoice',
         paymentStatus: 'open',
+        vatValidationStatus: 'idle',
+        vatValidatedAt: '',
         notes: ''
+      });
+      setVatValidationState({
+        status: 'idle',
+        message: '',
+        lastChecked: null
       });
       setSelectedFiles([]);
       setUploadProgress(0);
@@ -1022,22 +1288,42 @@ const ExpenseTracker = () => {
   const handleEditExpense = (expense) => {
     setFormData({
       date: expense.date,
+      invoiceDate: expense.invoiceDate || expense.date,
+      dueDate: expense.dueDate || '',
       category: expense.category,
+      currency: expense.currency || 'EUR',
       vendor: expense.vendor,
       vendorAddress: expense.vendorAddress || '',
+      vendorCountry: expense.vendorCountry || companyCountry,
       invoiceNumber: expense.invoiceNumber || '',
       vatNumber: expense.vatNumber || '',
       chamberOfCommerceNumber: expense.chamberOfCommerceNumber || '',
       description: expense.description,
       amount: expense.amount,
       btw: expense.btw,
+      reverseCharge: Boolean(expense.reverseCharge),
       bankAccount: expense.bankAccount || 'Business Checking',
       financialAccountId: expense.financialAccountId || '',
       paymentMethod: expense.paymentMethod,
       paymentMethodDetails: expense.paymentMethodDetails || '',
       documentType: expense.documentType || 'invoice',
       paymentStatus: expense.paymentStatus || 'open',
+      vatValidationStatus: expense.vatValidationStatus || 'idle',
+      vatValidatedAt: expense.vatValidatedAt || '',
       notes: expense.notes || ''
+    });
+    setVatValidationState({
+      status: expense.vatValidationStatus === 'valid'
+        ? 'success'
+        : expense.vatValidationStatus === 'invalid'
+          ? 'error'
+          : 'idle',
+      message: expense.vatValidationStatus === 'valid'
+        ? 'VAT number validated via VIES.'
+        : expense.vatValidationStatus === 'invalid'
+          ? 'VAT validation failed previously. Please re-run validation.'
+          : '',
+      lastChecked: expense.vatValidatedAt || null
     });
     setEditingExpense(expense);
     setShowAddExpense(true);
@@ -1113,17 +1399,22 @@ const ExpenseTracker = () => {
             const expense = {
               rowIndex: index + headerRowIndex + 2, // Excel row number
               date: '',
+              invoiceDate: '',
+              dueDate: '',
               category: '',
               vendor: '',
               vendorAddress: '',
+              vendorCountry: '',
               description: '',
               amount: '',
+              currency: 'EUR',
               paymentMethod: '',
               paymentMethodDetails: '',
               notes: '',
               frequency: '',
               invoiceNumber: '',
-              documentType: 'invoice'
+              documentType: 'invoice',
+              reverseCharge: false
             };
             
             // Map columns based on header names
@@ -1135,14 +1426,27 @@ const ExpenseTracker = () => {
                 if (value) {
                   const date = new Date(value);
                   if (!isNaN(date.getTime())) {
-                    expense.date = date.toISOString().split('T')[0];
+                    if (header.includes('due')) {
+                      expense.dueDate = date.toISOString().split('T')[0];
+                    } else if (header.includes('invoice')) {
+                      expense.invoiceDate = date.toISOString().split('T')[0];
+                    } else {
+                      expense.date = date.toISOString().split('T')[0];
+                    }
                   } else {
                     // Try parsing common formats
-                    const parts = value.split(/[\/\-\.]/);
+                      const parts = value.split(/[./-]/);
                     if (parts.length === 3) {
                       const [m, d, y] = parts;
                       const year = y.length === 2 ? `20${y}` : y;
-                      expense.date = `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+                      const normalizedDate = `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+                      if (header.includes('due')) {
+                        expense.dueDate = normalizedDate;
+                      } else if (header.includes('invoice')) {
+                        expense.invoiceDate = normalizedDate;
+                      } else {
+                        expense.date = normalizedDate;
+                      }
                     }
                   }
                 }
@@ -1152,12 +1456,19 @@ const ExpenseTracker = () => {
                 expense.vendor = value;
               } else if (header.includes('address')) {
                 expense.vendorAddress = value;
+              } else if (header.includes('country')) {
+                expense.vendorCountry = value.slice(0, 2).toUpperCase();
               } else if (header.includes('description')) {
                 expense.description = value;
               } else if (header.includes('amount') && !header.includes('vat')) {
                 // Remove currency symbols and parse
                 const amountStr = value.replace(/[€$£,\s]/g, '').replace(',', '.');
                 expense.amount = parseFloat(amountStr) || 0;
+                if (value.includes('$')) {
+                  expense.currency = 'USD';
+                } else if (value.includes('£')) {
+                  expense.currency = 'GBP';
+                }
               } else if (header.includes('payment') && header.includes('method')) {
                 const paymentParts = value.split('#');
                 if (paymentParts.length > 1) {
@@ -1172,9 +1483,22 @@ const ExpenseTracker = () => {
                 expense.frequency = value;
               } else if (header.includes('invoice')) {
                 expense.invoiceNumber = value;
+              } else if (header.includes('currency')) {
+                expense.currency = value.toUpperCase();
+              } else if (header.includes('reverse') && header.includes('charge')) {
+                expense.reverseCharge = value.toLowerCase().includes('true') || value.toLowerCase().includes('yes');
+              } else if ((header.includes('vat') || header.includes('btw')) && header.includes('rate')) {
+                const rate = parseInt(value, 10);
+                if (!Number.isNaN(rate)) {
+                  expense.btw = rate;
+                }
               }
             });
             
+            if (!expense.date && expense.invoiceDate) {
+              expense.date = expense.invoiceDate;
+            }
+
             return expense;
           })
           .filter(expense => expense.vendor || expense.description || expense.amount > 0);
@@ -1553,7 +1877,7 @@ const ExpenseTracker = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Date
+                        Booking Date
                       </label>
                       <input
                         type="date"
@@ -1564,7 +1888,33 @@ const ExpenseTracker = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Invoice Date
+                      </label>
+                      <input
+                        type="date"
+                        name="invoiceDate"
+                        value={formData.invoiceDate}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
 
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Due Date (Optional)
+                      </label>
+                      <input
+                        type="date"
+                        name="dueDate"
+                        value={formData.dueDate}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Category
@@ -1598,7 +1948,6 @@ const ExpenseTracker = () => {
                         placeholder="Vendor name"
                       />
                     </div>
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Vendor Address (Optional)
@@ -1612,7 +1961,29 @@ const ExpenseTracker = () => {
                         placeholder="Street, City, Country"
                       />
                     </div>
+                  </div>
 
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Vendor Country
+                      </label>
+                      <select
+                        name="vendorCountry"
+                        value={formData.vendorCountry}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select country</option>
+                        {EU_COUNTRY_OPTIONS.map((country) => (
+                          <option key={country.code} value={country.code}>{country.label}</option>
+                        ))}
+                        <option value="OTHER">Outside EU / Manual</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Defaults to your company’s country. Adjust if this vendor is based elsewhere.
+                      </p>
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Invoice Number (Optional)
@@ -1628,7 +1999,7 @@ const ExpenseTracker = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-4 items-end">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         VAT Number (Optional)
@@ -1639,10 +2010,38 @@ const ExpenseTracker = () => {
                         value={formData.vatNumber}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="VAT Number"
+                        placeholder="e.g. NL123456789B01"
                       />
                     </div>
+                    <button
+                      type="button"
+                      onClick={handleVatValidation}
+                      className="inline-flex items-center justify-center px-4 py-2 border border-blue-500 text-blue-600 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      Validate VAT
+                    </button>
+                  </div>
 
+                  {vatValidationState.status !== 'idle' && (
+                    <div
+                      className={`text-sm rounded-md px-3 py-2 ${
+                        vatValidationState.status === 'success'
+                          ? 'bg-green-50 text-green-700 border border-green-200'
+                          : vatValidationState.status === 'loading'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                      }`}
+                    >
+                      <p>{vatValidationState.message}</p>
+                      {vatValidationState.lastChecked && (
+                        <p className="text-xs mt-1">
+                          Last checked: {new Date(vatValidationState.lastChecked).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Chamber of Commerce Number (Optional)
@@ -1655,6 +2054,18 @@ const ExpenseTracker = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="KVK Number"
                       />
+                    </div>
+                    <div className="flex items-center gap-3 mt-6 md:mt-9">
+                      <input
+                        id="reverseCharge"
+                        type="checkbox"
+                        checked={formData.reverseCharge}
+                        onChange={handleReverseChargeChange}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="reverseCharge" className="text-sm text-gray-700">
+                        Reverse charge applies (cross-border B2B)
+                      </label>
                     </div>
                   </div>
 
@@ -1673,10 +2084,25 @@ const ExpenseTracker = () => {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Amount (€)
+                        Currency
+                      </label>
+                      <select
+                        name="currency"
+                        value={formData.currency}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {CURRENCY_OPTIONS.map((currency) => (
+                          <option key={currency} value={currency}>{currency}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Amount
                       </label>
                       <input
                         type="number"
@@ -1690,10 +2116,9 @@ const ExpenseTracker = () => {
                         placeholder="0.00"
                       />
                     </div>
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        BTW Rate (%)
+                        VAT Rate (%)
                       </label>
                       <select
                         name="btw"
@@ -1717,7 +2142,6 @@ const ExpenseTracker = () => {
                           setFormData(prev => ({
                             ...prev,
                             financialAccountId: e.target.value,
-                            // Auto-populate bankAccount for backward compatibility if account is selected
                             bankAccount: e.target.value ? 'Financial Account' : prev.bankAccount
                           }));
                         }}
@@ -1726,12 +2150,9 @@ const ExpenseTracker = () => {
                         required={false}
                         showBalance={true}
                         onAddAccount={() => {
-                          // Open Settings page in a new tab or navigate
                           window.open('/settings?tab=accounts', '_blank');
                         }}
                       />
-
-                      {/* Fallback: Legacy bank account dropdown (hidden if financial account is selected) */}
                       {!formData.financialAccountId && (
                         <div className="mt-2">
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1750,7 +2171,6 @@ const ExpenseTracker = () => {
                         </div>
                       )}
                     </div>
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Payment Method
@@ -1766,8 +2186,6 @@ const ExpenseTracker = () => {
                           <option key={method} value={method}>{method}</option>
                         ))}
                       </select>
-
-                      {/* Show card details field for Debit/Credit Card */}
                       {(formData.paymentMethod === 'Debit Card' || formData.paymentMethod === 'Credit Card') && (
                         <div className="mt-2">
                           <label className="block text-sm font-medium text-gray-700 mb-1">

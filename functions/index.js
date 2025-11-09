@@ -1,3 +1,5 @@
+/* eslint-env node */
+
 /**
  * CLOUD FUNCTIONS FOR BIZ-COPILOT
  * 
@@ -5,6 +7,7 @@
  */
 
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onCall } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
@@ -247,4 +250,64 @@ If you didn't expect this invitation, you can safely ignore this email.
     }
   }
 );
+
+const checkVatSoapEnvelope = (countryCode, vatNumber) => `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="urn:ec.europa.eu:taxud:vies:services:checkVat:types">
+  <soap:Body>
+    <tns:checkVat>
+      <tns:countryCode>${countryCode}</tns:countryCode>
+      <tns:vatNumber>${vatNumber}</tns:vatNumber>
+    </tns:checkVat>
+  </soap:Body>
+</soap:Envelope>`;
+
+const parseSoapValue = (xml, tag) => {
+  const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i');
+  const match = xml.match(regex);
+  return match ? match[1].trim() : '';
+};
+
+exports.validateVat = onCall({ region: 'europe-west1' }, async (request) => {
+  const { countryCode, vatNumber } = request.data || {};
+  if (!countryCode || !vatNumber) {
+    throw new Error('countryCode and vatNumber are required');
+  }
+
+  const sanitizedCountry = String(countryCode).toUpperCase().trim();
+  const sanitizedVat = String(vatNumber).replace(/[^A-Za-z0-9]/g, '').replace(new RegExp(`^${sanitizedCountry}`), '');
+
+  try {
+    const response = await fetch('https://ec.europa.eu/taxation_customs/vies/services/checkVatService', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+        'Accept': 'text/xml',
+        'User-Agent': 'Biz-CoPilot VAT Validator'
+      },
+      body: checkVatSoapEnvelope(sanitizedCountry, sanitizedVat)
+    });
+
+    const body = await response.text();
+
+    if (!response.ok) {
+      const fault = parseSoapValue(body, 'faultstring') || response.statusText;
+      throw new Error(fault || 'VIES service error');
+    }
+
+    const valid = parseSoapValue(body, 'valid').toLowerCase() === 'true';
+    const result = {
+      valid,
+      countryCode: parseSoapValue(body, 'countryCode') || sanitizedCountry,
+      vatNumber: parseSoapValue(body, 'vatNumber') || sanitizedVat,
+      requestDate: parseSoapValue(body, 'requestDate') || new Date().toISOString(),
+      name: parseSoapValue(body, 'name') || '',
+      address: parseSoapValue(body, 'address') || ''
+    };
+
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('VAT validation error', error);
+    throw new Error(error.message || 'Failed to validate VAT number');
+  }
+});
 
