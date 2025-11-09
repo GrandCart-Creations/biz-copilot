@@ -46,7 +46,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.1;
-const DEFAULT_ZOOM = 1.6;
+const DEFAULT_ZOOM = 2;
 
 const EU_COUNTRY_OPTIONS = [
   { code: 'BE', label: 'Belgium' },
@@ -173,7 +173,7 @@ const AttachmentPanel = ({
 
     if (currentPreview.type === 'application/pdf') {
       const zoomValue = Math.round(clampedZoom * 100);
-      const pdfSrc = `${currentPreview.url}#navpanes=0&toolbar=0&zoom=${zoomValue}`;
+      const pdfSrc = `${currentPreview.url}#toolbar=0&navpanes=0&view=FitH&zoom=${zoomValue}`;
       return (
         <iframe
           key={pdfSrc}
@@ -394,6 +394,7 @@ const ExpenseTracker = () => {
   const btw_rates = [0, 9, 21];
   const bankAccounts = ['Business Checking', 'Business Savings', 'Credit Card - Business', 'Cash', 'Personal (Reimbursable)'];
   const paymentMethods = ['Debit Card', 'Credit Card', 'Bank Transfer', 'Cash', 'PayPal', 'Other'];
+  const todayIso = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   // State Management
   const [expenses, setExpenses] = useState([]);
@@ -671,13 +672,24 @@ const ExpenseTracker = () => {
       }
       const sanitizedBlock = vendorBlock.filter(Boolean);
       if (sanitizedBlock.length) {
-        fields.vendor = sanitizedBlock[0];
-        if (sanitizedBlock.length > 1) {
-          const uniqueAddressLines = sanitizedBlock
-            .slice(1)
+        const cleanedBlock = sanitizedBlock.filter(line =>
+          !/^page\b/i.test(line) &&
+          !/^invoice\b/i.test(line) &&
+          !/invoice\s*(?:number|no\.?|#)/i.test(line)
+        );
+        const prioritizedVendor =
+          cleanedBlock.find(line => /(limited|ltd|inc|llc|gmbh|s\.a\.|sarl|oy|ab|company|co\.)/i.test(line)) ||
+          cleanedBlock[0];
+
+        if (prioritizedVendor) {
+          fields.vendor = prioritizedVendor;
+          const vendorIndexInBlock = sanitizedBlock.indexOf(prioritizedVendor);
+          const addressLines = sanitizedBlock
+            .slice(vendorIndexInBlock + 1)
+            .filter(line => line && !/invoice|bill to|description|qty|unit price|subtotal|total|vat/i.test(line))
             .filter((line, index, arr) => arr.indexOf(line) === index);
-          if (uniqueAddressLines.length) {
-            fields.vendorAddress = uniqueAddressLines.join(', ');
+          if (addressLines.length) {
+            fields.vendorAddress = addressLines.join(', ');
           }
         }
       }
@@ -808,27 +820,31 @@ const ExpenseTracker = () => {
 
     const updated = { ...current };
 
-    const assignIfEmpty = (field, value) => {
+    const assignIfEmptyOrDefault = (field, value) => {
       if (value === undefined || value === null || value === '') return;
       const currentValue = current[field];
-      if (!currentValue || (typeof currentValue === 'string' && currentValue.trim() === '')) {
+      const isStringEmpty = typeof currentValue === 'string' && currentValue.trim() === '';
+      const isDefaultDate = field === 'date' && (!currentValue || currentValue === todayIso);
+      const isDefaultInvoiceDate = (field === 'invoiceDate' || field === 'dueDate') && !currentValue;
+      const isDefaultVendorCountry = field === 'vendorCountry' && (!currentValue || currentValue === companyCountry);
+      if (!currentValue || isStringEmpty || isDefaultDate || isDefaultInvoiceDate || isDefaultVendorCountry) {
         updated[field] = value;
       }
     };
 
-    assignIfEmpty('vendor', extracted.vendor);
-    assignIfEmpty('invoiceNumber', extracted.invoiceNumber);
-    assignIfEmpty('invoiceDate', extracted.invoiceDate || extracted.date);
-    assignIfEmpty('dueDate', extracted.dueDate);
-    assignIfEmpty('vendorAddress', extracted.vendorAddress);
-    assignIfEmpty('description', extracted.description);
-    assignIfEmpty('date', extracted.date);
-    assignIfEmpty('notes', extracted.notes);
-    assignIfEmpty('vendorCountry', extracted.vendorCountry);
-    assignIfEmpty('vatNumber', extracted.vatNumber);
-    assignIfEmpty('currency', extracted.currency);
+    assignIfEmptyOrDefault('vendor', extracted.vendor);
+    assignIfEmptyOrDefault('invoiceNumber', extracted.invoiceNumber);
+    assignIfEmptyOrDefault('invoiceDate', extracted.invoiceDate || extracted.date);
+    assignIfEmptyOrDefault('dueDate', extracted.dueDate);
+    assignIfEmptyOrDefault('vendorAddress', extracted.vendorAddress);
+    assignIfEmptyOrDefault('description', extracted.description);
+    assignIfEmptyOrDefault('date', extracted.date);
+    assignIfEmptyOrDefault('notes', extracted.notes);
+    assignIfEmptyOrDefault('vendorCountry', extracted.vendorCountry);
+    assignIfEmptyOrDefault('vatNumber', extracted.vatNumber);
+    assignIfEmptyOrDefault('currency', extracted.currency);
 
-    if (extracted.amount && (!current.amount || parseFloat(current.amount) === 0)) {
+    if (extracted.amount && (!current.amount || parseFloat(current.amount) === 0 || current.amount === '0')) {
       updated.amount = extracted.amount;
     }
 
@@ -1019,8 +1035,8 @@ const ExpenseTracker = () => {
 
   // Form State
   const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    invoiceDate: new Date().toISOString().split('T')[0],
+    date: todayIso,
+    invoiceDate: '',
     dueDate: '',
     category: 'Subscriptions',
     currency: 'EUR',
@@ -1230,6 +1246,11 @@ const ExpenseTracker = () => {
         vendorCountry: formData.vendorCountry === 'OTHER' ? '' : formData.vendorCountry
       };
 
+      payload.date = payload.date || todayIso;
+      if (!payload.invoiceDate) {
+        payload.invoiceDate = payload.date;
+      }
+
       if (!currentCompanyId) {
         alert('Please select a company to add expenses.');
         setUploadingFiles(false);
@@ -1317,8 +1338,8 @@ const ExpenseTracker = () => {
 
       // Reset form
       setFormData({
-        date: new Date().toISOString().split('T')[0],
-        invoiceDate: new Date().toISOString().split('T')[0],
+        date: todayIso,
+        invoiceDate: '',
         dueDate: '',
         category: 'Subscriptions',
         currency: 'EUR',
