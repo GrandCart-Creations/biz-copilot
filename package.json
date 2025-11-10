@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "crypto-browserify": "^3.12.1",
+    "date-fns": "^3.6.0",
     "exceljs": "^4.4.0",
     "firebase": "^12.4.0",
     "lucide-react": "^0.546.0",
