@@ -26,7 +26,8 @@ import {
   FaUniversity,
   FaSeedling,
   FaPaintBrush,
-  FaRocket
+  FaRocket,
+  FaStream
 } from 'react-icons/fa';
 
 const SettingsDashboard = () => {
@@ -118,7 +119,7 @@ const SettingsDashboard = () => {
         {/* Settings Tabs */}
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="border-b border-gray-200">
-            <nav className="flex -mb-px">
+            <nav className="flex -mb-px items-center">
               <button
                 onClick={() => setActiveTab('team')}
                 className={`px-6 py-4 text-sm font-medium transition-colors ${
@@ -145,6 +146,19 @@ const SettingsDashboard = () => {
                   People Workspace
                 </div>
               </button>
+              <div className="ml-auto flex items-center gap-3 pr-4">
+                {userRole === 'owner' && (
+                  <button
+                    onClick={() => navigate('/owner/activity')}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition"
+                    style={{ backgroundColor: '#005E7C' }}
+                    title="Open owner timeline"
+                  >
+                    <FaUsers className="w-3.5 h-3.5" />
+                    Activity Timeline
+                  </button>
+                )}
+              </div>
               {/* Financial Accounts tab - OWNER ONLY */}
               {userRole === 'owner' && (
                 <button

@@ -13,18 +13,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, orderBy, limit, onSnapshot, where } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Shield, AlertTriangle, CheckCircle, Activity } from 'lucide-react';
-import { FaArrowLeft } from 'react-icons/fa';
+import { FaArrowLeft, FaStream } from 'react-icons/fa';
 
 const SecurityDashboard = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
   const { currentCompanyId, currentCompany } = useCompany();
   const [auditLogs, setAuditLogs] = useState([]);
   const [securityAlerts, setSecurityAlerts] = useState([]);
@@ -136,7 +134,7 @@ const SecurityDashboard = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex flex-wrap items-center gap-3 mb-2">
             {/* Back Button */}
             <button
               onClick={() => navigate('/dashboard')}
@@ -150,6 +148,17 @@ const SecurityDashboard = () => {
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Security Dashboard</h1>
               <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
+            </div>
+            <div className="flex items-center gap-3 ml-auto">
+              <button
+                onClick={() => navigate('/owner/activity')}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition"
+                style={{ backgroundColor: '#005E7C' }}
+                title="Open owner activity timeline"
+              >
+                <FaStream className="w-3.5 h-3.5" />
+                Owner Activity Timeline
+              </button>
             </div>
           </div>
           <p className="text-gray-600">Monitor security events and system health</p>
