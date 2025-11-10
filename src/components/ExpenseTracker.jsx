@@ -1,5 +1,5 @@
 // src/components/ExpenseTracker.jsx
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { createWorker } from 'tesseract.js';
@@ -1396,6 +1396,134 @@ const paymentStatusStyles = {
     }
   }, [formData.vendorCountry, companyCountry, formData.reverseCharge]);
 
+  const reconcileInvoicesWithReceipts = useCallback(async (expensesList = []) => {
+    if (!currentCompanyId || !Array.isArray(expensesList) || expensesList.length === 0) {
+      return expensesList;
+    }
+
+    const normalizeKey = (value) => (value ? value.toString().trim().toLowerCase() : '');
+    const normalizeText = (value) => (value ? value.toString().trim().toLowerCase() : '');
+    const parseAmountValue = (value) => {
+      if (value === null || value === undefined || value === '') {
+        return null;
+      }
+      const parsed = parseFloat(value);
+      return Number.isFinite(parsed) ? parseFloat(parsed.toFixed(2)) : null;
+    };
+
+    const receipts = expensesList.filter((expense) => (
+      (expense.documentType || '').toLowerCase() === 'receipt'
+      && (expense.paymentStatus || '').toLowerCase() === 'paid'
+      && Boolean(expense.invoiceNumber)
+    ));
+
+    if (receipts.length === 0) {
+      return expensesList;
+    }
+
+    const invoicesByInvoiceNumber = new Map();
+    const invoiceIndexById = new Map();
+    const updatedExpenses = expensesList.map((expense, index) => {
+      invoiceIndexById.set(expense.id, index);
+      if ((expense.documentType || '').toLowerCase() === 'invoice' && expense.invoiceNumber) {
+        const key = normalizeKey(expense.invoiceNumber);
+        if (key) {
+          if (!invoicesByInvoiceNumber.has(key)) {
+            invoicesByInvoiceNumber.set(key, []);
+          }
+          invoicesByInvoiceNumber.get(key).push(expense);
+        }
+      }
+      return { ...expense };
+    });
+
+    const reconciledInvoiceIds = new Set();
+
+    for (const receipt of receipts) {
+      const receiptKey = normalizeKey(receipt.invoiceNumber);
+      if (!receiptKey || !invoicesByInvoiceNumber.has(receiptKey)) {
+        continue;
+      }
+
+      const candidateInvoices = invoicesByInvoiceNumber.get(receiptKey).filter((invoice) => (
+        (invoice.paymentStatus || '').toLowerCase() !== 'paid'
+        && !reconciledInvoiceIds.has(invoice.id)
+      ));
+
+      if (candidateInvoices.length === 0) {
+        continue;
+      }
+
+      const receiptAmount = parseAmountValue(receipt.amount);
+      const receiptVendor = normalizeText(receipt.vendor);
+      const receiptCurrency = (receipt.currency || '').toUpperCase();
+
+      const invoiceToUpdate = candidateInvoices.find((invoice) => {
+        const invoiceAmount = parseAmountValue(invoice.amount);
+        const invoiceVendor = normalizeText(invoice.vendor);
+        const invoiceCurrency = (invoice.currency || '').toUpperCase();
+
+        const amountMatches = invoiceAmount !== null && receiptAmount !== null
+          ? Math.abs(invoiceAmount - receiptAmount) < 0.01
+          : true;
+        const vendorMatches = receiptVendor && invoiceVendor
+          ? receiptVendor === invoiceVendor
+          : true;
+        const currencyMatches = receiptCurrency && invoiceCurrency
+          ? receiptCurrency === invoiceCurrency
+          : true;
+
+        return amountMatches && vendorMatches && currencyMatches;
+      }) || candidateInvoices[0];
+
+      if (!invoiceToUpdate) {
+        continue;
+      }
+
+      const updatePayload = {
+        paymentStatus: 'paid',
+        linkedPaymentExpenseId: receipt.id,
+        linkedPaymentInvoiceNumber: receipt.invoiceNumber || '',
+        linkedPaymentRecordedAt: new Date().toISOString()
+      };
+
+      if (!invoiceToUpdate.financialAccountId && receipt.financialAccountId) {
+        updatePayload.financialAccountId = receipt.financialAccountId;
+      }
+      if (!invoiceToUpdate.paymentMethod && receipt.paymentMethod) {
+        updatePayload.paymentMethod = receipt.paymentMethod;
+      }
+      if (!invoiceToUpdate.paymentMethodDetails && receipt.paymentMethodDetails) {
+        updatePayload.paymentMethodDetails = receipt.paymentMethodDetails;
+      }
+
+      try {
+        await updateCompanyExpense(currentCompanyId, invoiceToUpdate.id, updatePayload);
+        trackEvent('invoice_auto_reconciled', {
+          invoiceId: invoiceToUpdate.id,
+          receiptId: receipt.id,
+          invoiceNumber: receipt.invoiceNumber || '',
+          amount: parseAmountValue(invoiceToUpdate.amount) ?? parseAmountValue(receipt.amount) ?? null,
+          currency: receiptCurrency || (invoiceToUpdate.currency || ''),
+          companyId: currentCompanyId
+        });
+
+        const invoiceIndex = invoiceIndexById.get(invoiceToUpdate.id);
+        if (typeof invoiceIndex === 'number') {
+          updatedExpenses[invoiceIndex] = {
+            ...updatedExpenses[invoiceIndex],
+            ...updatePayload
+          };
+        }
+        reconciledInvoiceIds.add(invoiceToUpdate.id);
+      } catch (error) {
+        console.error('Failed to auto-reconcile invoice', invoiceToUpdate.id, error);
+      }
+    }
+
+    return reconciledInvoiceIds.size > 0 ? updatedExpenses : expensesList;
+  }, [currentCompanyId]);
+
   const loadExpenses = async () => {
     if (!currentCompanyId) {
       console.warn('No company selected, cannot load expenses');
@@ -1407,7 +1535,8 @@ const paymentStatusStyles = {
     try {
       setLoading(true);
       const companyExpenses = await getCompanyExpenses(currentCompanyId);
-      setExpenses(companyExpenses || []);
+      const reconciledExpenses = await reconcileInvoicesWithReceipts(companyExpenses || []);
+      setExpenses(reconciledExpenses || []);
     } catch (error) {
       console.error('Error loading expenses:', error);
       setExpenses([]);
