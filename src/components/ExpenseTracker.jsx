@@ -223,6 +223,43 @@ const AttachmentPanel = ({
     <div className={`flex h-full flex-col gap-4 pb-4 ${className}`}>
       <div className="flex flex-col flex-1 min-h-[60vh] max-h-[78vh] bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         <div className="px-3 sm:px-4 py-3 border-b bg-gray-50 sticky top-0 z-10 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 uppercase tracking-wide">
+                Document Type
+              </label>
+              <select
+                value={documentType}
+                onChange={(e) => onDocumentTypeChange(e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="invoice">Invoice</option>
+                <option value="receipt">Receipt</option>
+                <option value="statement">Bank Statement</option>
+                <option value="other">Other</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Tag what you’re capturing so badges and filters stay accurate.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 uppercase tracking-wide">
+                Expense Status
+              </label>
+              <select
+                value={paymentStatus}
+                onChange={(e) => onPaymentStatusChange(e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="open">Open</option>
+                <option value="paid">Paid</option>
+                <option value="late">Late</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Change this when the document should update account balances.
+              </p>
+            </div>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-[180px]">
               <p className="text-sm font-semibold text-gray-800">Attachment Preview</p>
@@ -296,43 +333,6 @@ const AttachmentPanel = ({
               >
                 <FaExternalLinkAlt className="w-4 h-4" />
               </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 uppercase tracking-wide">
-                Document Type
-              </label>
-              <select
-                value={documentType}
-                onChange={(e) => onDocumentTypeChange(e.target.value)}
-                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="invoice">Invoice</option>
-                <option value="receipt">Receipt</option>
-                <option value="statement">Bank Statement</option>
-                <option value="other">Other</option>
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Tag what you’re capturing so badges and filters stay accurate.
-              </p>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 uppercase tracking-wide">
-                Expense Status
-              </label>
-              <select
-                value={paymentStatus}
-                onChange={(e) => onPaymentStatusChange(e.target.value)}
-                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="open">Open</option>
-                <option value="paid">Paid</option>
-                <option value="late">Late</option>
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Change this when the document should update account balances.
-              </p>
             </div>
           </div>
         </div>
