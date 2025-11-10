@@ -8,6 +8,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import {
   FaPlusCircle,
+  FaChevronDown,
   FaChartLine,
   FaArrowLeft,
   FaEdit,
@@ -1077,6 +1078,34 @@ const paymentStatusStyles = {
   const [importProgress, setImportProgress] = useState(0);
   const [importType, setImportType] = useState('excel'); // 'excel' or 'ocr'
   const [ocrProcessing, setOcrProcessing] = useState(false);
+  const addDocumentMenuRef = useRef(null);
+  const [showAddDocumentMenu, setShowAddDocumentMenu] = useState(false);
+
+  useEffect(() => {
+    if (!showAddDocumentMenu) {
+      return undefined;
+    }
+
+    const handleClickOutside = (event) => {
+      if (addDocumentMenuRef.current && !addDocumentMenuRef.current.contains(event.target)) {
+        setShowAddDocumentMenu(false);
+      }
+    };
+
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') {
+        setShowAddDocumentMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [showAddDocumentMenu]);
 
   // Track last loaded company to prevent unnecessary reloads
   const lastLoadedCompanyIdRef = useRef(null);
@@ -1505,6 +1534,58 @@ const paymentStatusStyles = {
         alert('Error deleting expense. Please try again.');
       }
     }
+  };
+
+  const handleAddDocument = (docType = 'invoice') => {
+    if (!currentCompanyId) {
+      alert('Please select a company to add documents.');
+      return;
+    }
+
+    const normalizedDocType = (docType || 'invoice').toLowerCase();
+    const defaultPaymentStatus = normalizedDocType === 'receipt' ? 'paid' : 'open';
+
+    setFormData({
+      date: todayIso,
+      invoiceDate: '',
+      dueDate: '',
+      category: 'Subscriptions',
+      currency: 'EUR',
+      vendor: '',
+      vendorAddress: '',
+      vendorCountry: companyCountry,
+      invoiceNumber: '',
+      vatNumber: '',
+      chamberOfCommerceNumber: '',
+      description: '',
+      amount: '',
+      btw: 21,
+      reverseCharge: false,
+      bankAccount: 'Business Checking',
+      financialAccountId: '',
+      paymentMethod: 'Debit Card',
+      paymentMethodDetails: '',
+      documentType: normalizedDocType,
+      paymentStatus: defaultPaymentStatus,
+      vatValidationStatus: 'idle',
+      vatValidatedAt: '',
+      notes: ''
+    });
+    setExistingAttachments([]);
+    setSelectedFiles([]);
+    setCurrentPreviewId(null);
+    setZoomLevel(DEFAULT_ZOOM);
+    setEditingExpense(null);
+    setShowAddExpense(true);
+    setUploadProgress(0);
+    setLastAutoFilledFile(null);
+    resetAutoFillState();
+    setVatValidationState({
+      status: 'idle',
+      message: '',
+      lastChecked: null
+    });
+    setShowAddDocumentMenu(false);
   };
 
   // Handle expense edit
@@ -2721,44 +2802,59 @@ const paymentStatusStyles = {
               )}
             </div>
             
-            <button
-              onClick={() => {
-                if (!currentCompanyId) {
-                  alert('Please select a company to add expenses.');
-                  return;
-                }
-                setFormData({
-                  date: new Date().toISOString().split('T')[0],
-                  category: 'Subscriptions',
-                  vendor: '',
-                  invoiceNumber: '',
-                  vatNumber: '',
-                  chamberOfCommerceNumber: '',
-                  description: '',
-                  amount: '',
-                  btw: 21,
-                  bankAccount: 'Business Checking',
-                  financialAccountId: '',
-                  paymentMethod: 'Debit Card',
-                  paymentMethodDetails: '',
-                  documentType: 'invoice',
-                  paymentStatus: 'open',
-                  notes: ''
-                });
-                setExistingAttachments([]);
-                setSelectedFiles([]);
-                setCurrentPreviewId(null);
-                setZoomLevel(DEFAULT_ZOOM);
-                setEditingExpense(null);
-                setShowAddExpense(true);
-              }}
-              disabled={!currentCompanyId}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              title={!currentCompanyId ? 'Please select a company first' : ''}
-            >
-              <FaPlusCircle />
-              Add Expense
-            </button>
+            <div className="relative" ref={addDocumentMenuRef}>
+              <div className="inline-flex rounded-lg shadow-sm overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => handleAddDocument('invoice')}
+                  disabled={!currentCompanyId}
+                  className="px-4 py-2 bg-blue-600 text-white flex items-center gap-2 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={!currentCompanyId ? 'Please select a company first' : 'Add a new invoice'}
+                >
+                  <FaPlusCircle />
+                  Add Document
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!currentCompanyId) {
+                      alert('Please select a company to add documents.');
+                      return;
+                    }
+                    setShowAddDocumentMenu((prev) => !prev);
+                  }}
+                  disabled={!currentCompanyId}
+                  aria-haspopup="menu"
+                  aria-expanded={showAddDocumentMenu}
+                  className="px-2 bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 border-l border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={!currentCompanyId ? 'Please select a company first' : 'Choose document type'}
+                >
+                  <FaChevronDown />
+                </button>
+              </div>
+              {showAddDocumentMenu && (
+                <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20">
+                  {documentTypeOptions
+                    .filter(option => option.value !== 'all')
+                    .map(option => {
+                      const style = documentTypeStyles[option.value] || documentTypeStyles.invoice;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => handleAddDocument(option.value)}
+                          className="w-full px-4 py-2 text-sm text-left hover:bg-blue-50 flex items-center justify-between gap-2"
+                        >
+                          <span>Add {style.label}</span>
+                          <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${style.classes}`}>
+                            {style.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
             
             <button
               onClick={() => {
