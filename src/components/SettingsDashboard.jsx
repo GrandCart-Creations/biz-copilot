@@ -8,10 +8,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
-import { useAuth } from '../contexts/AuthContext';
 import CompanySelector from './CompanySelector';
 import UserProfile from './UserProfile';
 import TeamManagement from './TeamManagement';
+import PeopleWorkspace from './PeopleWorkspace';
 import FinancialAccounts from './FinancialAccounts';
 import FundingAndInvestors from './FundingAndInvestors';
 import CompanyBranding from './CompanyBranding';
@@ -30,10 +30,9 @@ import {
 
 const SettingsDashboard = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
   const [loading] = useState(false);
-  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'accounts' | 'funding' | 'branding' | 'onboarding'
+  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'people' | 'accounts' | 'funding' | 'branding' | 'onboarding'
   
   const canManage = userRole === 'owner' || userRole === 'manager';
 
@@ -132,6 +131,19 @@ const SettingsDashboard = () => {
                   Team Management
                 </div>
               </button>
+              <button
+                onClick={() => setActiveTab('people')}
+                className={`px-6 py-4 text-sm font-medium transition-colors ${
+                  activeTab === 'people'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FaUserTie className="w-4 h-4" />
+                  People Workspace
+                </div>
+              </button>
               {/* Financial Accounts tab - OWNER ONLY */}
               {userRole === 'owner' && (
                 <button
@@ -206,6 +218,7 @@ const SettingsDashboard = () => {
         {/* Tab Content */}
         <div className="bg-white rounded-lg shadow p-6">
           {activeTab === 'team' && <TeamManagement />}
+          {activeTab === 'people' && <PeopleWorkspace />}
           {activeTab === 'accounts' && <FinancialAccounts />}
           {activeTab === 'funding' && <FundingAndInvestors />}
           {activeTab === 'branding' && <CompanyBranding />}

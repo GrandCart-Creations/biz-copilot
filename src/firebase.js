@@ -872,6 +872,138 @@ export const deleteAllExpenseFiles = async (userId, expenseId) => {
   }
 };
 
+// ==================== PEOPLE PROFILES / HR WORKSPACE ====================
+
+export const getPeopleProfiles = async (companyId) => {
+  try {
+    const profilesRef = collection(db, 'companies', companyId, 'peopleProfiles');
+    const snapshot = await getDocs(profilesRef);
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error fetching people profiles:', error);
+    throw error;
+  }
+};
+
+export const getPeopleProfile = async (companyId, userId) => {
+  try {
+    const profileRef = doc(db, 'companies', companyId, 'peopleProfiles', userId);
+    const profileSnap = await getDoc(profileRef);
+    if (profileSnap.exists()) {
+      return profileSnap.data();
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching people profile:', error);
+    throw error;
+  }
+};
+
+export const savePeopleProfile = async (companyId, userId, data) => {
+  try {
+    const profileRef = doc(db, 'companies', companyId, 'peopleProfiles', userId);
+    await setDoc(
+      profileRef,
+      {
+        ...data,
+        updatedAt: serverTimestamp(),
+        createdAt: data?.createdAt || serverTimestamp()
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    console.error('Error saving people profile:', error);
+    throw error;
+  }
+};
+
+export const uploadPeopleAttachment = async (companyId, userId, file, onProgress) => {
+  try {
+    if (!companyId || !userId || !file) {
+      throw new Error('Missing companyId, userId, or file for upload.');
+    }
+
+    const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error('Unsupported file type. Please upload PDF or image files.');
+    }
+
+    const timestamp = Date.now();
+    const sanitizedName = file.name.replace(/\s+/g, '_');
+    const filePath = `companies/${companyId}/people/${userId}/${timestamp}_${sanitizedName}`;
+    const storageRef = ref(storage, filePath);
+
+    if (onProgress) {
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      return new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            onProgress(progress);
+          },
+          (error) => reject(error),
+          async () => {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve({
+              fileName: file.name,
+              fileUrl: downloadURL,
+              filePath,
+              fileType: file.type,
+              fileSize: file.size,
+              uploadedAt: new Date().toISOString()
+            });
+          }
+        );
+      });
+    }
+
+    await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(storageRef);
+    return {
+      fileName: file.name,
+      fileUrl: downloadURL,
+      filePath,
+      fileType: file.type,
+      fileSize: file.size,
+      uploadedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Error uploading people attachment:', error);
+    throw error;
+  }
+};
+
+export const removePeopleAttachment = async (companyId, userId, attachment, currentAttachments = []) => {
+  try {
+    if (attachment?.filePath) {
+      try {
+        const storageRef = ref(storage, attachment.filePath);
+        await deleteObject(storageRef);
+      } catch (storageError) {
+        console.warn('Failed to delete attachment from storage:', storageError);
+      }
+    }
+
+    const remaining = currentAttachments.filter((item) => item.filePath !== attachment.filePath);
+
+    await savePeopleProfile(companyId, userId, {
+      attachments: remaining.map((item) => ({
+        ...item,
+        updatedAt: item.updatedAt || new Date().toISOString()
+      }))
+    });
+
+    return remaining;
+  } catch (error) {
+    console.error('Error removing people attachment:', error);
+    throw error;
+  }
+};
+
 // ==================== TEAM MANAGEMENT ====================
 
 /**
@@ -1133,7 +1265,7 @@ export const getUserInvitations = async (userEmail) => {
       
       try {
         companiesSnapshot = await getDocs(companiesRef);
-      } catch (queryError) {
+      } catch {
         // If we can't query all companies (permission denied), that's okay
         // We'll only check invitations in companies the user is already part of
         console.warn('[getUserInvitations] Cannot query all companies, checking known companies only');
@@ -1373,7 +1505,7 @@ export const addUserDirectlyToCompany = async (companyId, userId, userEmail, rol
  * @param {string} email - Email to search for
  * @returns {Promise<{uid: string, email: string} | null>}
  */
-export const findUserByEmail = async (email) => {
+export const findUserByEmail = async () => {
   try {
     // In Firebase, we can't directly query users by email from the client
     // This function is a placeholder for when we have a backend API
