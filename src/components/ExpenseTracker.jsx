@@ -24,7 +24,8 @@ import {
   FaImage,
   FaSearchPlus,
   FaSearchMinus,
-  FaExternalLinkAlt
+  FaExternalLinkAlt,
+  FaInfoCircle
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
 import FileUpload from './FileUpload';
@@ -41,6 +42,7 @@ import {
   updateAccountBalance,
   validateVatNumber
 } from '../firebase';
+import { trackEvent } from '../utils/analytics';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -80,6 +82,7 @@ const EU_COUNTRY_OPTIONS = [
 ];
 
 const CURRENCY_OPTIONS = ['EUR', 'USD', 'GBP', 'CHF', 'SEK'];
+const ADD_DOCUMENT_ONBOARDING_KEY = 'expense_tracker_add_document_onboarding_seen';
 
 const AttachmentPanel = ({
   label,
@@ -345,6 +348,9 @@ const AttachmentPanel = ({
                 <option value="statement">Bank Statement</option>
                 <option value="other">Other</option>
               </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Choose the document you’re capturing so the table badges and filters stay accurate.
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1080,6 +1086,7 @@ const paymentStatusStyles = {
   const [ocrProcessing, setOcrProcessing] = useState(false);
   const addDocumentMenuRef = useRef(null);
   const [showAddDocumentMenu, setShowAddDocumentMenu] = useState(false);
+  const [showAddDocumentIntro, setShowAddDocumentIntro] = useState(false);
 
   useEffect(() => {
     if (!showAddDocumentMenu) {
@@ -1106,6 +1113,39 @@ const paymentStatusStyles = {
       document.removeEventListener('keydown', handleEsc);
     };
   }, [showAddDocumentMenu]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (showAddExpense && !editingExpense) {
+      const hasSeen = window.localStorage.getItem(ADD_DOCUMENT_ONBOARDING_KEY);
+      if (!hasSeen) {
+        setShowAddDocumentIntro(true);
+        trackEvent('add_document_onboarding_shown', {
+          context: 'expense_modal'
+        });
+      }
+    } else {
+      setShowAddDocumentIntro(false);
+    }
+  }, [showAddExpense, editingExpense]);
+
+  const completeAddDocumentOnboarding = (reason = 'dismissed') => {
+    let alreadyCompleted = false;
+    if (typeof window !== 'undefined') {
+      alreadyCompleted = window.localStorage.getItem(ADD_DOCUMENT_ONBOARDING_KEY) === 'true';
+      window.localStorage.setItem(ADD_DOCUMENT_ONBOARDING_KEY, 'true');
+    }
+    setShowAddDocumentIntro(false);
+    if (!alreadyCompleted) {
+      trackEvent('add_document_onboarding_completed', {
+        context: 'expense_modal',
+        reason
+      });
+    }
+  };
 
   // Track last loaded company to prevent unnecessary reloads
   const lastLoadedCompanyIdRef = useRef(null);
@@ -1470,6 +1510,16 @@ const paymentStatusStyles = {
       // Reload expenses
       await loadExpenses();
 
+      trackEvent('document_saved', {
+        documentType: (payload.documentType || 'invoice').toLowerCase(),
+        paymentStatus: (payload.paymentStatus || 'open').toLowerCase(),
+        isEdit: Boolean(editingExpense),
+        attachmentsUploaded: selectedFiles.length,
+        hasExistingAttachments: Boolean(existingAttachments?.length),
+        companyId: currentCompanyId || 'unknown'
+      });
+      completeAddDocumentOnboarding('document_saved');
+
       // Reset form
       setFormData({
         date: todayIso,
@@ -1512,6 +1562,12 @@ const paymentStatusStyles = {
       setEditingExpense(null);
     } catch (error) {
       console.error('Error saving expense:', error);
+      trackEvent('document_save_error', {
+        documentType: (formData.documentType || 'invoice').toLowerCase(),
+        isEdit: Boolean(editingExpense),
+        companyId: currentCompanyId || 'unknown',
+        message: error?.message?.slice(0, 120) || 'unknown'
+      });
       alert('Error saving expense. Please try again.');
     } finally {
       setUploadingFiles(false);
@@ -1536,7 +1592,7 @@ const paymentStatusStyles = {
     }
   };
 
-  const handleAddDocument = (docType = 'invoice') => {
+  const handleAddDocument = (docType = 'invoice', source = 'menu') => {
     if (!currentCompanyId) {
       alert('Please select a company to add documents.');
       return;
@@ -1544,6 +1600,12 @@ const paymentStatusStyles = {
 
     const normalizedDocType = (docType || 'invoice').toLowerCase();
     const defaultPaymentStatus = normalizedDocType === 'receipt' ? 'paid' : 'open';
+
+    trackEvent('add_document_opened', {
+      documentType: normalizedDocType,
+      source,
+      companyId: currentCompanyId || 'unknown'
+    });
 
     setFormData({
       date: todayIso,
@@ -2195,6 +2257,24 @@ const paymentStatusStyles = {
             </div>
 
             <form onSubmit={handleSubmit} className="px-5 py-3 flex-1">
+              {showAddDocumentIntro && (
+                <div className="mb-4 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                  <FaInfoCircle className="mt-1 h-4 w-4 flex-shrink-0 text-blue-500" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-blue-900">Tip: capture every document in one place</p>
+                    <p className="mt-1 text-blue-800">
+                      Select the document type at the bottom-right to tag invoices, receipts, and bank statements. Receipts default to Paid so you can attach proof without double-counting.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => completeAddDocumentOnboarding('dismissed')}
+                    className="ml-2 shrink-0 rounded-md border border-blue-200 bg-white px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                  >
+                    Got it
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1.45fr)] gap-6 lg:h-[75vh]">
                 <div className="space-y-4 overflow-y-auto pr-2 lg:max-h-[72vh]">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2806,7 +2886,7 @@ const paymentStatusStyles = {
               <div className="inline-flex rounded-lg shadow-sm overflow-hidden">
                 <button
                   type="button"
-                  onClick={() => handleAddDocument('invoice')}
+                  onClick={() => handleAddDocument('invoice', 'primary')}
                   disabled={!currentCompanyId}
                   className="px-4 py-2 bg-blue-600 text-white flex items-center gap-2 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   title={!currentCompanyId ? 'Please select a company first' : 'Add a new invoice'}
@@ -2821,7 +2901,13 @@ const paymentStatusStyles = {
                       alert('Please select a company to add documents.');
                       return;
                     }
-                    setShowAddDocumentMenu((prev) => !prev);
+                    setShowAddDocumentMenu((prev) => {
+                      const next = !prev;
+                      trackEvent(next ? 'add_document_menu_opened' : 'add_document_menu_closed', {
+                        companyId: currentCompanyId || 'unknown'
+                      });
+                      return next;
+                    });
                   }}
                   disabled={!currentCompanyId}
                   aria-haspopup="menu"
@@ -2842,7 +2928,7 @@ const paymentStatusStyles = {
                         <button
                           key={option.value}
                           type="button"
-                          onClick={() => handleAddDocument(option.value)}
+                          onClick={() => handleAddDocument(option.value, 'dropdown')}
                           className="w-full px-4 py-2 text-sm text-left hover:bg-blue-50 flex items-center justify-between gap-2"
                         >
                           <span>Add {style.label}</span>

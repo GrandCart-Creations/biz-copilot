@@ -2292,4 +2292,4 @@ export const validateVatNumber = async (countryCode, vatNumber) => {
 };
 
 // Export auth, db, and storage instances
-export { auth, db, storage };
+export { app, auth, db, storage };

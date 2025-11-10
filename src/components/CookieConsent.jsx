@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaCookie, FaTimes, FaCog, FaCheck, FaTimesCircle } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
+import { applyAnalyticsConsent } from '../utils/analytics';
 
 const CookieConsent = () => {
   const [showBanner, setShowBanner] = useState(false);
@@ -21,6 +22,7 @@ const CookieConsent = () => {
       // Load saved preferences
       const savedPrefs = JSON.parse(consent);
       setPreferences(savedPrefs);
+      applyAnalyticsConsent(savedPrefs.analytics);
     }
   }, []);
 
@@ -49,10 +51,7 @@ const CookieConsent = () => {
     setShowSettings(false);
     
     // Apply preferences (e.g., load analytics scripts if consented)
-    if (prefs.analytics) {
-      // Load Google Analytics if consented
-      // This would typically be handled in your analytics setup
-    }
+    applyAnalyticsConsent(prefs.analytics);
   };
 
   const handlePreferenceChange = (type) => {
