@@ -24,7 +24,12 @@ import {
   FaSearchPlus,
   FaSearchMinus,
   FaExternalLinkAlt,
-  FaInfoCircle
+  FaInfoCircle,
+  FaReceipt,
+  FaFileInvoiceDollar,
+  FaCreditCard,
+  FaLink,
+  FaHistory
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
 import CompanySelector from './CompanySelector';
@@ -38,7 +43,8 @@ import {
   deleteCompanyExpense,
   uploadExpenseFile,
   updateAccountBalance,
-  validateVatNumber
+  validateVatNumber,
+  getUserProfile
 } from '../firebase';
 import { trackEvent } from '../utils/analytics';
 
@@ -696,6 +702,95 @@ const paymentStatusStyles = {
     return value;
   };
 
+  const toDateInstance = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    if (typeof value === 'number') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    if (value?.toDate) {
+      try {
+        const parsed = value.toDate();
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      } catch {
+        return null;
+      }
+    }
+    if (value?.seconds) {
+      const parsed = new Date(value.seconds * 1000);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    return null;
+  };
+
+  const formatDateTime = (value, options = { dateStyle: 'medium', timeStyle: 'short' }) => {
+    const date = toDateInstance(value);
+    if (!date) return '—';
+    return new Intl.DateTimeFormat(undefined, options).format(date);
+  };
+
+  const resolveUserName = (userId) => {
+    if (!userId) {
+      return 'System';
+    }
+    const profile = userProfiles[userId];
+    if (!profile) {
+      return `User ${String(userId).slice(0, 6)}`;
+    }
+    return profile.displayName || profile.fullName || profile.email || `User ${String(userId).slice(0, 6)}`;
+  };
+
+  const hydrateUserProfiles = useCallback(async (expensesList = []) => {
+    if (!Array.isArray(expensesList) || expensesList.length === 0) {
+      return;
+    }
+
+    const idsToLoad = new Set();
+    expensesList.forEach((expense) => {
+      if (expense?.createdBy) idsToLoad.add(expense.createdBy);
+      if (expense?.updatedBy) idsToLoad.add(expense.updatedBy);
+      if (expense?.linkedPaymentRecordedBy) idsToLoad.add(expense.linkedPaymentRecordedBy);
+      if (expense?.linkedStatementMatchedBy) idsToLoad.add(expense.linkedStatementMatchedBy);
+    });
+
+    const newIds = Array.from(idsToLoad).filter((id) => id && !loadedUserIdsRef.current.has(id));
+    if (newIds.length === 0) {
+      return;
+    }
+
+    const profileResults = await Promise.all(newIds.map(async (userId) => {
+      try {
+        const profile = await getUserProfile(userId);
+        return { userId, profile };
+      } catch (error) {
+        console.warn('Failed to load user profile', userId, error);
+        return { userId, profile: null };
+      }
+    }));
+
+    const profileMap = {};
+    profileResults.forEach(({ userId, profile }) => {
+      loadedUserIdsRef.current.add(userId);
+      if (profile) {
+        profileMap[userId] = profile;
+      }
+    });
+
+    if (Object.keys(profileMap).length > 0) {
+      setUserProfiles((prev) => ({
+        ...prev,
+        ...profileMap
+      }));
+    }
+  }, []);
+
   const parseExpenseDetailsFromText = (text) => {
     if (!text) return {};
 
@@ -1312,6 +1407,8 @@ const paymentStatusStyles = {
     startDate: '',
     endDate: ''
   });
+  const [userProfiles, setUserProfiles] = useState({});
+  const loadedUserIdsRef = useRef(new Set());
   const [expandedLinkedReceipts, setExpandedLinkedReceipts] = useState(() => new Set());
 
   // Form State
@@ -1497,7 +1594,8 @@ const paymentStatusStyles = {
         paymentStatus: 'paid',
         linkedPaymentExpenseId: receipt.id,
         linkedPaymentInvoiceNumber: receipt.invoiceNumber || '',
-        linkedPaymentRecordedAt: new Date().toISOString()
+        linkedPaymentRecordedAt: new Date().toISOString(),
+        linkedPaymentRecordedBy: currentUser?.uid || 'system-auto'
       };
 
       if (!invoiceToUpdate.financialAccountId && receipt.financialAccountId) {
@@ -1516,7 +1614,8 @@ const paymentStatusStyles = {
         const receiptUpdatePayload = {
           linkedInvoiceExpenseId: invoiceToUpdate.id,
           linkedInvoiceNumber: invoiceToUpdate.invoiceNumber || '',
-          linkedInvoiceUpdatedAt: new Date().toISOString()
+          linkedInvoiceUpdatedAt: new Date().toISOString(),
+          linkedInvoiceLinkedBy: currentUser?.uid || 'system-auto'
         };
 
         if (receipt.linkedInvoiceExpenseId !== invoiceToUpdate.id) {
@@ -1555,7 +1654,214 @@ const paymentStatusStyles = {
     }
 
     return reconciledInvoiceIds.size > 0 ? updatedExpenses : expensesList;
-  }, [currentCompanyId]);
+  }, [currentCompanyId, currentUser?.uid]);
+
+  const reconcileReceiptsWithStatements = useCallback(async (expensesList = []) => {
+    if (!currentCompanyId || !Array.isArray(expensesList) || expensesList.length === 0) {
+      return expensesList;
+    }
+
+    const parseAmountValue = (value) => {
+      if (value === null || value === undefined || value === '') {
+        return null;
+      }
+      const parsed = parseFloat(value);
+      return Number.isFinite(parsed) ? parseFloat(parsed.toFixed(2)) : null;
+    };
+
+    const receipts = expensesList.filter((expense) => (
+      (expense.documentType || '').toLowerCase() === 'receipt'
+      && (expense.paymentStatus || '').toLowerCase() === 'paid'
+    ));
+
+    if (receipts.length === 0) {
+      return expensesList;
+    }
+
+    const statements = expensesList.filter((expense) => (
+      (expense.documentType || '').toLowerCase() === 'statement'
+    ));
+
+    if (statements.length === 0) {
+      return expensesList;
+    }
+
+    const statementIndexById = new Map();
+    const expenseIndexById = new Map();
+    const updatedExpenses = expensesList.map((expense, index) => {
+      expenseIndexById.set(expense.id, index);
+      if ((expense.documentType || '').toLowerCase() === 'statement') {
+        statementIndexById.set(expense.id, expense);
+      }
+      return { ...expense };
+    });
+
+    const availableStatements = statements.filter((statement) => {
+      const alreadyLinked = Boolean(statement.linkedReceiptExpenseId);
+      return alreadyLinked ? false : true;
+    });
+
+    if (availableStatements.length === 0) {
+      return expensesList;
+    }
+
+    const matchedStatementIds = new Set();
+
+    const normaliseString = (value) => (value ? value.toString().toLowerCase().replace(/\s+/g, ' ').trim() : '');
+    const toDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value;
+      if (typeof value === 'string' || typeof value === 'number') {
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+      if (value?.toDate) {
+        try {
+          const parsed = value.toDate();
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        } catch {
+          return null;
+        }
+      }
+      if (value?.seconds) {
+        const parsed = new Date(value.seconds * 1000);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+      return null;
+    };
+    const differenceInDays = (dateA, dateB) => {
+      const a = toDate(dateA);
+      const b = toDate(dateB);
+      if (!a || !b) return Number.POSITIVE_INFINITY;
+      const diff = Math.abs(a.getTime() - b.getTime());
+      return diff / (1000 * 60 * 60 * 24);
+    };
+
+    for (const receipt of receipts) {
+      if (receipt.linkedStatementExpenseId && statementIndexById.has(receipt.linkedStatementExpenseId)) {
+        continue;
+      }
+
+      const receiptAmount = parseAmountValue(receipt.amount);
+      if (receiptAmount === null || receiptAmount <= 0) {
+        continue;
+      }
+
+      const receiptMethod = normaliseString(receipt.paymentMethodDetails || receipt.paymentMethod);
+      const receiptVendor = normaliseString(receipt.vendor);
+
+      const candidateStatements = availableStatements.filter((statement) => {
+        if (matchedStatementIds.has(statement.id)) return false;
+        const statementAmount = parseAmountValue(statement.amount);
+        if (statementAmount === null || statementAmount <= 0) return false;
+
+        const amountMatches = Math.abs(statementAmount - receiptAmount) < 0.02;
+        if (!amountMatches) return false;
+
+        const statementMethod = normaliseString(statement.paymentMethodDetails || statement.paymentMethod);
+        const statementVendor = normaliseString(statement.vendor || statement.description);
+
+        const methodMatches = receiptMethod && statementMethod
+          ? statementMethod.includes(receiptMethod) || receiptMethod.includes(statementMethod)
+          : false;
+        const vendorMatches = receiptVendor && statementVendor
+          ? statementVendor.includes(receiptVendor) || receiptVendor.includes(statementVendor)
+          : false;
+
+        const dayDiff = differenceInDays(receipt.date, statement.date);
+        const dateMatches = dayDiff <= 5;
+
+        return amountMatches && (methodMatches || vendorMatches || dateMatches);
+      });
+
+      if (candidateStatements.length === 0) {
+        continue;
+      }
+
+      const statement = candidateStatements.sort((a, b) => {
+        const diffA = differenceInDays(receipt.date, a.date);
+        const diffB = differenceInDays(receipt.date, b.date);
+        return diffA - diffB;
+      })[0];
+
+      const statementAmount = parseAmountValue(statement.amount) ?? receiptAmount;
+      const dayDifference = differenceInDays(receipt.date, statement.date);
+      const methodMatches = normaliseString(statement.paymentMethodDetails || statement.paymentMethod)
+        && normaliseString(receipt.paymentMethodDetails || receipt.paymentMethod)
+        && (normaliseString(statement.paymentMethodDetails || statement.paymentMethod).includes(normaliseString(receipt.paymentMethodDetails || receipt.paymentMethod))
+          || normaliseString(receipt.paymentMethodDetails || receipt.paymentMethod).includes(normaliseString(statement.paymentMethodDetails || statement.paymentMethod)));
+      const vendorMatches = normaliseString(statement.vendor || statement.description)
+        && normaliseString(receipt.vendor)
+        && (normaliseString(statement.vendor || statement.description).includes(normaliseString(receipt.vendor))
+          || normaliseString(receipt.vendor).includes(normaliseString(statement.vendor || statement.description)));
+
+      let confidence = 0.4; // base for amount match
+      if (methodMatches) confidence += 0.3;
+      if (vendorMatches) confidence += 0.2;
+      if (dayDifference <= 1) confidence += 0.2;
+      else if (dayDifference <= 3) confidence += 0.1;
+      confidence = Math.min(0.95, confidence);
+
+      const nowIso = new Date().toISOString();
+      const receiptUpdate = {
+        linkedStatementExpenseId: statement.id,
+        linkedStatementMatchedAt: nowIso,
+        linkedStatementMatchedBy: currentUser?.uid || 'system-auto',
+        linkedStatementMatchConfidence: confidence,
+        linkedStatementAmount: statementAmount,
+        linkedStatementDate: statement.date || '',
+        linkedStatementDescription: statement.description || ''
+      };
+
+      const statementUpdate = {
+        linkedReceiptExpenseId: receipt.id,
+        linkedReceiptMatchedAt: nowIso,
+        linkedReceiptMatchConfidence: confidence,
+        linkedReceiptInvoiceNumber: receipt.invoiceNumber || '',
+        linkedReceiptVendor: receipt.vendor || '',
+        linkedReceiptAmount: receiptAmount,
+        linkedReceiptDate: receipt.date || ''
+      };
+
+      try {
+        await Promise.all([
+          updateCompanyExpense(currentCompanyId, receipt.id, receiptUpdate),
+          updateCompanyExpense(currentCompanyId, statement.id, statementUpdate)
+        ]);
+
+        const receiptIndex = expenseIndexById.get(receipt.id);
+        if (typeof receiptIndex === 'number') {
+          updatedExpenses[receiptIndex] = {
+            ...updatedExpenses[receiptIndex],
+            ...receiptUpdate
+          };
+        }
+
+        const statementIndex = expenseIndexById.get(statement.id);
+        if (typeof statementIndex === 'number') {
+          updatedExpenses[statementIndex] = {
+            ...updatedExpenses[statementIndex],
+            ...statementUpdate
+          };
+        }
+
+        matchedStatementIds.add(statement.id);
+
+        trackEvent('receipt_statement_reconciled', {
+          receiptId: receipt.id,
+          statementId: statement.id,
+          amount: statementAmount,
+          daysDelta: Number.isFinite(dayDifference) ? dayDifference : null,
+          confidence,
+          companyId: currentCompanyId
+        });
+      } catch (error) {
+        console.error('Failed to reconcile receipt with bank statement', { receiptId: receipt.id, statementId: statement.id }, error);
+      }
+    }
+
+    return matchedStatementIds.size > 0 ? updatedExpenses : expensesList;
+  }, [currentCompanyId, currentUser?.uid]);
 
   const loadExpenses = async () => {
     if (!currentCompanyId) {
@@ -1568,8 +1874,10 @@ const paymentStatusStyles = {
     try {
       setLoading(true);
       const companyExpenses = await getCompanyExpenses(currentCompanyId);
-      const reconciledExpenses = await reconcileInvoicesWithReceipts(companyExpenses || []);
+      let reconciledExpenses = await reconcileInvoicesWithReceipts(companyExpenses || []);
+      reconciledExpenses = await reconcileReceiptsWithStatements(reconciledExpenses || []);
       setExpenses(reconciledExpenses || []);
+      await hydrateUserProfiles(reconciledExpenses || []);
     } catch (error) {
       console.error('Error loading expenses:', error);
       setExpenses([]);
@@ -2405,12 +2713,26 @@ const paymentStatusStyles = {
     return map;
   }, [filteredExpenses]);
 
+  const linkedStatementsByReceipt = useMemo(() => {
+    const map = new Map();
+    filteredExpenses.forEach(expense => {
+      const docType = (expense.documentType || '').toLowerCase();
+      if (docType === 'statement' && expense.linkedReceiptExpenseId) {
+        map.set(expense.linkedReceiptExpenseId, expense);
+      }
+    });
+    return map;
+  }, [filteredExpenses]);
+
   const visibleExpenses = useMemo(() => {
     return filteredExpenses.filter(expense => {
       const docType = (expense.documentType || '').toLowerCase();
       if (docType === 'invoice' && expense.linkedPaymentExpenseId) {
         return false;
       }
+       if (docType === 'statement' && expense.linkedReceiptExpenseId) {
+         return false;
+       }
       return true;
     });
   }, [filteredExpenses]);
@@ -3345,15 +3667,76 @@ const paymentStatusStyles = {
                       const documentMeta = documentTypeStyles[documentTypeKey] || documentTypeStyles.invoice;
                       const paymentStatusKey = (expense.paymentStatus || 'open').toLowerCase();
                       const paymentMeta = paymentStatusStyles[paymentStatusKey] || paymentStatusStyles.open;
+                      const statementMeta = documentTypeStyles.statement;
                       const paymentDetailsRecorded = paymentStatusKey === 'paid' && (expense.paymentMethod || expense.paymentMethodDetails);
                       const linkedInvoice = linkedInvoicesByReceipt.get(expense.id);
+                      const linkedStatement = linkedStatementsByReceipt.get(expense.id);
                       const hasLinkedInvoice = Boolean(linkedInvoice);
-                      const isExpanded = hasLinkedInvoice && expandedLinkedReceipts.has(expense.id);
+                      const hasLinkedStatement = Boolean(linkedStatement);
+                      const hasLinkedDocuments = hasLinkedInvoice || hasLinkedStatement;
+                      const isExpanded = hasLinkedDocuments && expandedLinkedReceipts.has(expense.id);
+                      const statementConfidence = typeof expense.linkedStatementMatchConfidence === 'number'
+                        ? Math.round(expense.linkedStatementMatchConfidence * 100)
+                        : null;
+
+                      const timelineEvents = [];
+                      if (expense.createdAt) {
+                        timelineEvents.push({
+                          icon: <FaReceipt className="w-3.5 h-3.5" />,
+                          label: 'Receipt captured',
+                          at: expense.createdAt,
+                          userId: expense.createdBy,
+                          meta: expense.paymentMethod
+                            ? `Method: ${expense.paymentMethodDetails || expense.paymentMethod}`
+                            : null
+                        });
+                      }
+                      if (hasLinkedInvoice && linkedInvoice.createdAt) {
+                        timelineEvents.push({
+                          icon: <FaFileInvoiceDollar className="w-3.5 h-3.5" />,
+                          label: 'Invoice recorded',
+                          at: linkedInvoice.createdAt,
+                          userId: linkedInvoice.createdBy,
+                          meta: linkedInvoice.invoiceNumber ? `Number: ${linkedInvoice.invoiceNumber}` : null
+                        });
+                      }
+                      if (hasLinkedInvoice && linkedInvoice.linkedPaymentRecordedAt) {
+                        timelineEvents.push({
+                          icon: <FaLink className="w-3.5 h-3.5" />,
+                          label: 'Invoice marked paid via receipt',
+                          at: linkedInvoice.linkedPaymentRecordedAt,
+                          userId: linkedInvoice.linkedPaymentRecordedBy,
+                          meta: linkedInvoice.paymentMethod || linkedInvoice.paymentMethodDetails
+                            ? `Method: ${linkedInvoice.paymentMethodDetails || linkedInvoice.paymentMethod}`
+                            : null
+                        });
+                      }
+                      if (hasLinkedStatement && linkedStatement.createdAt) {
+                        timelineEvents.push({
+                          icon: <FaCreditCard className="w-3.5 h-3.5" />,
+                          label: 'Bank statement entry imported',
+                          at: linkedStatement.createdAt,
+                          userId: linkedStatement.createdBy,
+                          meta: linkedStatement.bankAccount
+                            ? `Account: ${linkedStatement.bankAccount}`
+                            : null
+                        });
+                      }
+                      if (expense.linkedStatementMatchedAt) {
+                        timelineEvents.push({
+                          icon: <FaHistory className="w-3.5 h-3.5" />,
+                          label: 'Receipt reconciled with bank statement',
+                          at: expense.linkedStatementMatchedAt,
+                          userId: expense.linkedStatementMatchedBy,
+                          meta: statementConfidence !== null ? `Match confidence: ${statementConfidence}%` : null
+                        });
+                      }
+
                       return (
                         <React.Fragment key={expense.id}>
                           <tr className="hover:bg-gray-50">
                             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {new Date(expense.date).toLocaleDateString()}
+                              {formatDateTime(expense.date, { dateStyle: 'medium' })}
                             </td>
                             <td className="px-3 py-4 whitespace-nowrap">
                               <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
@@ -3375,12 +3758,17 @@ const paymentStatusStyles = {
                                 <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
                                   {documentMeta.label}
                                 </span>
-                                {hasLinkedInvoice && (
+                                {hasLinkedStatement && (
+                                  <span className="px-2 inline-flex text-xs font-semibold rounded-full bg-green-100 text-green-700">
+                                    Bank Proof
+                                  </span>
+                                )}
+                                {hasLinkedDocuments && (
                                   <button
                                     type="button"
                                     onClick={() => toggleLinkedReceipt(expense.id)}
                                     className="p-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 transition"
-                                    title={isExpanded ? 'Hide linked invoice' : 'Show linked invoice'}
+                                    title={isExpanded ? 'Hide linked documents' : 'Show linked documents'}
                                   >
                                     <FaChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                   </button>
@@ -3417,7 +3805,7 @@ const paymentStatusStyles = {
                               )}
                             </td>
                             <td className="px-3 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
-                              €{parseFloat(expense.amount).toFixed(2)}
+                              {formatCurrency(parseFloat(expense.amount) || 0)}
                             </td>
                             <td className="px-3 py-4 whitespace-nowrap text-center text-sm">
                               {expense.attachments && expense.attachments.length > 0 ? (
@@ -3449,63 +3837,154 @@ const paymentStatusStyles = {
                               </button>
                             </td>
                           </tr>
-                          {hasLinkedInvoice && isExpanded && (
+                          {hasLinkedDocuments && isExpanded && (
                             <tr>
                               <td colSpan="12" className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-                                <div className="flex flex-col gap-3">
-                                  <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div>
-                                      <p className="text-sm font-semibold text-gray-800">Linked invoice details</p>
-                                      <p className="text-xs text-gray-500">
-                                        {(linkedInvoice.invoiceNumber || 'Invoice')} • {new Date(linkedInvoice.date || expense.date).toLocaleDateString()}
-                                      </p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
-                                        Invoice
-                                      </span>
-                                      <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${paymentMeta.classes}`}>
-                                        {paymentMeta.label}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleEditExpense(linkedInvoice)}
-                                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
-                                      >
-                                        Edit invoice
-                                      </button>
-                                    </div>
-                                  </div>
-                                  <div className="grid md:grid-cols-4 gap-4 text-sm text-gray-700">
-                                    <div>
-                                      <p className="text-xs uppercase text-gray-400">Vendor</p>
-                                      <p>{linkedInvoice.vendor || '-'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs uppercase text-gray-400">Amount</p>
-                                      <p>€{parseFloat(linkedInvoice.amount).toFixed(2)}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs uppercase text-gray-400">Payment method</p>
-                                      <p>{linkedInvoice.paymentMethod || expense.paymentMethod || '-'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs uppercase text-gray-400">Attachments</p>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleViewAttachments(linkedInvoice)}
-                                        className="inline-flex items-center text-blue-600 hover:text-blue-900"
-                                      >
-                                        <FaPaperclip className="w-4 h-4 mr-1" />
-                                        <span>{linkedInvoice.attachments?.length || 0}</span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                  {linkedInvoice.description && (
-                                    <div className="text-sm text-gray-600 bg-white border border-gray-200 rounded-md p-3">
-                                      <p className="text-xs uppercase text-gray-400 mb-1">Invoice description</p>
-                                      <p className="whitespace-pre-wrap">{linkedInvoice.description}</p>
-                                    </div>
+                                <div className="flex flex-col gap-4">
+                                  {hasLinkedInvoice && (
+                                    <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                      <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-semibold text-gray-800">Linked invoice</p>
+                                          <p className="text-xs text-gray-500">
+                                            {(linkedInvoice.invoiceNumber || 'Invoice')} • {formatDateTime(linkedInvoice.date || expense.date, { dateStyle: 'medium' })}
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
+                                            Invoice
+                                          </span>
+                                          <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${paymentMeta.classes}`}>
+                                            {paymentMeta.label}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleEditExpense(linkedInvoice)}
+                                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
+                                          >
+                                            Edit invoice
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div className="grid md:grid-cols-4 gap-4 text-sm text-gray-700 mt-3">
+                                        <div>
+                                          <p className="text-xs uppercase text-gray-400">Vendor</p>
+                                          <p>{linkedInvoice.vendor || '-'}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs uppercase text-gray-400">Amount</p>
+                                          <p>{formatCurrency(parseFloat(linkedInvoice.amount) || 0)}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs uppercase text-gray-400">Payment method</p>
+                                          <p>{linkedInvoice.paymentMethod || linkedInvoice.paymentMethodDetails || expense.paymentMethod || '-'}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs uppercase text-gray-400">Attachments</p>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleViewAttachments(linkedInvoice)}
+                                            className="inline-flex items-center text-blue-600 hover:text-blue-900"
+                                          >
+                                            <FaPaperclip className="w-4 h-4 mr-1" />
+                                            <span>{linkedInvoice.attachments?.length || 0}</span>
+                                          </button>
+                                        </div>
+                                      </div>
+                                      {linkedInvoice.description && (
+                                        <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3 mt-3">
+                                          <p className="text-xs uppercase text-gray-400 mb-1">Invoice description</p>
+                                          <p className="whitespace-pre-wrap">{linkedInvoice.description}</p>
+                                        </div>
+                                      )}
+                                    </section>
+                                  )}
+
+                                  {hasLinkedStatement && (
+                                    <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                      <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-semibold text-gray-800">Bank statement match</p>
+                                          <p className="text-xs text-gray-500">
+                                            {formatDateTime(linkedStatement.date || expense.linkedStatementDate, { dateStyle: 'medium' })} • {formatCurrency(parseFloat(linkedStatement.amount) || expense.linkedStatementAmount || 0)}
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${statementMeta.classes}`}>
+                                            Statement
+                                          </span>
+                                          {statementConfidence !== null && (
+                                            <span className="px-2 inline-flex text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
+                                              {statementConfidence}% confidence
+                                            </span>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleEditExpense(linkedStatement)}
+                                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
+                                          >
+                                            Review entry
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div className="grid md:grid-cols-4 gap-4 text-sm text-gray-700 mt-3">
+                                        <div>
+                                          <p className="text-xs uppercase text-gray-400">Account</p>
+                                          <p>{linkedStatement.bankAccount || expense.bankAccount || '-'}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs uppercase text-gray-400">Payment method</p>
+                                          <p>{linkedStatement.paymentMethodDetails || linkedStatement.paymentMethod || '-'}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs uppercase text-gray-400">Match recorded</p>
+                                          <p>{formatDateTime(expense.linkedStatementMatchedAt, { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs uppercase text-gray-400">Attachments</p>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleViewAttachments(linkedStatement)}
+                                            className="inline-flex items-center text-blue-600 hover:text-blue-900"
+                                          >
+                                            <FaPaperclip className="w-4 h-4 mr-1" />
+                                            <span>{linkedStatement.attachments?.length || 0}</span>
+                                          </button>
+                                        </div>
+                                      </div>
+                                      {linkedStatement.description && (
+                                        <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3 mt-3">
+                                          <p className="text-xs uppercase text-gray-400 mb-1">Statement description</p>
+                                          <p className="whitespace-pre-wrap">{linkedStatement.description}</p>
+                                        </div>
+                                      )}
+                                    </section>
+                                  )}
+
+                                  {timelineEvents.length > 0 && (
+                                    <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                      <p className="text-sm font-semibold text-gray-800">Audit trail</p>
+                                      <ol className="mt-3 space-y-3">
+                                        {timelineEvents.map((event, idx) => (
+                                          <li key={idx} className="flex items-start gap-3">
+                                            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-50 text-blue-600">
+                                              {event.icon}
+                                            </span>
+                                            <div>
+                                              <p className="text-sm font-medium text-gray-800">{event.label}</p>
+                                              <p className="text-xs text-gray-500">
+                                                {formatDateTime(event.at)} • {resolveUserName(event.userId)}
+                                              </p>
+                                              {event.meta && (
+                                                <p className="text-xs text-gray-400">
+                                                  {event.meta}
+                                                </p>
+                                              )}
+                                            </div>
+                                          </li>
+                                        ))}
+                                      </ol>
+                                    </section>
                                   )}
                                 </div>
                               </td>
