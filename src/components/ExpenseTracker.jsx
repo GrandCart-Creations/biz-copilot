@@ -229,18 +229,19 @@ const AttachmentPanel = ({
   const renderPreview = () => {
     if (!currentPreview) {
       return (
-        <div className="flex flex-1 flex-col items-center justify-center px-6 text-sm text-gray-500 text-center space-y-3">
+        <div className="flex min-h-[50vh] flex-col items-center justify-center px-6 text-center text-sm text-gray-500 space-y-3">
           <FaPaperclip className="w-10 h-10 text-gray-400" />
           <div>
             <p className="font-medium text-gray-700 mb-1">No attachments selected yet.</p>
             <p className="text-xs text-gray-500 mb-4">
-              Drag and drop files into this area, or click the button below to choose files.
+              Drag and drop files into this area, or click the button to choose files.
             </p>
           </div>
           <button
             type="button"
             onClick={handleManualUploadClick}
-            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed"
+            disabled={availableSlots <= 0}
           >
             Click to upload
           </button>
@@ -253,11 +254,11 @@ const AttachmentPanel = ({
 
     if (currentPreview.type?.startsWith('image/')) {
       return (
-        <div className="w-full h-full overflow-auto bg-gray-200">
+        <div className="inline-block bg-gray-200">
           <img
             src={currentPreview.url}
             alt={currentPreview.name}
-            className="max-w-none"
+            className="max-w-none block"
             style={{ transform: `scale(${clampedZoom})`, transformOrigin: 'top left' }}
           />
         </div>
@@ -268,20 +269,21 @@ const AttachmentPanel = ({
       const zoomValue = Math.round(clampedZoom * 100);
       const pdfSrc = `${currentPreview.url}#toolbar=0&navpanes=0&view=FitH&zoom=${zoomValue}`;
       return (
-        <iframe
-          key={pdfSrc}
-          src={pdfSrc}
-          title={currentPreview.name}
-          className="w-full h-full bg-gray-200 border-0"
-          style={{ minHeight: '60vh' }}
-        />
+        <div className="inline-block min-w-full">
+          <iframe
+            key={pdfSrc}
+            src={pdfSrc}
+            title={currentPreview.name}
+            className="w-full h-[70vh] bg-gray-200 border-0"
+          />
+        </div>
       );
     }
 
     return (
-      <div className="flex flex-col items-center justify-center h-full text-sm text-gray-500">
-        <FaFileAlt className="w-10 h-10 mb-2 text-gray-400" />
-        Preview not available. Use "Open" to view this file in a new tab.
+      <div className="flex min-h-[50vh] flex-col items-center justify-center text-sm text-gray-500 space-y-2">
+        <FaFileAlt className="w-10 h-10 text-gray-400" />
+        <p>Preview not available. Use “Open” to view this file in a new tab.</p>
       </div>
     );
   };
@@ -436,11 +438,13 @@ const AttachmentPanel = ({
         </div>
         <div
           ref={previewContainerRef}
-          className="flex-1 overflow-auto bg-gray-100"
+          className="flex-1 bg-gray-100 overflow-y-auto"
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
-          {renderPreview()}
+          <div className="min-h-full overflow-x-auto">
+            {renderPreview()}
+          </div>
         </div>
         <div className="px-3 sm:px-4 py-3 border-t bg-white">
           {previewItems.length > 0 ? (
