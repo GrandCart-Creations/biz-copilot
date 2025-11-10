@@ -222,79 +222,118 @@ const AttachmentPanel = ({
   return (
     <div className={`flex h-full flex-col gap-4 pb-4 ${className}`}>
       <div className="flex flex-col flex-1 min-h-[60vh] max-h-[78vh] bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-3 border-b bg-gray-50 sticky top-0 z-10">
-          <div className="min-w-[180px]">
-            <p className="text-sm font-semibold text-gray-800">Attachment Preview</p>
-            <p className="text-xs text-gray-500">
-              {previewItems.length > 0 ? 'Latest upload opens automatically.' : 'Upload a file to preview it here.'}
-            </p>
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-700 uppercase tracking-wide">
-                {documentTypeLabel}
-              </span>
-              <span
-                className={`inline-flex items-center px-2 py-1 rounded-full uppercase tracking-wide ${
-                  paymentStatus === 'paid'
-                    ? 'bg-green-100 text-green-700'
-                    : paymentStatus === 'late'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-yellow-100 text-yellow-700'
-                }`}
+        <div className="px-3 sm:px-4 py-3 border-b bg-gray-50 sticky top-0 z-10 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-[180px]">
+              <p className="text-sm font-semibold text-gray-800">Attachment Preview</p>
+              <p className="text-xs text-gray-500">
+                {previewItems.length > 0 ? 'Latest upload opens automatically.' : 'Upload a file to preview it here.'}
+              </p>
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-700 uppercase tracking-wide">
+                  {documentTypeLabel}
+                </span>
+                <span
+                  className={`inline-flex items-center px-2 py-1 rounded-full uppercase tracking-wide ${
+                    paymentStatus === 'paid'
+                      ? 'bg-green-100 text-green-700'
+                      : paymentStatus === 'late'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                  }`}
+                >
+                  {paymentStatusLabel}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowOptions(prev => !prev)}
+                className="inline-flex items-center px-3 py-2 text-xs font-medium border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
               >
-                {paymentStatusLabel}
-              </span>
+                {showOptions ? 'Hide attachment options' : 'Show attachment options'}
+              </button>
+              <button
+                type="button"
+                onClick={() => adjustZoom(-ZOOM_STEP)}
+                disabled={!hasPreview}
+                className="p-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Zoom out"
+              >
+                <FaSearchMinus className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={MIN_ZOOM}
+                  max={MAX_ZOOM}
+                  step={ZOOM_STEP}
+                  value={clampedZoom}
+                  onChange={(e) => handleZoomSlider(e.target.value)}
+                  disabled={!hasPreview}
+                  className="w-32"
+                />
+                <span className="text-xs font-medium text-gray-700 min-w-[3rem] text-center">
+                  {Math.round(clampedZoom * 100)}%
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => adjustZoom(ZOOM_STEP)}
+                disabled={!hasPreview}
+                className="p-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Zoom in"
+              >
+                <FaSearchPlus className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={openInNewTab}
+                disabled={!hasPreview}
+                className="p-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Open in new tab"
+              >
+                <FaExternalLinkAlt className="w-4 h-4" />
+              </button>
             </div>
           </div>
-          <div className="flex items-center flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setShowOptions(prev => !prev)}
-              className="inline-flex items-center px-3 py-2 text-xs font-medium border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
-            >
-              {showOptions ? 'Hide attachment options' : 'Show attachment options'}
-            </button>
-            <button
-              type="button"
-              onClick={() => adjustZoom(-ZOOM_STEP)}
-              disabled={!hasPreview}
-              className="p-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Zoom out"
-            >
-              <FaSearchMinus className="w-4 h-4" />
-            </button>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                min={MIN_ZOOM}
-                max={MAX_ZOOM}
-                step={ZOOM_STEP}
-                value={clampedZoom}
-                onChange={(e) => handleZoomSlider(e.target.value)}
-                disabled={!hasPreview}
-                className="w-32"
-              />
-              <span className="text-xs font-medium text-gray-700 min-w-[3rem] text-center">
-                {Math.round(clampedZoom * 100)}%
-              </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 uppercase tracking-wide">
+                Document Type
+              </label>
+              <select
+                value={documentType}
+                onChange={(e) => onDocumentTypeChange(e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="invoice">Invoice</option>
+                <option value="receipt">Receipt</option>
+                <option value="statement">Bank Statement</option>
+                <option value="other">Other</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Tag what you’re capturing so badges and filters stay accurate.
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => adjustZoom(ZOOM_STEP)}
-              disabled={!hasPreview}
-              className="p-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Zoom in"
-            >
-              <FaSearchPlus className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={openInNewTab}
-              disabled={!hasPreview}
-              className="p-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Open in new tab"
-            >
-              <FaExternalLinkAlt className="w-4 h-4" />
-            </button>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 uppercase tracking-wide">
+                Expense Status
+              </label>
+              <select
+                value={paymentStatus}
+                onChange={(e) => onPaymentStatusChange(e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="open">Open</option>
+                <option value="paid">Paid</option>
+                <option value="late">Late</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Change this when the document should update account balances.
+              </p>
+            </div>
           </div>
         </div>
         <div
@@ -333,41 +372,6 @@ const AttachmentPanel = ({
 
       {showOptions && (
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-3 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Document Type
-              </label>
-              <select
-                value={documentType}
-                onChange={(e) => onDocumentTypeChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="invoice">Invoice</option>
-                <option value="receipt">Receipt</option>
-                <option value="statement">Bank Statement</option>
-                <option value="other">Other</option>
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Choose the document you’re capturing so the table badges and filters stay accurate.
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Expense Status
-              </label>
-              <select
-                value={paymentStatus}
-                onChange={(e) => onPaymentStatusChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="open">Open</option>
-                <option value="paid">Paid</option>
-                <option value="late">Late</option>
-              </select>
-            </div>
-          </div>
-
           {autoFillStatus !== 'idle' && autoFillDisplayMessage && (
             <div className={`border rounded-md px-3 py-2 text-xs flex items-center justify-between gap-3 ${autoFillStatusClasses[autoFillStatus] || 'bg-gray-50 border-gray-200 text-gray-600'}`}>
               <span className="font-medium">{autoFillDisplayMessage}</span>
