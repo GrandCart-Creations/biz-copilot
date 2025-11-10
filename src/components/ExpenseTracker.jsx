@@ -27,7 +27,6 @@ import {
   FaInfoCircle
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
-import FileUpload from './FileUpload';
 import CompanySelector from './CompanySelector';
 import FinancialAccountSelect from './FinancialAccountSelect';
 import { useAuth } from '../contexts/AuthContext';
@@ -84,8 +83,9 @@ const CURRENCY_OPTIONS = ['EUR', 'USD', 'GBP', 'CHF', 'SEK'];
 const ADD_DOCUMENT_ONBOARDING_KEY = 'expense_tracker_add_document_onboarding_seen';
 const ADD_EXPENSE_FORM_ID = 'add-expense-form';
 
+const getFileSignature = (file) => `${file.name}-${file.size}-${file.lastModified}`;
+
 const AttachmentPanel = ({
-  label,
   selectedFiles,
   onFilesChange,
   previewItems,
@@ -112,6 +112,73 @@ const AttachmentPanel = ({
 
   const hasPreview = Boolean(currentPreview);
   const previewContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const MAX_ATTACHMENTS = 5;
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+  const allowedMimeTypes = ['application/pdf', 'image/png', 'image/jpeg'];
+  const availableSlots = Math.max(0, MAX_ATTACHMENTS - selectedFiles.length);
+
+  const addFiles = (files) => {
+    if (!files.length) return;
+
+    const currentSignatures = new Set(selectedFiles.map(getFileSignature));
+    const accepted = [];
+    const rejected = [];
+
+    for (const file of files) {
+      if (accepted.length >= availableSlots) break;
+
+      if (!allowedMimeTypes.includes(file.type)) {
+        rejected.push(`${file.name} (unsupported type)`);
+        continue;
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        rejected.push(`${file.name} (exceeds 10 MB)`);
+        continue;
+      }
+
+      const signature = getFileSignature(file);
+      if (currentSignatures.has(signature)) {
+        continue;
+      }
+      currentSignatures.add(signature);
+      accepted.push(file);
+    }
+
+    if (accepted.length > 0) {
+      onFilesChange([...selectedFiles, ...accepted]);
+    }
+
+    if (rejected.length > 0) {
+      alert(`Some files could not be added:\n${rejected.join('\n')}`);
+    }
+  };
+
+  const handleFileInputChange = (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    addFiles(files);
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    const files = Array.from(event.dataTransfer?.files || []);
+    addFiles(files);
+  };
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleManualUploadClick = () => {
+    if (availableSlots <= 0) {
+      alert('You can attach up to 5 files. Remove a file to add more.');
+      return;
+    }
+    fileInputRef.current?.click();
+  };
 
   useEffect(() => {
     if (hasPreview && previewContainerRef.current) {
@@ -162,9 +229,24 @@ const AttachmentPanel = ({
   const renderPreview = () => {
     if (!currentPreview) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-sm text-gray-500">
-          <FaPaperclip className="w-10 h-10 mb-2 text-gray-400" />
-          No attachments selected yet.
+        <div className="flex flex-1 flex-col items-center justify-center px-6 text-sm text-gray-500 text-center space-y-3">
+          <FaPaperclip className="w-10 h-10 text-gray-400" />
+          <div>
+            <p className="font-medium text-gray-700 mb-1">No attachments selected yet.</p>
+            <p className="text-xs text-gray-500 mb-4">
+              Drag and drop files into this area, or click the button below to choose files.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleManualUploadClick}
+            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow hover:bg-blue-700 transition-colors"
+          >
+            Click to upload
+          </button>
+          <p className="text-xs text-gray-400">
+            Supports PNG, JPG, or PDF (max 10 MB each, up to 5 files).
+          </p>
         </div>
       );
     }
@@ -221,6 +303,14 @@ const AttachmentPanel = ({
 
   return (
     <div className={`flex h-full flex-col gap-4 pb-4 ${className}`}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.png,.jpg,.jpeg"
+        className="hidden"
+        multiple
+        onChange={handleFileInputChange}
+      />
       <div className="flex flex-col flex-1 min-h-[60vh] max-h-[78vh] bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         <div className="px-3 sm:px-4 py-3 border-b bg-gray-50 sticky top-0 z-10 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -286,6 +376,14 @@ const AttachmentPanel = ({
             <div className="flex items-center flex-wrap gap-2">
               <button
                 type="button"
+                onClick={handleManualUploadClick}
+                disabled={availableSlots <= 0}
+                className="inline-flex items-center px-3 py-2 text-xs font-medium border border-blue-500 text-blue-600 rounded-md hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Add files
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowOptions(prev => !prev)}
                 className="inline-flex items-center px-3 py-2 text-xs font-medium border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
               >
@@ -339,6 +437,8 @@ const AttachmentPanel = ({
         <div
           ref={previewContainerRef}
           className="flex-1 overflow-auto bg-gray-100"
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
         >
           {renderPreview()}
         </div>
@@ -382,17 +482,6 @@ const AttachmentPanel = ({
               )}
             </div>
           )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {label}
-            </label>
-            <FileUpload
-              files={selectedFiles}
-              onFilesChange={onFilesChange}
-              maxFiles={5}
-            />
-          </div>
 
           {existingAttachments?.length > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
@@ -538,8 +627,6 @@ const paymentStatusStyles = {
 
   const [currentPreviewId, setCurrentPreviewId] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
-
-  const getFileSignature = (file) => `${file.name}-${file.size}-${file.lastModified}`;
 
   const resetAutoFillState = () => {
     setAutoFillStatus('idle');
@@ -2602,7 +2689,6 @@ const paymentStatusStyles = {
 
                 <div className="overflow-y-auto pr-2 lg:max-h-[72vh]">
                   <AttachmentPanel
-                    label="Attachments (Optional)"
                     selectedFiles={selectedFiles}
                     onFilesChange={setSelectedFiles}
                     previewItems={previewItems}
