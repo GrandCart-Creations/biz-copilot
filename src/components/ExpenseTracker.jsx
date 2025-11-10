@@ -17,7 +17,6 @@ import {
   FaPaperclip,
   FaDownload,
   FaFileAlt,
-  FaSave,
   FaUpload,
   FaFileExcel,
   FaFilePdf,
@@ -83,6 +82,7 @@ const EU_COUNTRY_OPTIONS = [
 
 const CURRENCY_OPTIONS = ['EUR', 'USD', 'GBP', 'CHF', 'SEK'];
 const ADD_DOCUMENT_ONBOARDING_KEY = 'expense_tracker_add_document_onboarding_seen';
+const ADD_EXPENSE_FORM_ID = 'add-expense-form';
 
 const AttachmentPanel = ({
   label,
@@ -1147,6 +1147,62 @@ const paymentStatusStyles = {
     }
   };
 
+  const resetFormState = () => {
+    setFormData({
+      date: todayIso,
+      invoiceDate: '',
+      dueDate: '',
+      category: 'Subscriptions',
+      currency: 'EUR',
+      vendor: '',
+      vendorAddress: '',
+      vendorCountry: companyCountry,
+      invoiceNumber: '',
+      vatNumber: '',
+      chamberOfCommerceNumber: '',
+      description: '',
+      amount: '',
+      btw: 21,
+      reverseCharge: false,
+      bankAccount: 'Business Checking',
+      financialAccountId: '',
+      paymentMethod: 'Debit Card',
+      paymentMethodDetails: '',
+      documentType: 'invoice',
+      paymentStatus: 'open',
+      vatValidationStatus: 'idle',
+      vatValidatedAt: '',
+      notes: ''
+    });
+    setVatValidationState({
+      status: 'idle',
+      message: '',
+      lastChecked: null
+    });
+    setSelectedFiles([]);
+    setExistingAttachments([]);
+    setCurrentPreviewId(null);
+    setZoomLevel(DEFAULT_ZOOM);
+    setUploadProgress(0);
+    setLastAutoFilledFile(null);
+    setUploadingFiles(false);
+    resetAutoFillState();
+    setShowAddDocumentMenu(false);
+  };
+
+  const handleCloseModal = (reason = 'close_button') => {
+    if (!showAddExpense) return;
+    resetFormState();
+    setEditingExpense(null);
+    setShowAddExpense(false);
+    trackEvent('add_document_cancelled', {
+      context: 'expense_modal',
+      reason,
+      wasEditing: Boolean(editingExpense),
+      companyId: currentCompanyId || 'unknown'
+    });
+  };
+
   // Track last loaded company to prevent unnecessary reloads
   const lastLoadedCompanyIdRef = useRef(null);
 
@@ -1520,44 +1576,7 @@ const paymentStatusStyles = {
       });
       completeAddDocumentOnboarding('document_saved');
 
-      // Reset form
-      setFormData({
-        date: todayIso,
-        invoiceDate: '',
-        dueDate: '',
-        category: 'Subscriptions',
-        currency: 'EUR',
-        vendor: '',
-        vendorAddress: '',
-        vendorCountry: companyCountry,
-        invoiceNumber: '',
-        vatNumber: '',
-        chamberOfCommerceNumber: '',
-        description: '',
-        amount: '',
-        btw: 21,
-        reverseCharge: false,
-        bankAccount: 'Business Checking',
-        financialAccountId: '',
-        paymentMethod: 'Debit Card',
-        paymentMethodDetails: '',
-        documentType: 'invoice',
-        paymentStatus: 'open',
-        vatValidationStatus: 'idle',
-        vatValidatedAt: '',
-        notes: ''
-      });
-      setVatValidationState({
-        status: 'idle',
-        message: '',
-        lastChecked: null
-      });
-      setSelectedFiles([]);
-      setUploadProgress(0);
-      setExistingAttachments([]);
-      setCurrentPreviewId(null);
-      setZoomLevel(DEFAULT_ZOOM);
-
+      resetFormState();
       setShowAddExpense(false);
       setEditingExpense(null);
     } catch (error) {
@@ -1607,47 +1626,14 @@ const paymentStatusStyles = {
       companyId: currentCompanyId || 'unknown'
     });
 
-    setFormData({
-      date: todayIso,
-      invoiceDate: '',
-      dueDate: '',
-      category: 'Subscriptions',
-      currency: 'EUR',
-      vendor: '',
-      vendorAddress: '',
-      vendorCountry: companyCountry,
-      invoiceNumber: '',
-      vatNumber: '',
-      chamberOfCommerceNumber: '',
-      description: '',
-      amount: '',
-      btw: 21,
-      reverseCharge: false,
-      bankAccount: 'Business Checking',
-      financialAccountId: '',
-      paymentMethod: 'Debit Card',
-      paymentMethodDetails: '',
+    resetFormState();
+    setFormData(prev => ({
+      ...prev,
       documentType: normalizedDocType,
-      paymentStatus: defaultPaymentStatus,
-      vatValidationStatus: 'idle',
-      vatValidatedAt: '',
-      notes: ''
-    });
-    setExistingAttachments([]);
-    setSelectedFiles([]);
-    setCurrentPreviewId(null);
-    setZoomLevel(DEFAULT_ZOOM);
+      paymentStatus: defaultPaymentStatus
+    }));
     setEditingExpense(null);
     setShowAddExpense(true);
-    setUploadProgress(0);
-    setLastAutoFilledFile(null);
-    resetAutoFillState();
-    setVatValidationState({
-      status: 'idle',
-      message: '',
-      lastChecked: null
-    });
-    setShowAddDocumentMenu(false);
   };
 
   // Handle expense edit
@@ -2217,46 +2203,38 @@ const paymentStatusStyles = {
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="px-5 py-3 border-b">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className="text-lg font-medium">
                   {editingExpense ? 'Edit Expense' : 'Add New Expense'}
                 </h3>
-                <button
-                  onClick={() => {
-                    setShowAddExpense(false);
-                    setEditingExpense(null);
-                    setSelectedFiles([]);
-                    setExistingAttachments([]);
-                    setCurrentPreviewId(null);
-                    setZoomLevel(DEFAULT_ZOOM);
-                    setFormData({
-                      date: new Date().toISOString().split('T')[0],
-                      category: 'Subscriptions',
-                      vendor: '',
-          vendorAddress: '',
-                      invoiceNumber: '',
-                      vatNumber: '',
-                      chamberOfCommerceNumber: '',
-                      description: '',
-                      amount: '',
-                      btw: 21,
-                      bankAccount: 'Business Checking',
-                      financialAccountId: '',
-                      paymentMethod: 'Debit Card',
-                      paymentMethodDetails: '',
-                      documentType: 'invoice',
-                      paymentStatus: 'open',
-                      notes: ''
-                    });
-                  }}
-                  className="text-gray-400 hover:text-gray-500"
-                >
-                  <FaTimes className="w-6 h-6" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleCloseModal('cancel_button')}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    form={ADD_EXPENSE_FORM_ID}
+                    className="px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500"
+                  >
+                    {editingExpense ? 'Update Expense' : 'Save Expense'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCloseModal('close_button')}
+                    className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400"
+                    aria-label="Close"
+                  >
+                    <FaTimes className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="px-5 py-3 flex-1">
+            <form id={ADD_EXPENSE_FORM_ID} onSubmit={handleSubmit} className="px-5 py-3 flex-1">
               {showAddDocumentIntro && (
                 <div className="mb-4 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                   <FaInfoCircle className="mt-1 h-4 w-4 flex-shrink-0 text-blue-500" />
@@ -2662,29 +2640,6 @@ const paymentStatusStyles = {
                 </div>
               )}
 
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddExpense(false);
-                    setEditingExpense(null);
-                    setExistingAttachments([]);
-                    setSelectedFiles([]);
-                    setCurrentPreviewId(null);
-                    setZoomLevel(DEFAULT_ZOOM);
-                  }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                >
-                  <FaSave className="w-4 h-4 inline mr-2" />
-                  {editingExpense ? 'Update' : 'Save'} Expense
-                </button>
-              </div>
             </form>
           </div>
         </div>
