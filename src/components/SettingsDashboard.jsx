@@ -20,6 +20,7 @@ import {
   FaCog,
   FaBuilding,
   FaUsers,
+  FaUserTie,
   FaBell,
   FaArrowLeft,
   FaUniversity,
