@@ -272,10 +272,10 @@ export const getUserProfile = async (userId) => {
 export const updateUserProfile = async (userId, data) => {
   try {
     const userRef = doc(db, 'users', userId);
-    await updateDoc(userRef, {
+    await setDoc(userRef, {
       ...data,
       updatedAt: serverTimestamp()
-    });
+    }, { merge: true });
     
     // Also update auth profile if displayName or photoURL changed
     if (data.displayName || data.photoURL) {
@@ -289,6 +289,43 @@ export const updateUserProfile = async (userId, data) => {
     }
   } catch (error) {
     console.error('Error updating user profile:', error);
+    throw error;
+  }
+};
+
+export const uploadProfilePhoto = async (userId, file, previousPath = '') => {
+  try {
+    if (!userId || !file) {
+      throw new Error('User ID and file are required to upload a profile photo.');
+    }
+
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Only image files are supported for profile photos.');
+    }
+
+    const sanitizedName = file.name.replace(/\s+/g, '_');
+    const storagePath = `users/${userId}/profile/${Date.now()}_${sanitizedName}`;
+    const storageRef = ref(storage, storagePath);
+
+    await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(storageRef);
+
+    if (previousPath) {
+      try {
+        const previousRef = ref(storage, previousPath);
+        await deleteObject(previousRef);
+      } catch (cleanupError) {
+        console.warn('Failed to delete previous profile photo:', cleanupError);
+      }
+    }
+
+    return {
+      photoURL: downloadURL,
+      photoStoragePath: storagePath,
+      uploadedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Error uploading profile photo:', error);
     throw error;
   }
 };
