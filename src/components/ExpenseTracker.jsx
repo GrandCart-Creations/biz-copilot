@@ -1312,6 +1312,7 @@ const paymentStatusStyles = {
     startDate: '',
     endDate: ''
   });
+  const [expandedLinkedReceipts, setExpandedLinkedReceipts] = useState(() => new Set());
 
   // Form State
   const [formData, setFormData] = useState({
@@ -1396,6 +1397,18 @@ const paymentStatusStyles = {
     }
   }, [formData.vendorCountry, companyCountry, formData.reverseCharge]);
 
+  const toggleLinkedReceipt = useCallback((receiptId) => {
+    setExpandedLinkedReceipts(prev => {
+      const next = new Set(prev);
+      if (next.has(receiptId)) {
+        next.delete(receiptId);
+      } else {
+        next.add(receiptId);
+      }
+      return next;
+    });
+  }, []);
+
   const reconcileInvoicesWithReceipts = useCallback(async (expensesList = []) => {
     if (!currentCompanyId || !Array.isArray(expensesList) || expensesList.length === 0) {
       return expensesList;
@@ -1422,9 +1435,9 @@ const paymentStatusStyles = {
     }
 
     const invoicesByInvoiceNumber = new Map();
-    const invoiceIndexById = new Map();
+    const expenseIndexById = new Map();
     const updatedExpenses = expensesList.map((expense, index) => {
-      invoiceIndexById.set(expense.id, index);
+      expenseIndexById.set(expense.id, index);
       if ((expense.documentType || '').toLowerCase() === 'invoice' && expense.invoiceNumber) {
         const key = normalizeKey(expense.invoiceNumber);
         if (key) {
@@ -1499,6 +1512,17 @@ const paymentStatusStyles = {
 
       try {
         await updateCompanyExpense(currentCompanyId, invoiceToUpdate.id, updatePayload);
+
+        const receiptUpdatePayload = {
+          linkedInvoiceExpenseId: invoiceToUpdate.id,
+          linkedInvoiceNumber: invoiceToUpdate.invoiceNumber || '',
+          linkedInvoiceUpdatedAt: new Date().toISOString()
+        };
+
+        if (receipt.linkedInvoiceExpenseId !== invoiceToUpdate.id) {
+          await updateCompanyExpense(currentCompanyId, receipt.id, receiptUpdatePayload);
+        }
+
         trackEvent('invoice_auto_reconciled', {
           invoiceId: invoiceToUpdate.id,
           receiptId: receipt.id,
@@ -1508,13 +1532,22 @@ const paymentStatusStyles = {
           companyId: currentCompanyId
         });
 
-        const invoiceIndex = invoiceIndexById.get(invoiceToUpdate.id);
+        const invoiceIndex = expenseIndexById.get(invoiceToUpdate.id);
         if (typeof invoiceIndex === 'number') {
           updatedExpenses[invoiceIndex] = {
             ...updatedExpenses[invoiceIndex],
             ...updatePayload
           };
         }
+
+        const receiptIndex = expenseIndexById.get(receipt.id);
+        if (typeof receiptIndex === 'number') {
+          updatedExpenses[receiptIndex] = {
+            ...updatedExpenses[receiptIndex],
+            ...receiptUpdatePayload
+          };
+        }
+
         reconciledInvoiceIds.add(invoiceToUpdate.id);
       } catch (error) {
         console.error('Failed to auto-reconcile invoice', invoiceToUpdate.id, error);
@@ -2360,6 +2393,27 @@ const paymentStatusStyles = {
       return true;
     });
   }, [expenses, filters]);
+
+  const linkedInvoicesByReceipt = useMemo(() => {
+    const map = new Map();
+    filteredExpenses.forEach(expense => {
+      const docType = (expense.documentType || '').toLowerCase();
+      if (docType === 'invoice' && expense.linkedPaymentExpenseId) {
+        map.set(expense.linkedPaymentExpenseId, expense);
+      }
+    });
+    return map;
+  }, [filteredExpenses]);
+
+  const visibleExpenses = useMemo(() => {
+    return filteredExpenses.filter(expense => {
+      const docType = (expense.documentType || '').toLowerCase();
+      if (docType === 'invoice' && expense.linkedPaymentExpenseId) {
+        return false;
+      }
+      return true;
+    });
+  }, [filteredExpenses]);
 
   // Calculate totals
   const totalExpense = useMemo(() => {
@@ -3219,7 +3273,7 @@ const paymentStatusStyles = {
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-16 mx-auto"></div></td>
                       </tr>
                     ))
-                  ) : filteredExpenses.length === 0 ? (
+                  ) : visibleExpenses.length === 0 ? (
                     <tr>
                       <td colSpan="12" className="px-6 py-8 text-center">
                         <div className="flex flex-col items-center gap-4">
@@ -3286,99 +3340,178 @@ const paymentStatusStyles = {
                       </td>
                     </tr>
                   ) : (
-                    filteredExpenses.map((expense) => {
+                    visibleExpenses.map((expense) => {
                       const documentTypeKey = (expense.documentType || 'invoice').toLowerCase();
                       const documentMeta = documentTypeStyles[documentTypeKey] || documentTypeStyles.invoice;
                       const paymentStatusKey = (expense.paymentStatus || 'open').toLowerCase();
                       const paymentMeta = paymentStatusStyles[paymentStatusKey] || paymentStatusStyles.open;
                       const paymentDetailsRecorded = paymentStatusKey === 'paid' && (expense.paymentMethod || expense.paymentMethodDetails);
+                      const linkedInvoice = linkedInvoicesByReceipt.get(expense.id);
+                      const hasLinkedInvoice = Boolean(linkedInvoice);
+                      const isExpanded = hasLinkedInvoice && expandedLinkedReceipts.has(expense.id);
                       return (
-                        <tr key={expense.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {new Date(expense.date).toLocaleDateString()}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap">
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                              {expense.category}
-                            </span>
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <div className="max-w-[120px] truncate" title={expense.vendor}>
-                              {expense.vendor}
-                            </div>
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <div className="max-w-[120px] truncate" title={expense.invoiceNumber || '-'}>
-                              {expense.invoiceNumber || '-'}
-                            </div>
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">
-                            <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
-                              {documentMeta.label}
-                            </span>
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">
-                            <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${paymentMeta.classes}`}>
-                              {paymentMeta.label}
-                            </span>
-                          </td>
-                          <td className="px-3 py-4 text-sm text-gray-900">
-                            <div className="max-w-xs break-words">
-                              {expense.description}
-                            </div>
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <div className="max-w-[140px] truncate" title={expense.bankAccount || 'N/A'}>
-                              {expense.bankAccount || 'N/A'}
-                            </div>
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {paymentDetailsRecorded ? (
-                              <>
-                                {expense.paymentMethod || 'Recorded'}
-                                {expense.paymentMethodDetails && (
-                                  <span className="ml-2 text-xs text-gray-400">
-                                    ({expense.paymentMethodDetails})
-                                  </span>
+                        <React.Fragment key={expense.id}>
+                          <tr className="hover:bg-gray-50">
+                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {new Date(expense.date).toLocaleDateString()}
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap">
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                {expense.category}
+                              </span>
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <div className="max-w-[120px] truncate" title={expense.vendor}>
+                                {expense.vendor}
+                              </div>
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <div className="max-w-[120px] truncate" title={expense.invoiceNumber || '-'}>
+                                {expense.invoiceNumber || '-'}
+                              </div>
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-sm">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
+                                  {documentMeta.label}
+                                </span>
+                                {hasLinkedInvoice && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleLinkedReceipt(expense.id)}
+                                    className="p-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 transition"
+                                    title={isExpanded ? 'Hide linked invoice' : 'Show linked invoice'}
+                                  >
+                                    <FaChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                  </button>
                                 )}
-                              </>
-                            ) : (
-                              <span className="text-gray-400">Pending</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
-                            €{parseFloat(expense.amount).toFixed(2)}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-center text-sm">
-                            {expense.attachments && expense.attachments.length > 0 ? (
+                              </div>
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-sm">
+                              <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${paymentMeta.classes}`}>
+                                {paymentMeta.label}
+                              </span>
+                            </td>
+                            <td className="px-3 py-4 text-sm text-gray-900">
+                              <div className="max-w-xs break-words">
+                                {expense.description}
+                              </div>
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <div className="max-w-[140px] truncate" title={expense.bankAccount || 'N/A'}>
+                                {expense.bankAccount || 'N/A'}
+                              </div>
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {paymentDetailsRecorded ? (
+                                <div className="flex items-center gap-2">
+                                  <span>{expense.paymentMethod || 'Recorded'}</span>
+                                  {expense.paymentMethodDetails && (
+                                    <span className="text-xs text-gray-400">
+                                      ({expense.paymentMethodDetails})
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">Pending</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
+                              €{parseFloat(expense.amount).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-center text-sm">
+                              {expense.attachments && expense.attachments.length > 0 ? (
+                                <button
+                                  onClick={() => handleViewAttachments(expense)}
+                                  className="inline-flex items-center text-blue-600 hover:text-blue-900"
+                                >
+                                  <FaPaperclip className="w-4 h-4 mr-1" />
+                                  <span>{expense.attachments.length}</span>
+                                </button>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-medium">
                               <button
-                                onClick={() => handleViewAttachments(expense)}
-                                className="inline-flex items-center text-blue-600 hover:text-blue-900"
+                                onClick={() => handleEditExpense(expense)}
+                                className="text-blue-600 hover:text-blue-900 mr-3"
+                                title="Edit"
                               >
-                                <FaPaperclip className="w-4 h-4 mr-1" />
-                                <span>{expense.attachments.length}</span>
+                                <FaEdit className="w-4 h-4 inline" />
                               </button>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-medium">
-                            <button
-                              onClick={() => handleEditExpense(expense)}
-                              className="text-blue-600 hover:text-blue-900 mr-3"
-                              title="Edit"
-                            >
-                              <FaEdit className="w-4 h-4 inline" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteExpense(expense.id)}
-                              className="text-red-600 hover:text-red-900"
-                              title="Delete"
-                            >
-                              <FaTrash className="w-4 h-4 inline" />
-                            </button>
-                          </td>
-                        </tr>
+                              <button
+                                onClick={() => handleDeleteExpense(expense.id)}
+                                className="text-red-600 hover:text-red-900"
+                                title="Delete"
+                              >
+                                <FaTrash className="w-4 h-4 inline" />
+                              </button>
+                            </td>
+                          </tr>
+                          {hasLinkedInvoice && isExpanded && (
+                            <tr>
+                              <td colSpan="12" className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                                <div className="flex flex-col gap-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                      <p className="text-sm font-semibold text-gray-800">Linked invoice details</p>
+                                      <p className="text-xs text-gray-500">
+                                        {(linkedInvoice.invoiceNumber || 'Invoice')} • {new Date(linkedInvoice.date || expense.date).toLocaleDateString()}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
+                                        Invoice
+                                      </span>
+                                      <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${paymentMeta.classes}`}>
+                                        {paymentMeta.label}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEditExpense(linkedInvoice)}
+                                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
+                                      >
+                                        Edit invoice
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="grid md:grid-cols-4 gap-4 text-sm text-gray-700">
+                                    <div>
+                                      <p className="text-xs uppercase text-gray-400">Vendor</p>
+                                      <p>{linkedInvoice.vendor || '-'}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs uppercase text-gray-400">Amount</p>
+                                      <p>€{parseFloat(linkedInvoice.amount).toFixed(2)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs uppercase text-gray-400">Payment method</p>
+                                      <p>{linkedInvoice.paymentMethod || expense.paymentMethod || '-'}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs uppercase text-gray-400">Attachments</p>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleViewAttachments(linkedInvoice)}
+                                        className="inline-flex items-center text-blue-600 hover:text-blue-900"
+                                      >
+                                        <FaPaperclip className="w-4 h-4 mr-1" />
+                                        <span>{linkedInvoice.attachments?.length || 0}</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {linkedInvoice.description && (
+                                    <div className="text-sm text-gray-600 bg-white border border-gray-200 rounded-md p-3">
+                                      <p className="text-xs uppercase text-gray-400 mb-1">Invoice description</p>
+                                      <p className="whitespace-pre-wrap">{linkedInvoice.description}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}
