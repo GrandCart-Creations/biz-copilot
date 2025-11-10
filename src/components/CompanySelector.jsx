@@ -120,20 +120,25 @@ const CompanySelector = () => {
       {/* Company Selector Button */}
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-3 px-5 py-2.5 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors shadow-sm min-w-[220px]"
       >
         {companyLogo ? (
           <img
             src={companyLogo}
             alt={currentCompany.name}
-            className="w-4 h-4 object-contain"
+            className="w-8 h-8 object-contain rounded-full border border-gray-200"
           />
         ) : (
-          <FaBuilding className="w-4 h-4 text-gray-600" />
+          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+            <FaBuilding className="w-4 h-4 text-blue-600" />
+          </div>
         )}
-        <span className="font-medium text-gray-900">{currentCompany.name || 'My Business'}</span>
+        <div className="flex flex-col items-start leading-tight">
+          <span className="text-sm font-semibold text-gray-900">{currentCompany.name || 'My Business'}</span>
+          <span className="text-[11px] uppercase tracking-wide text-gray-400">Workspace</span>
+        </div>
         <svg
-          className={`w-4 h-4 text-gray-600 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-gray-500 transition-transform ml-auto ${showDropdown ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
