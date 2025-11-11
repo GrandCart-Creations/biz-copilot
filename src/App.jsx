@@ -28,6 +28,7 @@ import PrivacyPolicy from './components/PrivacyPolicy';
 import CookiePolicy from './components/CookiePolicy';
 import CookieConsent from './components/CookieConsent';
 import AcceptInvitation from './components/AcceptInvitation';
+import AICommandCenter from './components/AICommandCenter';
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
             <OnboardingProvider>
               {/* Cookie Consent Banner - appears on all pages */}
               <CookieConsent />
+              <AICommandCenter />
           
           <Routes>
             {/* Public Routes */}

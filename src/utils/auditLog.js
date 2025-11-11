@@ -62,6 +62,10 @@ export const AUDIT_EVENTS = {
   PAYMENT_PROCESSED: 'financial.payment.processed',
   REFUND_ISSUED: 'financial.refund.issued',
   PAYROLL_RUN: 'financial.payroll.run',
+
+  // AI events
+  AI_QUERY_EXECUTED: 'ai.query.executed',
+  AI_QUERY_BLOCKED: 'ai.query.blocked'
 };
 
 /**
@@ -114,7 +118,7 @@ export const logAuditEvent = async (
     }
     
     // Also log to console in development
-    if (process.env.NODE_ENV === 'development') {
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) {
       console.log('📝 Audit Log:', auditLog);
     }
     
@@ -200,15 +204,7 @@ const sanitizeDetails = (details) => {
 };
 
 // Helper: Get client IP address (best effort)
-const getClientIP = async () => {
-  try {
-    // In production, this should use your backend API
-    // For now, return placeholder
-    return 'client-side';
-  } catch {
-    return 'unknown';
-  }
-};
+const getClientIP = async () => 'client-side';
 
 // Convenience functions for common audit events
 
@@ -235,4 +231,20 @@ export const logSecurityEvent = (eventType, details) => {
 
 export const logFinancialEvent = (eventType, amount, details = {}) => {
   return logAuditEvent(eventType, { amount, ...details }, 'success');
+};
+
+export const logAIEvent = (status = 'executed', details = {}) => {
+  let eventType = AUDIT_EVENTS.AI_QUERY_EXECUTED;
+  let eventStatus = 'success';
+
+  if (status === 'blocked') {
+    eventType = AUDIT_EVENTS.AI_QUERY_BLOCKED;
+    eventStatus = 'warning';
+  } else if (status === 'granted-via-code') {
+    eventType = AUDIT_EVENTS.AI_QUERY_EXECUTED;
+    eventStatus = 'success';
+    details = { ...details, elevated: true };
+  }
+
+  return logAuditEvent(eventType, details, eventStatus);
 };
