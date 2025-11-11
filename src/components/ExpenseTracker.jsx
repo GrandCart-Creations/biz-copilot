@@ -2054,17 +2054,17 @@ const paymentStatusStyles = {
             await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
           }
         } else if (wasPreviouslyPaid && isMarkedAsPaid) {
-          if (oldAccountId && oldAccountId !== newAccountId) {
+        if (oldAccountId && oldAccountId !== newAccountId) {
             if (oldAccountId && oldAmount > 0) {
-              await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
+          await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
             }
             if (newAccountId && newAmount > 0) {
-              await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
-            }
-          } else if (newAccountId && oldAmount !== newAmount) {
-            const difference = oldAmount - newAmount;
-            if (difference !== 0) {
-              await updateAccountBalance(currentCompanyId, newAccountId, difference, 'expense');
+            await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
+          }
+        } else if (newAccountId && oldAmount !== newAmount) {
+          const difference = oldAmount - newAmount;
+          if (difference !== 0) {
+            await updateAccountBalance(currentCompanyId, newAccountId, difference, 'expense');
             }
           } else if (!newAccountId && oldAccountId && oldAmount > 0) {
             // Payment account removed while remaining paid — reverse previous deduction
@@ -2348,7 +2348,7 @@ const paymentStatusStyles = {
                     } else if (header.includes('invoice')) {
                       expense.invoiceDate = date.toISOString().split('T')[0];
                     } else {
-                      expense.date = date.toISOString().split('T')[0];
+                    expense.date = date.toISOString().split('T')[0];
                     }
                   } else {
                     // Try parsing common formats
@@ -2415,7 +2415,7 @@ const paymentStatusStyles = {
             if (!expense.date && expense.invoiceDate) {
               expense.date = expense.invoiceDate;
             }
-
+            
             return expense;
           })
           .filter(expense => expense.vendor || expense.description || expense.amount > 0);
@@ -2633,6 +2633,13 @@ const paymentStatusStyles = {
   };
 
   // Helper function to get date range based on period type
+  const formatDateLocal = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const getDateRange = (periodType) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -2640,8 +2647,8 @@ const paymentStatusStyles = {
     switch (periodType) {
       case 'today':
         return {
-          startDate: today.toISOString().split('T')[0],
-          endDate: today.toISOString().split('T')[0]
+          startDate: formatDateLocal(today),
+          endDate: formatDateLocal(today)
         };
       case 'week': {
         const weekStart = new Date(today);
@@ -2649,24 +2656,24 @@ const paymentStatusStyles = {
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
         return {
-          startDate: weekStart.toISOString().split('T')[0],
-          endDate: weekEnd.toISOString().split('T')[0]
+          startDate: formatDateLocal(weekStart),
+          endDate: formatDateLocal(weekEnd)
         };
       }
       case 'month': {
         const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
         const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         return {
-          startDate: monthStart.toISOString().split('T')[0],
-          endDate: monthEnd.toISOString().split('T')[0]
+          startDate: formatDateLocal(monthStart),
+          endDate: formatDateLocal(monthEnd)
         };
       }
       case 'year': {
         const yearStart = new Date(today.getFullYear(), 0, 1);
         const yearEnd = new Date(today.getFullYear(), 11, 31);
         return {
-          startDate: yearStart.toISOString().split('T')[0],
-          endDate: yearEnd.toISOString().split('T')[0]
+          startDate: formatDateLocal(yearStart),
+          endDate: formatDateLocal(yearEnd)
         };
       }
       default:
@@ -2808,7 +2815,7 @@ const paymentStatusStyles = {
                   {editingExpense ? 'Edit Expense' : 'Add New Expense'}
                 </h3>
                 <div className="flex items-center gap-2">
-                  <button
+                <button
                     type="button"
                     onClick={() => handleCloseModal('cancel_button')}
                     className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400"
@@ -2827,9 +2834,9 @@ const paymentStatusStyles = {
                     onClick={() => handleCloseModal('close_button')}
                     className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400"
                     aria-label="Close"
-                  >
+                >
                     <FaTimes className="w-5 h-5" />
-                  </button>
+                </button>
                 </div>
               </div>
             </div>
@@ -2856,18 +2863,18 @@ const paymentStatusStyles = {
               <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1.45fr)] gap-6 lg:h-[75vh]">
                 <div className="space-y-4 overflow-y-auto pr-2 lg:max-h-[72vh]">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                         Booking Date
-                      </label>
-                      <input
-                        type="date"
-                        name="date"
-                        value={formData.date}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                  </label>
+                  <input
+                    type="date"
+                    name="date"
+                    value={formData.date}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2881,7 +2888,7 @@ const paymentStatusStyles = {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
-                  </div>
+                </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -2896,38 +2903,38 @@ const paymentStatusStyles = {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Category
-                      </label>
-                      <select
-                        name="category"
-                        value={formData.category}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {categories.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Category
+                  </label>
+                  <select
+                    name="category"
+                    value={formData.category}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Vendor
-                      </label>
-                      <input
-                        type="text"
-                        name="vendor"
-                        value={formData.vendor}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Vendor name"
-                      />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Vendor
+                  </label>
+                  <input
+                    type="text"
+                    name="vendor"
+                    value={formData.vendor}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Vendor name"
+                  />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2942,7 +2949,7 @@ const paymentStatusStyles = {
                         placeholder="Street, City, Country"
                       />
                     </div>
-                  </div>
+                </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -2965,34 +2972,34 @@ const paymentStatusStyles = {
                         Defaults to your company’s country. Adjust if this vendor is based elsewhere.
                       </p>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Invoice Number (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        name="invoiceNumber"
-                        value={formData.invoiceNumber}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Invoice #"
-                      />
-                    </div>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Invoice Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    name="invoiceNumber"
+                    value={formData.invoiceNumber}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Invoice #"
+                  />
+                </div>
+              </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-4 items-end">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        VAT Number (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        name="vatNumber"
-                        value={formData.vatNumber}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    VAT Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    name="vatNumber"
+                    value={formData.vatNumber}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="e.g. NL123456789B01"
-                      />
+                  />
                     </div>
                     <button
                       type="button"
@@ -3001,7 +3008,7 @@ const paymentStatusStyles = {
                     >
                       Validate VAT
                     </button>
-                  </div>
+                </div>
 
                   {vatValidationState.status !== 'idle' && (
                     <div
@@ -3023,19 +3030,19 @@ const paymentStatusStyles = {
                   )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Chamber of Commerce Number (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        name="chamberOfCommerceNumber"
-                        value={formData.chamberOfCommerceNumber}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="KVK Number"
-                      />
-                    </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Chamber of Commerce Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    name="chamberOfCommerceNumber"
+                    value={formData.chamberOfCommerceNumber}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="KVK Number"
+                  />
+                </div>
                     <div className="flex items-center gap-3 mt-6 md:mt-9">
                       <input
                         id="reverseCharge"
@@ -3048,26 +3055,26 @@ const paymentStatusStyles = {
                         Reverse charge applies (cross-border B2B)
                       </label>
                     </div>
-                  </div>
+              </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
-                    </label>
-                    <input
-                      type="text"
-                      name="description"
-                      value={formData.description}
-                      onChange={handleInputChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Expense description"
-                    />
-                  </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <input
+                  type="text"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Expense description"
+                />
+              </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                         Currency
                       </label>
                       <select
@@ -3084,109 +3091,109 @@ const paymentStatusStyles = {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Amount
-                      </label>
-                      <input
-                        type="number"
-                        name="amount"
-                        value={formData.amount}
-                        onChange={handleInputChange}
-                        required
-                        step="0.01"
-                        min="0"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                  </label>
+                  <input
+                    type="number"
+                    name="amount"
+                    value={formData.amount}
+                    onChange={handleInputChange}
+                    required
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                         VAT Rate (%)
-                      </label>
-                      <select
-                        name="btw"
-                        value={formData.btw}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {btw_rates.map(rate => (
-                          <option key={rate} value={rate}>{rate}%</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                  </label>
+                  <select
+                    name="btw"
+                    value={formData.btw}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {btw_rates.map(rate => (
+                      <option key={rate} value={rate}>{rate}%</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
                   {paymentSectionVisible ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <FinancialAccountSelect
-                          value={formData.financialAccountId}
-                          onChange={(e) => {
-                            setFormData(prev => ({
-                              ...prev,
-                              financialAccountId: e.target.value,
-                              bankAccount: e.target.value ? 'Financial Account' : prev.bankAccount
-                            }));
-                          }}
-                          filterBy={['expenses']}
-                          label="Financial Account"
-                          required={false}
-                          showBalance={true}
-                          onAddAccount={() => {
-                            window.open('/settings?tab=accounts', '_blank');
-                          }}
-                        />
-                        {!formData.financialAccountId && (
-                          <div className="mt-2">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Bank Account (Legacy)
-                            </label>
-                            <select
-                              name="bankAccount"
-                              value={formData.bankAccount}
-                              onChange={handleInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              {bankAccounts.map(account => (
-                                <option key={account} value={account}>{account}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Payment Method
-                        </label>
-                        <select
-                          name="paymentMethod"
-                          value={formData.paymentMethod}
-                          onChange={handleInputChange}
-                          required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          {paymentMethods.map(method => (
-                            <option key={method} value={method}>{method}</option>
-                          ))}
-                        </select>
-                        {(formData.paymentMethod === 'Debit Card' || formData.paymentMethod === 'Credit Card') && (
-                          <div className="mt-2">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Card Details (Optional)
-                            </label>
-                            <input
-                              type="text"
-                              name="paymentMethodDetails"
-                              value={formData.paymentMethodDetails}
-                              onChange={handleInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="e.g., MC #5248***2552, Visa #4532****1234"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">
-                              Enter card type and last 4 digits (e.g., MC #5248***2552)
-                            </p>
-                          </div>
-                        )}
-                      </div>
+                <div>
+                  <FinancialAccountSelect
+                    value={formData.financialAccountId}
+                    onChange={(e) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        financialAccountId: e.target.value,
+                        bankAccount: e.target.value ? 'Financial Account' : prev.bankAccount
+                      }));
+                    }}
+                    filterBy={['expenses']}
+                    label="Financial Account"
+                    required={false}
+                    showBalance={true}
+                    onAddAccount={() => {
+                      window.open('/settings?tab=accounts', '_blank');
+                    }}
+                  />
+                  {!formData.financialAccountId && (
+                    <div className="mt-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Bank Account (Legacy)
+                      </label>
+                      <select
+                        name="bankAccount"
+                        value={formData.bankAccount}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {bankAccounts.map(account => (
+                          <option key={account} value={account}>{account}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Payment Method
+                  </label>
+                  <select
+                    name="paymentMethod"
+                    value={formData.paymentMethod}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {paymentMethods.map(method => (
+                      <option key={method} value={method}>{method}</option>
+                    ))}
+                  </select>
+                  {(formData.paymentMethod === 'Debit Card' || formData.paymentMethod === 'Credit Card') && (
+                    <div className="mt-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Card Details (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        name="paymentMethodDetails"
+                        value={formData.paymentMethodDetails}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g., MC #5248***2552, Visa #4532****1234"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Enter card type and last 4 digits (e.g., MC #5248***2552)
+                      </p>
+                    </div>
+                  )}
+                </div>
                     </div>
                   ) : (
                     <div className="bg-blue-50 border border-blue-200 text-sm text-blue-700 rounded-md px-3 py-3">
@@ -3194,12 +3201,12 @@ const paymentStatusStyles = {
                       details and update linked account balances. Until then the invoice remains open.
                     </div>
                   )}
-                </div>
+              </div>
 
                 <div className="overflow-y-auto pr-2 lg:max-h-[72vh]">
                   <AttachmentPanel
                     selectedFiles={selectedFiles}
-                    onFilesChange={setSelectedFiles}
+                  onFilesChange={setSelectedFiles}
                     previewItems={previewItems}
                     existingAttachments={existingAttachments}
                     currentPreviewId={currentPreviewId}
@@ -3216,8 +3223,8 @@ const paymentStatusStyles = {
                     autoFillMessage={autoFillMessage}
                     autoFillProgress={autoFillProgress}
                     className="h-full"
-                  />
-                </div>
+                />
+              </div>
               </div>
 
               {uploadingFiles && (
@@ -3438,7 +3445,7 @@ const paymentStatusStyles = {
             
             <div className="relative" ref={addDocumentMenuRef}>
               <div className="inline-flex rounded-lg shadow-sm overflow-hidden">
-                <button
+            <button
                   type="button"
                   onClick={() => handleAddDocument('invoice', 'primary')}
                   disabled={!currentCompanyId}
@@ -3450,11 +3457,11 @@ const paymentStatusStyles = {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!currentCompanyId) {
+              onClick={() => {
+                if (!currentCompanyId) {
                       alert('Please select a company to add documents.');
-                      return;
-                    }
+                  return;
+                }
                     setShowAddDocumentMenu((prev) => {
                       const next = !prev;
                       trackEvent(next ? 'add_document_menu_opened' : 'add_document_menu_closed', {
@@ -3462,15 +3469,15 @@ const paymentStatusStyles = {
                       });
                       return next;
                     });
-                  }}
-                  disabled={!currentCompanyId}
+              }}
+              disabled={!currentCompanyId}
                   aria-haspopup="menu"
                   aria-expanded={showAddDocumentMenu}
                   className="px-2 bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 border-l border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   title={!currentCompanyId ? 'Please select a company first' : 'Choose document type'}
-                >
+            >
                   <FaChevronDown />
-                </button>
+            </button>
               </div>
               {showAddDocumentMenu && (
                 <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20">
@@ -3547,7 +3554,7 @@ const paymentStatusStyles = {
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                       Vendor
                     </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                       Invoice #
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
@@ -3735,24 +3742,24 @@ const paymentStatusStyles = {
                       return (
                         <React.Fragment key={expense.id}>
                           <tr className="hover:bg-gray-50">
-                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
                               {formatDateTime(expense.date, { dateStyle: 'medium' })}
-                            </td>
-                            <td className="px-3 py-4 whitespace-nowrap">
-                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                                {expense.category}
-                              </span>
-                            </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                              <div className="max-w-[120px] truncate" title={expense.vendor}>
-                                {expense.vendor}
-                              </div>
-                            </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                              <div className="max-w-[120px] truncate" title={expense.invoiceNumber || '-'}>
-                                {expense.invoiceNumber || '-'}
-                              </div>
-                            </td>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap">
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                            {expense.category}
+                          </span>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="max-w-[120px] truncate" title={expense.vendor}>
+                            {expense.vendor}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <div className="max-w-[120px] truncate" title={expense.invoiceNumber || '-'}>
+                            {expense.invoiceNumber || '-'}
+                          </div>
+                        </td>
                             <td className="px-3 py-4 whitespace-nowrap text-sm">
                               <div className="flex items-center gap-2">
                                 <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
@@ -3780,63 +3787,63 @@ const paymentStatusStyles = {
                                 {paymentMeta.label}
                               </span>
                             </td>
-                            <td className="px-3 py-4 text-sm text-gray-900">
-                              <div className="max-w-xs break-words">
-                                {expense.description}
-                              </div>
-                            </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                              <div className="max-w-[140px] truncate" title={expense.bankAccount || 'N/A'}>
-                                {expense.bankAccount || 'N/A'}
-                              </div>
-                            </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-3 py-4 text-sm text-gray-900">
+                          <div className="max-w-xs break-words">
+                            {expense.description}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <div className="max-w-[140px] truncate" title={expense.bankAccount || 'N/A'}>
+                            {expense.bankAccount || 'N/A'}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
                               {paymentDetailsRecorded ? (
                                 <div className="flex items-center gap-2">
                                   <span>{expense.paymentMethod || 'Recorded'}</span>
-                                  {expense.paymentMethodDetails && (
+                          {expense.paymentMethodDetails && (
                                     <span className="text-xs text-gray-400">
-                                      ({expense.paymentMethodDetails})
-                                    </span>
+                              ({expense.paymentMethodDetails})
+                            </span>
                                   )}
                                 </div>
                               ) : (
                                 <span className="text-gray-400">Pending</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
+                          )}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
                               {formatCurrency(parseFloat(expense.amount) || 0)}
-                            </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-center text-sm">
-                              {expense.attachments && expense.attachments.length > 0 ? (
-                                <button
-                                  onClick={() => handleViewAttachments(expense)}
-                                  className="inline-flex items-center text-blue-600 hover:text-blue-900"
-                                >
-                                  <FaPaperclip className="w-4 h-4 mr-1" />
-                                  <span>{expense.attachments.length}</span>
-                                </button>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-medium">
-                              <button
-                                onClick={() => handleEditExpense(expense)}
-                                className="text-blue-600 hover:text-blue-900 mr-3"
-                                title="Edit"
-                              >
-                                <FaEdit className="w-4 h-4 inline" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteExpense(expense.id)}
-                                className="text-red-600 hover:text-red-900"
-                                title="Delete"
-                              >
-                                <FaTrash className="w-4 h-4 inline" />
-                              </button>
-                            </td>
-                          </tr>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-center text-sm">
+                          {expense.attachments && expense.attachments.length > 0 ? (
+                            <button
+                              onClick={() => handleViewAttachments(expense)}
+                              className="inline-flex items-center text-blue-600 hover:text-blue-900"
+                            >
+                              <FaPaperclip className="w-4 h-4 mr-1" />
+                              <span>{expense.attachments.length}</span>
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-medium">
+                          <button
+                            onClick={() => handleEditExpense(expense)}
+                            className="text-blue-600 hover:text-blue-900 mr-3"
+                            title="Edit"
+                          >
+                            <FaEdit className="w-4 h-4 inline" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteExpense(expense.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete"
+                          >
+                            <FaTrash className="w-4 h-4 inline" />
+                          </button>
+                        </td>
+                      </tr>
                           {hasLinkedDocuments && isExpanded && (
                             <tr>
                               <td colSpan="12" className="px-6 py-4 bg-gray-50 border-t border-gray-200">
