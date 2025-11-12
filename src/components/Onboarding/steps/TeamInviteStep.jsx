@@ -69,8 +69,8 @@ const TeamInviteStep = ({ onNext, onPrevious }) => {
         {/* Invitation Form */}
         <div className="bg-white border-2 border-gray-200 rounded-lg p-6">
           <div className="flex items-start gap-4 mb-4">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <FaEnvelope className="w-6 h-6 text-purple-600" />
+            <div className="w-12 h-12 bg-[#D4F5EF] rounded-lg flex items-center justify-center flex-shrink-0">
+              <FaEnvelope className="w-6 h-6 text-[#005C70]" />
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-gray-900 mb-2">Send Invitations</h3>
@@ -91,7 +91,7 @@ const TeamInviteStep = ({ onNext, onPrevious }) => {
                       setError('');
                     }}
                     placeholder="colleague@example.com"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00BFA6] focus:border-transparent"
                     disabled={inviting}
                   />
                 </div>
@@ -103,7 +103,7 @@ const TeamInviteStep = ({ onNext, onPrevious }) => {
                   <select
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00BFA6] focus:border-transparent"
                     disabled={inviting}
                   >
                     <option value="employee">Employee</option>
@@ -124,7 +124,7 @@ const TeamInviteStep = ({ onNext, onPrevious }) => {
                 <button
                   type="submit"
                   disabled={inviting || !inviteEmail.trim()}
-                  className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full px-6 py-3 bg-[#00BFA6] text-white rounded-lg font-semibold hover:bg-[#019884] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {inviting ? 'Sending...' : 'Send Invitation'}
                 </button>
@@ -144,7 +144,7 @@ const TeamInviteStep = ({ onNext, onPrevious }) => {
               {invitedEmails.map((invite, index) => (
                 <li key={index} className="flex items-center justify-between bg-white rounded-lg px-4 py-2">
                   <span className="text-gray-700">{invite.email}</span>
-                  <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium capitalize">
+                  <span className="px-2 py-1 bg-[#D4F5EF] text-[#2F6F63] rounded text-xs font-medium capitalize">
                     {invite.role}
                   </span>
                 </li>

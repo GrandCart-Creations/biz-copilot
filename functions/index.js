@@ -105,7 +105,7 @@ exports.sendInvitationEmail = onDocumentCreated(
         <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
           <!-- Header -->
           <tr>
-            <td style="padding: 40px 40px 20px; text-align: center; background: linear-gradient(135deg, #9333ea 0%, #3b82f6 100%); border-radius: 8px 8px 0 0;">
+            <td style="padding: 40px 40px 20px; text-align: center; background: linear-gradient(135deg, #005C70 0%, #00BFA6 100%); border-radius: 8px 8px 0 0;">
               <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">Biz-CoPilot</h1>
             </td>
           </tr>
@@ -131,7 +131,7 @@ exports.sendInvitationEmail = onDocumentCreated(
               <table role="presentation" style="width: 100%; border-collapse: collapse;">
                 <tr>
                   <td align="center" style="padding: 0 0 30px;">
-                    <a href="${acceptUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #9333ea 0%, #3b82f6 100%); color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(147, 51, 234, 0.3);">
+                    <a href="${acceptUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #005C70 0%, #00BFA6 100%); color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(0, 92, 112, 0.3);">
                       Accept Invitation
                     </a>
                   </td>
@@ -147,9 +147,9 @@ exports.sendInvitationEmail = onDocumentCreated(
                 </tr>
                 <tr>
                   <td align="center" style="padding: 0 0 20px;">
-                    <a href="${loginUrl}" style="color: #9333ea; text-decoration: none; font-size: 14px; margin: 0 10px;">Sign In</a>
+                    <a href="${loginUrl}" style="color: #005C70; text-decoration: none; font-size: 14px; margin: 0 10px;">Sign In</a>
                     <span style="color: #d1d5db;">|</span>
-                    <a href="${signupUrl}" style="color: #9333ea; text-decoration: none; font-size: 14px; margin: 0 10px;">Sign Up</a>
+                    <a href="${signupUrl}" style="color: #005C70; text-decoration: none; font-size: 14px; margin: 0 10px;">Sign Up</a>
                   </td>
                 </tr>
               </table>
@@ -157,7 +157,7 @@ exports.sendInvitationEmail = onDocumentCreated(
               <p style="margin: 0 0 10px; color: #6b7280; font-size: 14px; line-height: 1.5;">
                 Or copy and paste this link into your browser:
               </p>
-              <p style="margin: 0 0 30px; color: #9333ea; font-size: 12px; word-break: break-all;">
+              <p style="margin: 0 0 30px; color: #005C70; font-size: 12px; word-break: break-all;">
                 ${acceptUrl}
               </p>
               

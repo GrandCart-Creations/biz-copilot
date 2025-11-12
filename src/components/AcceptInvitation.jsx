@@ -244,24 +244,20 @@ const AcceptInvitation = () => {
       <div className="h-screen flex items-center justify-center bg-gray-50 px-4 py-4">
         <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6 text-center">
           {/* Company Logo/Name if available */}
-          {companyBranding && (
-            <div className="mb-4">
-              {companyBranding.branding?.logoUrl && (
-                <img
-                  src={companyBranding.branding.logoUrl}
-                  alt={companyBranding.name}
-                  className="w-14 h-14 mx-auto mb-2 object-contain"
-                />
-              )}
-              <h3 className="text-lg font-bold text-gray-900 mb-1">{companyBranding.name}</h3>
-              {companyBranding.branding?.tagline && (
-                <p className="text-xs text-gray-600 mb-2">{companyBranding.branding.tagline}</p>
-              )}
-              {companyBranding.branding?.aboutCompany && (
-                <p className="text-xs text-gray-500 leading-relaxed">{companyBranding.branding.aboutCompany}</p>
-              )}
-            </div>
-          )}
+          <div className="mb-4">
+            <img
+              src={companyBranding?.branding?.logoUrl || '/branding/logo/logo-icon.svg'}
+              alt={companyBranding?.name || 'Biz-CoPilot'}
+              className="w-14 h-auto mx-auto mb-2 object-contain"
+            />
+            <h3 className="text-lg font-bold text-gray-900 mb-1">{companyBranding?.name || 'Biz-CoPilot'}</h3>
+            <p className="text-xs text-gray-600 mb-2">
+              {companyBranding?.branding?.tagline || 'Your Business Co-Pilot, Every Step of the Way'}
+            </p>
+            {companyBranding?.branding?.aboutCompany && (
+              <p className="text-xs text-gray-500 leading-relaxed">{companyBranding.branding.aboutCompany}</p>
+            )}
+          </div>
           
           <FaInfoCircle className="w-10 h-10 text-blue-500 mx-auto mb-3" />
           <h2 className="text-xl font-bold text-gray-900 mb-2">
@@ -308,7 +304,7 @@ const AcceptInvitation = () => {
                 if (inviteEmail) params.set('email', inviteEmail);
                 navigate(`/login?${params.toString()}`);
               }}
-              className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all"
+              className="w-full px-6 py-3 bg-gradient-to-r from-[#005C70] to-[#00BFA6] text-white rounded-lg font-semibold hover:from-[#014A5A] hover:to-[#019884] transition-all"
             >
               Sign In
             </button>

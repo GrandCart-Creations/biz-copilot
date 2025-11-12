@@ -129,9 +129,9 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F0FBF8] to-[#EAF4F6]">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#00BFA6]"></div>
           <p className="mt-4 text-gray-600">Loading welcome...</p>
         </div>
       </div>
@@ -146,7 +146,7 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
     owner: {
       title: 'Owner',
       icon: <FaUserShield className="w-8 h-8" />,
-      color: 'from-purple-600 to-indigo-600',
+      color: 'from-[#005C70] to-[#00BFA6]',
       access: [
         { module: 'Expenses', icon: <FaChartLine />, description: 'Full access to all expenses' },
         { module: 'Income', icon: <FaChartLine />, description: 'Full access to all income tracking' },
@@ -159,7 +159,7 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
     manager: {
       title: 'Manager',
       icon: <FaUserTie className="w-8 h-8" />,
-      color: 'from-blue-600 to-cyan-600',
+      color: 'from-[#2F6F63] to-[#00BFA6]',
       access: [
         { module: 'Expenses', icon: <FaChartLine />, description: 'View and manage team expenses' },
         { module: 'Income', icon: <FaChartLine />, description: 'Track revenue and income' },
@@ -171,7 +171,7 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
     accountant: {
       title: 'Accountant',
       icon: <FaFileInvoice className="w-8 h-8" />,
-      color: 'from-green-600 to-emerald-600',
+      color: 'from-[#00BFA6] to-[#F4B400]',
       access: [
         { module: 'Expenses', icon: <FaChartLine />, description: 'View and categorize expenses' },
         { module: 'Income', icon: <FaChartLine />, description: 'Track and verify income' },
@@ -338,8 +338,8 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
           {supervisors.length > 0 ? (
             <div className="space-y-3">
               {supervisors.map((member, idx) => (
-                <div key={idx} className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                <div key={idx} className="flex items-center gap-4 p-4 bg-gradient-to-r from-[#EAF4F6] to-[#D4F5EF] rounded-lg border border-blue-200">
+                  <div className="w-12 h-12 bg-gradient-to-br from-[#005C70] to-[#2F6F63] rounded-full flex items-center justify-center text-white font-bold">
                     {member.email?.charAt(0).toUpperCase() || 'U'}
                   </div>
                   <div className="flex-1">
@@ -393,8 +393,8 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
         <div className="space-y-4">
           {onboardingData?.schedule?.[role] ? (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
-                <FaClock className="text-purple-600 text-2xl" />
+              <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-[#F0FBF8] to-[#EAF4F6] rounded-lg border border-[#B8E5DC]">
+                <FaClock className="text-[#005C70] text-2xl" />
                 <div>
                   <p className="font-semibold text-gray-900">Start Time</p>
                   <p className="text-gray-600">{onboardingData.schedule[role].startTime || 'Not specified'}</p>
@@ -535,7 +535,7 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
       content: (
         <div className="text-center space-y-6">
           <div className="flex justify-center">
-            <FaRocket className="w-20 h-20 text-purple-600" />
+            <FaRocket className="w-20 h-20 text-[#005C70]" />
           </div>
           <div>
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
@@ -544,7 +544,7 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
             <p className="text-lg text-gray-600 mb-6">
               You now have access to {companyName}'s Biz-CoPilot platform.
             </p>
-            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6 border border-purple-200">
+            <div className="bg-gradient-to-r from-[#F0FBF8] to-[#EAF4F6] rounded-lg p-6 border border-[#B8E5DC]">
               <p className="text-gray-700 mb-2">
                 <strong>Next steps:</strong>
               </p>
@@ -592,12 +592,12 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
   const progress = ((currentStep + 1) / steps.length) * 100;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F0FBF8] via-[#E6F5F3] to-[#D4F5EF] p-4">
       <div className="max-w-3xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
         {/* Progress Bar */}
         <div className="h-2 bg-gray-200">
           <div 
-            className="h-full bg-gradient-to-r from-purple-600 to-blue-600 transition-all duration-300"
+            className="h-full bg-gradient-to-r from-[#005C70] to-[#00BFA6] transition-all duration-300"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -630,7 +630,7 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
             <button
               onClick={nextStep}
               disabled={steps[currentStep]?.canProceed && !steps[currentStep].canProceed()}
-              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-8 py-3 bg-gradient-to-r from-[#005C70] to-[#00BFA6] text-white rounded-lg font-semibold hover:from-[#014A5A] hover:to-[#019884] transition-all flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {currentStep < steps.length - 1 ? (
                 <>

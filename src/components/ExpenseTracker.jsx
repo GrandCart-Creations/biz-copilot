@@ -29,7 +29,8 @@ import {
   FaFileInvoiceDollar,
   FaCreditCard,
   FaLink,
-  FaHistory
+  FaHistory,
+  FaSyncAlt
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
 import CompanySelector from './CompanySelector';
@@ -54,6 +55,8 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.2;
 const DEFAULT_ZOOM = 1.5;
+
+const BASE_CURRENCY = 'EUR';
 
 const EU_COUNTRY_OPTIONS = [
   { code: 'BE', label: 'Belgium' },
@@ -235,14 +238,7 @@ const AttachmentPanel = ({
   const renderPreview = () => {
     if (!currentPreview) {
       return (
-        <div className="flex min-h-[50vh] flex-col items-center justify-center px-6 text-center text-sm text-gray-500 space-y-3">
-          <FaPaperclip className="w-10 h-10 text-gray-400" />
-          <div>
-            <p className="font-medium text-gray-700 mb-1">No attachments selected yet.</p>
-            <p className="text-xs text-gray-500 mb-4">
-              Drag and drop files into this area, or click the button to choose files.
-            </p>
-          </div>
+        <div className="flex min-h-[50vh] flex-col items-center justify-start px-6 py-8 text-center text-sm text-gray-500 space-y-3">
           <button
             type="button"
             onClick={handleManualUploadClick}
@@ -251,6 +247,13 @@ const AttachmentPanel = ({
           >
             Click to upload
           </button>
+          <FaPaperclip className="w-10 h-10 text-gray-400 mt-2" />
+          <div>
+            <p className="font-medium text-gray-700 mb-1">No attachments selected yet.</p>
+            <p className="text-xs text-gray-500">
+              Drag and drop files into this area, or click the button to choose files.
+            </p>
+          </div>
           <p className="text-xs text-gray-400">
             Supports PNG, JPG, or PDF (max 10 MB each, up to 5 files).
           </p>
@@ -547,7 +550,7 @@ const documentTypeOptions = [
 const documentTypeStyles = {
   invoice: { label: 'Invoice', classes: 'bg-blue-100 text-blue-800' },
   receipt: { label: 'Receipt', classes: 'bg-green-100 text-green-800' },
-  statement: { label: 'Statement', classes: 'bg-purple-100 text-purple-800' },
+  statement: { label: 'Statement', classes: 'bg-[#D4F5EF] text-[#184E55]' },
   other: { label: 'Other', classes: 'bg-gray-200 text-gray-700' }
 };
 
@@ -577,6 +580,14 @@ const paymentStatusStyles = {
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [existingAttachments, setExistingAttachments] = useState([]);
+  const [showNormalizeModal, setShowNormalizeModal] = useState(false);
+  const [normalizeStatus, setNormalizeStatus] = useState({
+    state: 'idle',
+    total: 0,
+    processed: 0,
+    skipped: 0,
+    errors: []
+  });
   const [newFilePreviews, setNewFilePreviews] = useState([]);
   const [autoFillStatus, setAutoFillStatus] = useState('idle');
   const [autoFillMessage, setAutoFillMessage] = useState('');
@@ -830,6 +841,13 @@ const paymentStatusStyles = {
       }
     }
 
+    if (!fields.invoiceNumber) {
+      const splitInvoiceMatch = normalized.match(/invoice\s*(?:number|no\.?|#)?\s*[-:]?\s*([A-Z0-9]{3,})\s*(?:[-–]|[\s]{1,3})\s*([A-Z0-9]{2,})/i);
+      if (splitInvoiceMatch) {
+        fields.invoiceNumber = `${splitInvoiceMatch[1].toUpperCase()}-${splitInvoiceMatch[2].toUpperCase()}`;
+      }
+    }
+
     // Date detection
     const normalizeForDate = (value) => value.replace(/(\d+)(st|nd|rd|th)/gi, '$1').trim();
     const shortDateRegexp = /\b(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})\b/g;
@@ -881,26 +899,69 @@ const paymentStatusStyles = {
     }
 
     // Amount detection
-    const currencyRegexp = /(?:€|eur|usd|\$)\s*([0-9][0-9.,]*)/gi;
-    let amountCandidates = [];
-    for (const match of normalized.matchAll(currencyRegexp)) {
-      const numeric = parseNumericAmount(match[1]);
-      if (Number.isFinite(numeric)) {
-        amountCandidates.push(numeric);
+    const amountCandidates = [];
+    const seenAmounts = new Map();
+    const recordAmount = (rawValue, score = 0, position = 0) => {
+      const numeric = parseNumericAmount(rawValue);
+      if (!Number.isFinite(numeric)) return;
+      const key = numeric.toFixed(2);
+      const existing = seenAmounts.get(key);
+      if (existing) {
+        existing.score = Math.max(existing.score, score);
+        existing.position = Math.max(existing.position, position);
+      } else {
+        const candidate = { value: numeric, score, position };
+        amountCandidates.push(candidate);
+        seenAmounts.set(key, candidate);
       }
+    };
+
+    const prioritizedAmountPatterns = [
+      { regex: /amount\s+(?:paid|received)[^0-9]*([0-9][0-9.,]*)/i, score: 12 },
+      { regex: /\bpaid\s+on[^\n]*([0-9][0-9.,]*)/i, score: 10 },
+      { regex: /\bamount\s+due[^0-9]*([0-9][0-9.,]*)/i, score: 9 },
+      { regex: /\btotal\s+(?:amount|due|paid)?[^0-9]*([0-9][0-9.,]*)/i, score: 8 },
+      { regex: /\bgrand\s+total[^0-9]*([0-9][0-9.,]*)/i, score: 8 },
+      { regex: /\bbalance\s+(?:due|to pay)[^0-9]*([0-9][0-9.,]*)/i, score: 7 }
+    ];
+
+    prioritizedAmountPatterns.forEach(({ regex, score }) => {
+      const match = normalized.match(regex);
+      if (match && match[1]) {
+        recordAmount(match[1], score, collapsedLines.length + score);
+      }
+    });
+
+    for (let idx = collapsedLines.length - 1; idx >= 0; idx -= 1) {
+      const line = collapsedLines[idx];
+      if (!line) continue;
+      let contextScore = 1;
+      const lowerLine = line.toLowerCase();
+      if (/\bamount\s+paid\b/.test(lowerLine)) contextScore += 8;
+      if (/\bamount\s+due\b/.test(lowerLine)) contextScore += 6;
+      if (/\btotal\b/.test(lowerLine)) contextScore += 5;
+      if (/\bsubtotal\b/.test(lowerLine)) contextScore += 2;
+      if (/\bvat\b|\btax\b/.test(lowerLine)) contextScore += 1;
+      if (/\bpayment\b/.test(lowerLine)) contextScore += 2;
+
+      const matches = [...line.matchAll(/[€$£]?\s*([0-9][0-9.,]+)/g)];
+      matches.forEach(match => {
+        recordAmount(match[1], contextScore, collapsedLines.length - idx);
+      });
     }
+
     if (amountCandidates.length === 0) {
-      const genericRegexp = /\b([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2}))\b/g;
-      for (const match of normalized.matchAll(genericRegexp)) {
-        const numeric = parseNumericAmount(match[1]);
-        if (Number.isFinite(numeric)) {
-          amountCandidates.push(numeric);
-        }
-      }
+      const fallbackMatches = [...normalized.matchAll(/\b([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2}))\b/g)];
+      fallbackMatches.forEach(match => recordAmount(match[1], 0, 0));
     }
+
     if (amountCandidates.length > 0) {
-      const highestAmount = Math.max(...amountCandidates);
-      fields.amount = highestAmount.toFixed(2);
+      amountCandidates.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.position !== a.position) return b.position - a.position;
+        return a.value - b.value;
+      });
+      fields.amount = amountCandidates[0].value.toFixed(2);
     }
 
     if (normalized.includes('€') || /eur/i.test(normalized)) {
@@ -913,6 +974,7 @@ const paymentStatusStyles = {
 
     // Vendor detection
     const billToIndex = collapsedLines.findIndex(line => /^bill to\b/i.test(line));
+    const linesBeforeBillTo = billToIndex > 0 ? collapsedLines.slice(0, billToIndex) : collapsedLines;
     if (billToIndex > 0) {
       const vendorBlock = [];
       for (let idx = billToIndex - 1; idx >= 0; idx -= 1) {
@@ -932,36 +994,123 @@ const paymentStatusStyles = {
           !/^invoice\b/i.test(line) &&
           !/invoice\s*(?:number|no\.?|#)/i.test(line)
         );
+        const cleanCandidate = (line = '') => {
+          if (!line) return '';
+          let candidate = line.replace(/^\d+\s+/, '').replace(/\s{2,}/g, ' ').trim();
+          if (!candidate) return '';
+          const numberIndex = candidate.search(/\d/);
+          if (numberIndex > 0) {
+            const preNumber = candidate.slice(0, numberIndex).trim();
+            if (preNumber && preNumber.split(/\s+/).length <= 5) {
+              candidate = preNumber;
+            }
+          }
+          candidate = candidate.replace(/[,.;:|\-]+$/g, '').trim();
+          if (candidate.split(/\s+/).length > 6) {
+            const shortened = candidate.split(/\s+/).slice(0, 5).join(' ');
+            if (shortened.length >= 3) {
+              candidate = shortened;
+            }
+          }
+          const lowerCandidate = candidate.toLowerCase();
+          const keywordStops = [
+            'receipt',
+            'invoice',
+            'number',
+            'total',
+            'amount',
+            'subtotal',
+            'tax',
+            'payment',
+            'paid',
+            'history',
+            'method',
+            'qty',
+            'description',
+            'balance',
+            'bill to',
+            'ship to',
+            'customer',
+            'client'
+          ];
+          let stopIndex = -1;
+          keywordStops.forEach(keyword => {
+            const index = lowerCandidate.indexOf(keyword);
+            if (index !== -1 && (stopIndex === -1 || index < stopIndex)) {
+              stopIndex = index;
+            }
+          });
+          if (stopIndex > 0) {
+            candidate = candidate.slice(0, stopIndex).trim();
+          }
+          return candidate;
+        };
+
+        const vendorNoiseRegex = /(receipt|invoice|number|date|amount|total|subtotal|tax|paid|payment|history|method|page|qty|description|unit price|balance)/i;
         const prioritizedVendor =
-          cleanedBlock.find(line => /(limited|ltd|inc|llc|gmbh|s\.a\.|sarl|oy|ab|company|co\.)/i.test(line)) ||
-          cleanedBlock[0];
+          cleanedBlock
+            .map(cleanCandidate)
+            .filter(Boolean)
+            .filter(line => !vendorNoiseRegex.test(line))
+            .find(line => /(limited|ltd|inc|llc|gmbh|s\.a\.|sarl|oy|ab|company|co\.)/i.test(line)) ||
+          cleanedBlock
+            .map(cleanCandidate)
+            .filter(Boolean)
+            .filter(line => !vendorNoiseRegex.test(line))
+            .find(line => !/[0-9]{3,}/.test(line) && line.split(/\s+/).length <= 5) ||
+          cleanCandidate(cleanedBlock[0]);
 
         if (prioritizedVendor) {
           fields.vendor = prioritizedVendor;
-          const vendorIndexInBlock = sanitizedBlock.indexOf(prioritizedVendor);
-          const addressLines = sanitizedBlock
-            .slice(vendorIndexInBlock + 1)
-            .filter(line => line && !/invoice|bill to|description|qty|unit price|subtotal|total|vat/i.test(line))
-            .filter((line, index, arr) => arr.indexOf(line) === index);
+          const vendorIndexInBlock = sanitizedBlock.findIndex(line => line.includes(prioritizedVendor));
+          const addressLines = [];
+          for (let idx = vendorIndexInBlock + 1; idx < sanitizedBlock.length; idx += 1) {
+            const rawLine = sanitizedBlock[idx];
+            if (!rawLine) break;
+            if (/bill to|ship to|deliver to|description|qty|unit price|subtotal|total|amount|paid|payment|invoice|customer|client|grandville|grandcart|email|@|www|tax id/i.test(rawLine)) {
+              break;
+            }
+            const cleaned = rawLine.replace(/\s{2,}/g, ' ').trim();
+            if (!cleaned) continue;
+            if (cleaned === prioritizedVendor) continue;
+            if (vendorNoiseRegex.test(cleaned)) continue;
+            const wordCount = cleaned.split(/\s+/).length;
+            if (wordCount > 12) continue;
+            addressLines.push(cleaned);
+            if (addressLines.length >= 3) break;
+          }
           if (addressLines.length) {
-            fields.vendorAddress = addressLines.join(', ');
+            fields.vendorAddress = addressLines.filter((line, index, arr) => arr.indexOf(line) === index).join(', ');
           }
         }
       }
     }
 
     if (!fields.vendor) {
-      const vendorFallback = collapsedLines.find(line =>
-        /(limited|inc|llc|bv|b\.v\.|gmbh|s\.a\.|sarl|oy|ab|ltd|plc|pte|company|co\.)/i.test(line)
-      );
+      const vendorFallback = linesBeforeBillTo
+        .map(line => line.replace(/^\d+\s+/, '').trim())
+        .find(line =>
+          /(limited|inc|llc|bv|b\.v\.|gmbh|s\.a\.|sarl|oy|ab|ltd|plc|pte|company|co\.)/i.test(line)
+        );
       if (vendorFallback) {
         fields.vendor = vendorFallback;
         const vendorIndex = collapsedLines.indexOf(vendorFallback);
-        const addressCandidates = collapsedLines
-          .slice(vendorIndex + 1, vendorIndex + 5)
-          .filter(line => line && !/invoice|bill to|description|qty|unit price|subtotal|total|vat/i.test(line));
-        if (addressCandidates.length) {
-          fields.vendorAddress = addressCandidates.join(', ');
+        const fallbackAddress = [];
+        for (let idx = vendorIndex + 1; idx < Math.min(collapsedLines.length, vendorIndex + 6); idx += 1) {
+          const rawLine = collapsedLines[idx];
+          if (!rawLine) break;
+          if (/bill to|ship to|description|qty|unit price|subtotal|total|amount|paid|payment|invoice|customer|client|email|@|www|tax id/i.test(rawLine)) {
+            break;
+          }
+          const cleaned = rawLine.replace(/\s{2,}/g, ' ').trim();
+          if (!cleaned) continue;
+          if (cleaned === vendorFallback) continue;
+          if (cleaned.split(/\s+/).length > 12) continue;
+          fallbackAddress.push(cleaned);
+          if (fallbackAddress.length >= 3) break;
+        }
+        if (fallbackAddress.length) {
+          fields.vendorAddress = fallbackAddress.filter((line, index, arr) => arr.indexOf(line) === index).join(', ');
         }
       }
     }
@@ -969,11 +1118,37 @@ const paymentStatusStyles = {
     if (fields.vendor && !fields.vendorAddress) {
       const vendorIndex = collapsedLines.indexOf(fields.vendor);
       if (vendorIndex !== -1) {
-        const addressCandidates = collapsedLines
-          .slice(vendorIndex + 1, vendorIndex + 5)
-          .filter(line => line && !/invoice|bill to|description|qty|unit price|subtotal|total|vat/i.test(line));
-        if (addressCandidates.length) {
-          fields.vendorAddress = addressCandidates.join(', ');
+        const addressLines = [];
+        for (let idx = vendorIndex + 1; idx < Math.min(collapsedLines.length, vendorIndex + 6); idx += 1) {
+          const rawLine = collapsedLines[idx];
+          if (!rawLine) break;
+          if (/bill to|ship to|description|qty|unit price|subtotal|total|amount|paid|payment|invoice|customer|client|email|@|www|tax id/i.test(rawLine)) {
+            break;
+          }
+          const cleaned = rawLine.replace(/\s{2,}/g, ' ').trim();
+          if (!cleaned) continue;
+          if (cleaned === fields.vendor) continue;
+          if (cleaned.split(/\s+/).length > 12) continue;
+          addressLines.push(cleaned);
+          if (addressLines.length >= 3) break;
+        }
+        if (addressLines.length) {
+          fields.vendorAddress = addressLines.filter((line, index, arr) => arr.indexOf(line) === index).join(', ');
+        }
+      }
+    }
+
+    if (!fields.vendor) {
+      const simplifiedCandidates = linesBeforeBillTo
+        .map(line => line.replace(/\s{2,}/g, ' ').trim())
+        .filter(Boolean)
+        .filter(line => !/(bill to|ship to|deliver to|description|qty|unit price|subtotal|total|amount|paid|payment|invoice|customer|client|email|@|www|tax id)/i.test(line))
+        .filter(line => !/[0-9]{3,}/.test(line))
+        .filter(line => line.length <= 40);
+      if (simplifiedCandidates.length) {
+        const primary = simplifiedCandidates[0].split(',')[0].trim();
+        if (primary) {
+          fields.vendor = primary;
         }
       }
     }
@@ -983,6 +1158,24 @@ const paymentStatusStyles = {
       const countryMatch = EU_COUNTRY_OPTIONS.find(country => vendorText.includes(country.label.toLowerCase()));
       if (countryMatch) {
         fields.vendorCountry = countryMatch.code;
+      }
+    }
+
+    if (!fields.vendorCountry) {
+      const vendorText = `${fields.vendor || ''} ${fields.vendorAddress || ''}`.toLowerCase();
+      const globalCountryCandidates = [
+        { code: 'US', keywords: ['united states', 'u.s.a', 'u.s.', 'usa'] },
+        { code: 'CA', keywords: ['canada'] },
+        { code: 'GB', keywords: ['united kingdom', 'england', 'scotland', 'wales', 'uk', 'great britain'] },
+        { code: 'AU', keywords: ['australia'] },
+        { code: 'NZ', keywords: ['new zealand'] },
+        { code: 'IN', keywords: ['india'] }
+      ];
+      for (const candidate of globalCountryCandidates) {
+        if (candidate.keywords.some(keyword => vendorText.includes(keyword))) {
+          fields.vendorCountry = candidate.code;
+          break;
+        }
       }
     }
 
@@ -1093,7 +1286,6 @@ const paymentStatusStyles = {
     assignIfEmptyOrDefault('dueDate', extracted.dueDate);
     assignIfEmptyOrDefault('vendorAddress', extracted.vendorAddress);
     assignIfEmptyOrDefault('description', extracted.description);
-    assignIfEmptyOrDefault('date', extracted.date);
     assignIfEmptyOrDefault('notes', extracted.notes);
     assignIfEmptyOrDefault('vendorCountry', extracted.vendorCountry);
     assignIfEmptyOrDefault('vatNumber', extracted.vatNumber);
@@ -1105,14 +1297,6 @@ const paymentStatusStyles = {
 
     if (typeof extracted.btw === 'number' && (!current.btw || current.btw === 0)) {
       updated.btw = extracted.btw;
-    }
-
-    if (extracted.documentType) {
-      updated.documentType = extracted.documentType;
-    }
-
-    if (extracted.paymentStatus) {
-      updated.paymentStatus = extracted.paymentStatus;
     }
 
     if (typeof extracted.reverseCharge === 'boolean') {
@@ -1342,6 +1526,7 @@ const paymentStatusStyles = {
       date: todayIso,
       invoiceDate: '',
       dueDate: '',
+      paidDate: '',
       category: 'Subscriptions',
       currency: 'EUR',
       vendor: '',
@@ -1395,6 +1580,7 @@ const paymentStatusStyles = {
 
   // Track last loaded company to prevent unnecessary reloads
   const lastLoadedCompanyIdRef = useRef(null);
+  const conversionRateCacheRef = useRef(new Map());
 
   // Filters
   const [filters, setFilters] = useState({
@@ -1416,6 +1602,7 @@ const paymentStatusStyles = {
     date: todayIso,
     invoiceDate: '',
     dueDate: '',
+  paidDate: '',
     category: 'Subscriptions',
     currency: 'EUR',
     vendor: '',
@@ -1447,15 +1634,22 @@ const paymentStatusStyles = {
   const previousPaymentStatusRef = useRef(formData.paymentStatus);
 
   useEffect(() => {
-    if (previousPaymentStatusRef.current === 'paid' && formData.paymentStatus !== 'paid') {
-      setFormData(prev => ({
-        ...prev,
-        financialAccountId: '',
-        paymentMethodDetails: ''
-      }));
-    }
-    previousPaymentStatusRef.current = formData.paymentStatus;
-  }, [formData.paymentStatus]);
+  if (previousPaymentStatusRef.current === 'paid' && formData.paymentStatus !== 'paid') {
+    setFormData(prev => ({
+      ...prev,
+      financialAccountId: '',
+      paymentMethodDetails: '',
+      paidDate: ''
+    }));
+  }
+  if (formData.paymentStatus === 'paid' && !formData.paidDate) {
+    setFormData(prev => ({
+      ...prev,
+      paidDate: todayIso
+    }));
+  }
+  previousPaymentStatusRef.current = formData.paymentStatus;
+}, [formData.paymentStatus]);
 
   const paymentSectionVisible = formData.paymentStatus === 'paid';
 
@@ -2017,11 +2211,17 @@ const paymentStatusStyles = {
       }
 
       const isMarkedAsPaid = payload.paymentStatus === 'paid';
+  if (isMarkedAsPaid && !payload.paidDate) {
+    payload.paidDate = todayIso;
+  } else if (!isMarkedAsPaid) {
+    payload.paidDate = '';
+  }
       const expensePayload = {
         ...payload,
         financialAccountId: isMarkedAsPaid ? payload.financialAccountId : '',
         paymentMethod: isMarkedAsPaid ? payload.paymentMethod : '',
-        paymentMethodDetails: isMarkedAsPaid ? payload.paymentMethodDetails : ''
+    paymentMethodDetails: isMarkedAsPaid ? payload.paymentMethodDetails : '',
+    paidDate: isMarkedAsPaid ? (payload.paidDate || todayIso) : ''
       };
       const newAmount = parseFloat(formData.amount || 0);
       const newAccountId = isMarkedAsPaid ? expensePayload.financialAccountId : '';
@@ -2176,7 +2376,7 @@ const paymentStatusStyles = {
     }
   };
 
-  const handleAddDocument = (docType = 'invoice', source = 'menu') => {
+  const handleAddDocument = (docType = 'invoice', source = 'menu', templateExpense = null) => {
     if (!currentCompanyId) {
       alert('Please select a company to add documents.');
       return;
@@ -2192,13 +2392,68 @@ const paymentStatusStyles = {
     });
 
     resetFormState();
-    setFormData(prev => ({
-      ...prev,
-      documentType: normalizedDocType,
-      paymentStatus: defaultPaymentStatus
-    }));
+    setFormData(prev => {
+      const next = {
+        ...prev,
+        documentType: normalizedDocType,
+        paymentStatus: defaultPaymentStatus
+      };
+
+      if (templateExpense) {
+        if (templateExpense.vendor) next.vendor = templateExpense.vendor;
+        if (templateExpense.vendorAddress) next.vendorAddress = templateExpense.vendorAddress;
+        if (templateExpense.vendorCountry) next.vendorCountry = templateExpense.vendorCountry;
+        if (templateExpense.invoiceNumber) next.invoiceNumber = templateExpense.invoiceNumber;
+        if (templateExpense.category) next.category = templateExpense.category;
+        if (templateExpense.currency) next.currency = templateExpense.currency;
+        if (templateExpense.invoiceDate) next.invoiceDate = templateExpense.invoiceDate;
+        if (templateExpense.dueDate) next.dueDate = templateExpense.dueDate;
+        if (templateExpense.description && !next.description) next.description = templateExpense.description;
+        if (templateExpense.paidDate) next.paidDate = templateExpense.paidDate;
+
+        if (normalizedDocType === 'receipt') {
+          if (templateExpense.amount) {
+            const parsedAmount = parseNumericAmount(String(templateExpense.amount));
+            next.amount = Number.isFinite(parsedAmount)
+              ? parsedAmount.toFixed(2)
+              : String(templateExpense.amount);
+          }
+          if (templateExpense.paymentMethod) next.paymentMethod = templateExpense.paymentMethod;
+          if (templateExpense.paymentMethodDetails) next.paymentMethodDetails = templateExpense.paymentMethodDetails;
+          if (!next.notes && templateExpense.invoiceNumber) {
+            next.notes = `Receipt captured for invoice ${templateExpense.invoiceNumber}`;
+          }
+          if (!next.paidDate) {
+            next.paidDate = templateExpense.invoiceDate || templateExpense.dueDate || todayIso;
+          }
+        } else if (normalizedDocType === 'statement') {
+          if (templateExpense.amount) {
+            const parsedAmount = parseNumericAmount(String(templateExpense.amount));
+            next.amount = Number.isFinite(parsedAmount)
+              ? parsedAmount.toFixed(2)
+              : String(templateExpense.amount);
+          }
+          if (!next.notes && templateExpense.invoiceNumber) {
+            next.notes = `Statement entry linked to invoice ${templateExpense.invoiceNumber}`;
+          }
+          if (!next.paidDate) {
+            next.paidDate = templateExpense.paidDate || templateExpense.date || todayIso;
+          }
+        }
+      }
+
+      if ((normalizedDocType === 'receipt' || normalizedDocType === 'statement') && !next.paidDate) {
+        next.paidDate = todayIso;
+      }
+
+      return next;
+    });
     setEditingExpense(null);
     setShowAddExpense(true);
+  };
+
+  const handleQuickAddDocument = (docType, expense) => {
+    handleAddDocument(docType, `row-${docType}`, expense);
   };
 
   // Handle expense edit
@@ -2206,7 +2461,8 @@ const paymentStatusStyles = {
     setFormData({
       date: expense.date,
       invoiceDate: expense.invoiceDate || expense.date,
-      dueDate: expense.dueDate || '',
+    dueDate: expense.dueDate || '',
+    paidDate: expense.paidDate || '',
       category: expense.category,
       currency: expense.currency || 'EUR',
       vendor: expense.vendor,
@@ -2744,25 +3000,204 @@ const paymentStatusStyles = {
     });
   }, [filteredExpenses]);
 
+  const expensesRequiringConversion = useMemo(() => {
+    return expenses.filter((expense) => {
+      const currency = (expense.currency || BASE_CURRENCY).toUpperCase();
+      return currency !== BASE_CURRENCY;
+    });
+  }, [expenses]);
+
+  const conversionSummary = useMemo(() => {
+    const summary = expensesRequiringConversion.reduce((acc, expense) => {
+      const currency = (expense.currency || BASE_CURRENCY).toUpperCase();
+      acc[currency] = (acc[currency] || 0) + 1;
+      return acc;
+    }, {});
+    return summary;
+  }, [expensesRequiringConversion]);
+
+  const normalizationRunning = normalizeStatus.state === 'running';
+  const normalizeProgressPercent = normalizeStatus.total > 0
+    ? Math.round((normalizeStatus.processed / normalizeStatus.total) * 100)
+    : 0;
+
   // Calculate totals
   const totalExpense = useMemo(() => {
     return filteredExpenses.reduce((sum, exp) => {
-      const amount = parseFloat(exp.amount) || 0;
-      // If amount is encrypted, skip calculation
-      if (typeof amount === 'string' && exp.amount_encrypted) return sum;
+      const docType = (exp.documentType || '').toLowerCase();
+      if (docType === 'receipt' && exp.linkedInvoiceExpenseId) {
+        return sum;
+      }
+      if (docType === 'statement' && exp.linkedReceiptExpenseId) {
+        return sum;
+      }
+      const amount = parseFloat(exp.amount);
+      if (!Number.isFinite(amount)) {
+        return sum;
+      }
       return sum + amount;
     }, 0);
   }, [filteredExpenses]);
 
   const totalVAT = useMemo(() => {
     return filteredExpenses.reduce((sum, exp) => {
-      const amount = parseFloat(exp.amount) || 0;
-      // If amount is encrypted, skip calculation
-      if (typeof amount === 'string' && exp.amount_encrypted) return sum;
+      const docType = (exp.documentType || '').toLowerCase();
+      if (docType === 'receipt' && exp.linkedInvoiceExpenseId) {
+        return sum;
+      }
+      if (docType === 'statement' && exp.linkedReceiptExpenseId) {
+        return sum;
+      }
+      const amount = parseFloat(exp.amount);
+      if (!Number.isFinite(amount)) {
+        return sum;
+      }
       const vatRate = parseFloat(exp.btw || 0) / 100;
       return sum + (amount * vatRate);
     }, 0);
   }, [filteredExpenses]);
+
+  const getConversionRate = useCallback(async (fromCurrency, toCurrency, date) => {
+    const from = (fromCurrency || BASE_CURRENCY).toUpperCase();
+    const to = (toCurrency || BASE_CURRENCY).toUpperCase();
+
+    if (from === to) {
+      return 1;
+    }
+
+    const cacheKey = `${from}-${to}-${date || 'latest'}`;
+    if (conversionRateCacheRef.current.has(cacheKey)) {
+      return conversionRateCacheRef.current.get(cacheKey);
+    }
+
+    try {
+      const params = new URLSearchParams({
+        from,
+        to,
+        amount: '1'
+      });
+      if (date) {
+        params.set('date', date);
+      }
+      params.set('places', '6');
+
+      const response = await fetch(`https://api.exchangerate.host/convert?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Rate request failed with status ${response.status}`);
+      }
+      const data = await response.json();
+      const rate = data?.info?.rate || data?.result;
+      if (typeof rate === 'number' && Number.isFinite(rate)) {
+        conversionRateCacheRef.current.set(cacheKey, rate);
+        return rate;
+      }
+      throw new Error('Invalid conversion data');
+    } catch (error) {
+      console.error(`Conversion rate error (${from}→${to} @ ${date || 'latest'}):`, error);
+      return null;
+    }
+  }, []);
+
+  const handleNormalizeCurrency = useCallback(async () => {
+    if (!currentCompanyId) {
+      alert('Please select a company before normalizing currency.');
+      return;
+    }
+    if (!expensesRequiringConversion.length) {
+      setShowNormalizeModal(false);
+      return;
+    }
+
+    setNormalizeStatus({
+      state: 'running',
+      total: expensesRequiringConversion.length,
+      processed: 0,
+      skipped: 0,
+      errors: []
+    });
+
+    const errors = [];
+
+    for (let index = 0; index < expensesRequiringConversion.length; index += 1) {
+      const expense = expensesRequiringConversion[index];
+      const originalCurrency = (expense.currency || BASE_CURRENCY).toUpperCase();
+      if (originalCurrency === BASE_CURRENCY) {
+        setNormalizeStatus(prev => ({
+          ...prev,
+          processed: prev.processed + 1,
+          skipped: prev.skipped + 1
+        }));
+        continue;
+      }
+
+      const amount = parseFloat(expense.amount);
+      if (!Number.isFinite(amount)) {
+        errors.push(`Skipping ${expense.invoiceNumber || expense.id}: invalid amount "${expense.amount}".`);
+        setNormalizeStatus(prev => ({
+          ...prev,
+          processed: prev.processed + 1,
+          skipped: prev.skipped + 1,
+          errors
+        }));
+        continue;
+      }
+
+      const referenceDate = expense.invoiceDate || expense.paidDate || expense.date || todayIso;
+      const rate = await getConversionRate(originalCurrency, BASE_CURRENCY, referenceDate);
+      if (!rate) {
+        errors.push(`Rate unavailable for ${originalCurrency} → ${BASE_CURRENCY} on ${referenceDate}.`);
+        setNormalizeStatus(prev => ({
+          ...prev,
+          processed: prev.processed + 1,
+          skipped: prev.skipped + 1,
+          errors
+        }));
+        continue;
+      }
+
+      const convertedAmount = (amount * rate).toFixed(2);
+      try {
+        await updateCompanyExpense(currentCompanyId, expense.id, {
+          currency: BASE_CURRENCY,
+          amount: convertedAmount,
+          conversionMeta: {
+            originalAmount: amount,
+            originalCurrency,
+            conversionRate: rate,
+            conversionDate: referenceDate,
+            conversionSource: 'exchangerate.host',
+            convertedAt: new Date().toISOString()
+          }
+        });
+
+        setNormalizeStatus(prev => ({
+          ...prev,
+          processed: prev.processed + 1
+        }));
+      } catch (error) {
+        console.error('Currency normalization error:', error);
+        errors.push(`Failed to update ${expense.invoiceNumber || expense.id}: ${error.message || 'unknown error'}.`);
+        setNormalizeStatus(prev => ({
+          ...prev,
+          processed: prev.processed + 1,
+          errors
+        }));
+      }
+    }
+
+    await loadExpenses();
+    setNormalizeStatus(prev => ({
+      ...prev,
+      state: errors.length > 0 ? 'error' : 'success',
+      errors
+    }));
+  }, [
+    currentCompanyId,
+    expensesRequiringConversion,
+    getConversionRate,
+    loadExpenses,
+    todayIso
+  ]);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('nl-NL', {
@@ -2815,7 +3250,7 @@ const paymentStatusStyles = {
                   {editingExpense ? 'Edit Expense' : 'Add New Expense'}
                 </h3>
                 <div className="flex items-center gap-2">
-                <button
+                  <button
                     type="button"
                     onClick={() => handleCloseModal('cancel_button')}
                     className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400"
@@ -2827,7 +3262,13 @@ const paymentStatusStyles = {
                     form={ADD_EXPENSE_FORM_ID}
                     className="px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500"
                   >
-                    {editingExpense ? 'Update Expense' : 'Save Expense'}
+                    {editingExpense
+                      ? formData.documentType === 'receipt'
+                        ? 'Update Payment'
+                        : 'Update Document'
+                      : formData.documentType === 'receipt'
+                        ? 'Save Payment'
+                        : 'Save Expense'}
                   </button>
                   <button
                     type="button"
@@ -3160,7 +3601,7 @@ const paymentStatusStyles = {
                     </div>
                   )}
                 </div>
-                <div>
+                <div className="md:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Payment Method
                   </label>
@@ -3193,6 +3634,22 @@ const paymentStatusStyles = {
                       </p>
                     </div>
                   )}
+                </div>
+                <div className="md:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Paid Date
+                  </label>
+                  <input
+                    type="date"
+                    name="paidDate"
+                    value={formData.paidDate}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use the date the payment cleared or the receipt was issued.
+                  </p>
                 </div>
                     </div>
                   ) : (
@@ -3251,10 +3708,134 @@ const paymentStatusStyles = {
         </div>
       )}
 
+      {showNormalizeModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full">
+            <div className="px-5 py-4 border-b flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Normalize currency to EUR</h3>
+                <p className="text-sm text-gray-500">
+                  Convert {normalizeStatus.total} expense{normalizeStatus.total === 1 ? '' : 's'} currently stored in other currencies.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!normalizationRunning) {
+                    setShowNormalizeModal(false);
+                  }
+                }}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+                disabled={normalizationRunning}
+                title="Close"
+              >
+                <FaTimes className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              {Object.keys(conversionSummary).length > 0 ? (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Detected currencies</p>
+                  <ul className="space-y-1 text-sm text-gray-600">
+                    {Object.entries(conversionSummary).map(([currency, count]) => (
+                      <li key={currency} className="flex items-center justify-between">
+                        <span>{currency}</span>
+                        <span className="font-semibold">{count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No non-EUR expenses detected.</p>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                  <span>Progress</span>
+                  <span>{normalizeStatus.processed} / {normalizeStatus.total}</span>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${normalizeStatus.state === 'error' ? 'bg-red-500' : 'bg-blue-600'} transition-all duration-300`}
+                    style={{ width: `${normalizeProgressPercent}%` }}
+                  />
+                </div>
+                {normalizationRunning && (
+                  <p className="text-xs text-blue-600 mt-2">Converting… this may take a few seconds.</p>
+                )}
+                {normalizeStatus.state === 'success' && (
+                  <p className="text-xs text-green-600 mt-2">Currency normalization complete.</p>
+                )}
+                {normalizeStatus.state === 'error' && normalizeStatus.errors.length === 0 && (
+                  <p className="text-xs text-red-600 mt-2">
+                    Currency normalization finished with warnings.
+                  </p>
+                )}
+              </div>
+
+              {normalizeStatus.errors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-40 overflow-auto">
+                  <p className="text-sm font-medium text-red-700 mb-2">Issues encountered</p>
+                  <ul className="list-disc list-inside text-xs text-red-600 space-y-1">
+                    {normalizeStatus.errors.map((error, idx) => (
+                      <li key={idx}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t flex items-center justify-end gap-3 bg-gray-50 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!normalizationRunning) {
+                    setShowNormalizeModal(false);
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition"
+                disabled={normalizationRunning}
+              >
+                {normalizeStatus.state === 'success' || normalizeStatus.state === 'error' ? 'Close' : 'Cancel'}
+              </button>
+              {normalizeStatus.state === 'idle' && (
+                <button
+                  type="button"
+                  onClick={handleNormalizeCurrency}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-sm transition"
+                >
+                  Convert to EUR
+                </button>
+              )}
+              {normalizeStatus.state === 'running' && (
+                <button
+                  type="button"
+                  className="px-4 py-2 text-sm font-semibold text-white bg-purple-400 rounded-lg shadow-sm cursor-not-allowed"
+                  disabled
+                >
+                  Converting…
+                </button>
+              )}
+              {(normalizeStatus.state === 'success' || (normalizeStatus.state === 'error' && normalizeStatus.errors.length > 0)) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNormalizeModal(false);
+                  }}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition"
+                >
+                  Done
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-12 py-8">
+      <div className="space-y-4 lg:space-y-6 lg:sticky lg:top-20 lg:z-30 lg:bg-gray-50/95 lg:backdrop-blur-sm lg:pb-4">
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {loading ? (
             // Skeleton loading state for summary cards
             <>
@@ -3320,7 +3901,7 @@ const paymentStatusStyles = {
         </div>
 
         {/* Filters and Add Button */}
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <div className="bg-white rounded-lg shadow p-4">
           {loading ? (
             // Skeleton for filters
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -3526,15 +4107,34 @@ const paymentStatusStyles = {
                 setImportFile(null);
               }}
               disabled={!currentCompanyId}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-4 py-2 bg-[#00BFA6] text-white rounded-lg hover:bg-[#019884] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               title={!currentCompanyId ? 'Please select a company first' : ''}
             >
               <FaFilePdf />
               OCR Bank Statement
             </button>
+            {expensesRequiringConversion.length > 0 && (
+              <button
+                onClick={() => {
+                  setNormalizeStatus({
+                    state: 'idle',
+                    total: expensesRequiringConversion.length,
+                    processed: 0,
+                    skipped: 0,
+                    errors: []
+                  });
+                  setShowNormalizeModal(true);
+                }}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+              >
+                <FaSyncAlt />
+                Normalize to EUR
+              </button>
+            )}
             </div>
           )}
         </div>
+      </div>
 
         {/* Expenses Table */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -3828,20 +4428,70 @@ const paymentStatusStyles = {
                           )}
                         </td>
                         <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-medium">
-                          <button
-                            onClick={() => handleEditExpense(expense)}
-                            className="text-blue-600 hover:text-blue-900 mr-3"
-                            title="Edit"
-                          >
-                            <FaEdit className="w-4 h-4 inline" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteExpense(expense.id)}
-                            className="text-red-600 hover:text-red-900"
-                            title="Delete"
-                          >
-                            <FaTrash className="w-4 h-4 inline" />
-                          </button>
+                          <div className="flex items-center justify-center gap-2">
+                            {documentTypeKey === 'invoice' && paymentStatusKey !== 'paid' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickAddDocument('receipt', {
+                                    vendor: expense.vendor,
+                                    vendorAddress: expense.vendorAddress,
+                                    vendorCountry: expense.vendorCountry,
+                                    invoiceNumber: expense.invoiceNumber,
+                                    amount: expense.amount,
+                                    currency: expense.currency,
+                                    category: expense.category,
+                                    description: expense.description,
+                                    invoiceDate: expense.invoiceDate || expense.date,
+                                    dueDate: expense.dueDate || '',
+                                    paidDate: expense.paidDate,
+                                    paymentMethod: expense.paymentMethod,
+                                    paymentMethodDetails: expense.paymentMethodDetails
+                                  })}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold shadow-sm hover:bg-blue-100 hover:border-blue-300 transition"
+                                  title="Add receipt for this invoice"
+                                >
+                                  <FaReceipt className="w-3.5 h-3.5" />
+                                  <span>Receipt</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickAddDocument('statement', {
+                                    vendor: expense.vendor,
+                                    vendorAddress: expense.vendorAddress,
+                                    vendorCountry: expense.vendorCountry,
+                                    invoiceNumber: expense.invoiceNumber,
+                                    amount: expense.amount,
+                                    currency: expense.currency,
+                                    category: expense.category,
+                                    description: expense.description,
+                                    paidDate: expense.paidDate,
+                                    paymentMethod: expense.paymentMethod,
+                                    paymentMethodDetails: expense.paymentMethodDetails
+                                  })}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-teal-200 bg-teal-50 text-teal-700 text-xs font-semibold shadow-sm hover:bg-teal-100 hover:border-teal-300 transition"
+                                  title="Add bank statement entry"
+                                >
+                                  <FaFilePdf className="w-3.5 h-3.5" />
+                                  <span>Statement</span>
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handleEditExpense(expense)}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="Edit"
+                            >
+                              <FaEdit className="w-4 h-4 inline" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteExpense(expense.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Delete"
+                            >
+                              <FaTrash className="w-4 h-4 inline" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                           {hasLinkedDocuments && isExpanded && (
@@ -4021,7 +4671,7 @@ const paymentStatusStyles = {
                     </>
                   ) : (
                     <>
-                      <FaFilePdf className="text-purple-600" />
+                      <FaFilePdf className="text-[#005C70]" />
                       Import from Bank Statement (OCR)
                     </>
                   )}
@@ -4069,7 +4719,7 @@ const paymentStatusStyles = {
                       </>
                     ) : (
                       <>
-                        <FaFilePdf className="w-12 h-12 text-purple-400 mx-auto mb-4" />
+                        <FaFilePdf className="w-12 h-12 text-[#4BBFAE] mx-auto mb-4" />
                         <p className="text-gray-600 mb-4">Upload bank statement (PDF or Image)</p>
                         {ocrProcessing ? (
                           <div className="space-y-4">
@@ -4108,7 +4758,7 @@ const paymentStatusStyles = {
                             />
                             <label
                               htmlFor="ocr-file-input"
-                              className="inline-block px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors cursor-pointer"
+                              className="inline-block px-6 py-3 bg-[#00BFA6] text-white rounded-lg hover:bg-[#019884] transition-colors cursor-pointer"
                             >
                               Choose File
                             </label>
@@ -4133,9 +4783,9 @@ const paymentStatusStyles = {
                       </ul>
                     </div>
                   ) : (
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                      <p className="text-sm font-semibold text-purple-900 mb-2">Bank Statement OCR:</p>
-                      <ul className="text-xs text-purple-800 space-y-1 list-disc list-inside">
+                    <div className="bg-[#F0FBF8] border border-[#B8E5DC] rounded-lg p-4">
+                      <p className="text-sm font-semibold text-[#153A3F] mb-2">Bank Statement OCR:</p>
+                      <ul className="text-xs text-[#184E55] space-y-1 list-disc list-inside">
                         <li>Supports PDF and image formats (PNG, JPG)</li>
                         <li>Automatically extracts dates, amounts, vendors, and card numbers</li>
                         <li>Works best with clear, high-quality scans</li>

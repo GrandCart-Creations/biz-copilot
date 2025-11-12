@@ -122,18 +122,18 @@ const OnboardingWizard = () => {
     <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-4">
+        <div className="bg-gradient-to-r from-[#005C70] to-[#00BFA6] text-white px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold">{steps[currentStep]?.title}</h2>
-              <p className="text-purple-100 text-sm mt-1">
+              <p className="text-[#D4F5EF] text-sm mt-1">
                 Step {currentStep + 1} of {steps.length}
               </p>
             </div>
             {canSkip && (
               <button
                 onClick={handleSkip}
-                className="text-white hover:text-purple-200 transition-colors"
+                className="text-white hover:text-[#9FE4D8] transition-colors"
                 title="Skip onboarding"
               >
                 <FaTimes className="w-6 h-6" />
@@ -142,7 +142,7 @@ const OnboardingWizard = () => {
           </div>
           
           {/* Progress Bar */}
-          <div className="mt-4 bg-purple-500 rounded-full h-2">
+          <div className="mt-4 bg-[#00BFA6] rounded-full h-2">
             <div
               className="bg-white rounded-full h-2 transition-all duration-300"
               style={{ width: `${stepProgress}%` }}
@@ -229,7 +229,7 @@ const OnboardingWizard = () => {
             )}
             <button
               onClick={() => handleNext()}
-              className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition-all flex items-center gap-2"
+              className="px-6 py-2 bg-gradient-to-r from-[#005C70] to-[#00BFA6] text-white rounded-lg font-medium hover:from-[#014A5A] hover:to-[#019884] transition-all flex items-center gap-2"
             >
               {currentStep === steps.length - 1 ? 'Complete' : 'Next'}
               <FaChevronRight className="w-4 h-4" />

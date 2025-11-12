@@ -5,7 +5,7 @@
  * Will be fully implemented in future phases
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,12 +18,15 @@ import {
   FaChartPie,
   FaArrowLeft
 } from 'react-icons/fa';
+import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
 
 const ReportsDashboard = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { currentCompany, currentCompanyId } = useCompany();
   const [loading] = useState(false);
+  const headerBackground = useMemo(() => getHeaderBackground(currentCompany), [currentCompany]);
+  const accentColor = useMemo(() => getPrimaryColor(currentCompany), [currentCompany]);
 
   if (loading) {
     return (
@@ -37,15 +40,12 @@ const ReportsDashboard = () => {
     return (
       <div className="min-h-screen bg-gray-50 w-full">
         {/* Header */}
-        <nav className="bg-gray-800 text-white shadow-lg w-full">
+        <nav className="text-white shadow-lg w-full" style={{ background: getHeaderBackground(null) }}>
           <div className="w-full px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
                 <div className="flex-shrink-0 flex items-center">
-                  <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
-                    <span className="text-white font-bold text-lg">BC</span>
-                  </div>
-                  <span className="text-xl font-semibold">Biz-CoPilot</span>
+                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-10 w-auto" />
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -85,8 +85,11 @@ const ReportsDashboard = () => {
               </button>
               
               {/* Reports Icon & Title */}
-              <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-                <FaFileAlt className="w-6 h-6 text-white" />
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                style={{ backgroundColor: accentColor }}
+              >
+                <FaFileAlt className="w-6 h-6" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
@@ -105,8 +108,8 @@ const ReportsDashboard = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Coming Soon Message */}
         <div className="bg-white rounded-lg shadow p-12 text-center">
-          <div className="w-24 h-24 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <FaFileAlt className="w-12 h-12 text-purple-600" />
+          <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: '#D4F5EF' }}>
+            <FaFileAlt className="w-12 h-12" style={{ color: accentColor }} />
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Reports Coming Soon</h2>
           <p className="text-lg text-gray-600 mb-6 max-w-2xl mx-auto">
@@ -117,21 +120,21 @@ const ReportsDashboard = () => {
           {/* Feature Preview */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 text-left">
             <div className="p-6 border border-gray-200 rounded-lg">
-              <FaChartBar className="w-8 h-8 text-purple-600 mb-4" />
+              <FaChartBar className="w-8 h-8 mb-4" style={{ color: accentColor }} />
               <h3 className="font-semibold text-gray-900 mb-2">Financial Reports</h3>
               <p className="text-sm text-gray-600">
                 Profit & Loss, Balance Sheet, Cash Flow statements, and custom reports.
               </p>
             </div>
             <div className="p-6 border border-gray-200 rounded-lg">
-              <FaChartPie className="w-8 h-8 text-purple-600 mb-4" />
+              <FaChartPie className="w-8 h-8 mb-4" style={{ color: accentColor }} />
               <h3 className="font-semibold text-gray-900 mb-2">Visual Analytics</h3>
               <p className="text-sm text-gray-600">
                 Interactive charts and graphs to visualize your financial data and trends.
               </p>
             </div>
             <div className="p-6 border border-gray-200 rounded-lg">
-              <FaDownload className="w-8 h-8 text-purple-600 mb-4" />
+              <FaDownload className="w-8 h-8 mb-4" style={{ color: accentColor }} />
               <h3 className="font-semibold text-gray-900 mb-2">Export & Share</h3>
               <p className="text-sm text-gray-600">
                 Export reports as PDF, Excel, or CSV. Share with your team or accountant.

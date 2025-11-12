@@ -630,8 +630,8 @@ const FundingAndInvestors = () => {
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                          <FaUserTie className="w-6 h-6 text-purple-600" />
+                        <div className="w-12 h-12 bg-[#D4F5EF] rounded-lg flex items-center justify-center">
+                          <FaUserTie className="w-6 h-6 text-[#005C70]" />
                         </div>
                         <div>
                           <h4 className="text-lg font-semibold text-gray-900">{investor.name}</h4>
@@ -646,7 +646,7 @@ const FundingAndInvestors = () => {
                             {investor.equityPercentage > 0 && (
                               <div>
                                 <p className="text-xs text-gray-500">Equity</p>
-                                <p className="text-lg font-bold text-purple-600">
+                                <p className="text-lg font-bold text-[#005C70]">
                                   {investor.equityPercentage}%
                                 </p>
                               </div>

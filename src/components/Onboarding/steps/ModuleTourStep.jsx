@@ -52,7 +52,7 @@ const ModuleTourStep = ({ onNext, onComplete }) => {
     const colors = {
       blue: 'bg-blue-50 border-blue-200',
       green: 'bg-green-50 border-green-200',
-      purple: 'bg-purple-50 border-purple-200',
+      purple: 'bg-[#F0FBF8] border-[#B8E5DC]',
       gray: 'bg-gray-50 border-gray-200',
       red: 'bg-red-50 border-red-200'
     };
@@ -82,14 +82,14 @@ const ModuleTourStep = ({ onNext, onComplete }) => {
                 <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${
                   module.color === 'blue' ? 'bg-blue-100' :
                   module.color === 'green' ? 'bg-green-100' :
-                  module.color === 'purple' ? 'bg-purple-100' :
+                  module.color === 'purple' ? 'bg-[#D4F5EF]' :
                   module.color === 'red' ? 'bg-red-100' :
                   'bg-gray-100'
                 }`}>
                   <Icon className={`w-6 h-6 ${
                     module.color === 'blue' ? 'text-blue-600' :
                     module.color === 'green' ? 'text-green-600' :
-                    module.color === 'purple' ? 'text-purple-600' :
+                    module.color === 'purple' ? 'text-[#005C70]' :
                     module.color === 'red' ? 'text-red-600' :
                     'text-gray-600'
                   }`} />
@@ -104,7 +104,7 @@ const ModuleTourStep = ({ onNext, onComplete }) => {
         })}
       </div>
 
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg p-6">
+      <div className="bg-gradient-to-r from-[#F0FBF8] to-[#EAF4F6] border-2 border-[#B8E5DC] rounded-lg p-6">
         <div className="flex items-start gap-4">
           <FaCheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
           <div>
@@ -133,7 +133,7 @@ const ModuleTourStep = ({ onNext, onComplete }) => {
       <div className="mt-8 flex justify-center">
         <button
           onClick={onComplete}
-          className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
+          className="px-8 py-3 bg-gradient-to-r from-[#005C70] to-[#00BFA6] text-white rounded-lg font-semibold hover:from-[#014A5A] hover:to-[#019884] transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
         >
           <FaCheckCircle className="w-5 h-5" />
           Complete Setup & Go to Dashboard

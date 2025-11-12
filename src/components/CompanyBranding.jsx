@@ -25,7 +25,7 @@ const CompanyBranding = () => {
   const [branding, setBranding] = useState({
     logoUrl: '',
     logoPath: '',
-    primaryColor: '#9333ea', // Default purple
+    primaryColor: '#005C70', // Primary brand blue
     tagline: '',
     companyName: '',
     aboutCompany: ''
@@ -49,7 +49,7 @@ const CompanyBranding = () => {
         setBranding({
           logoUrl: companyData.branding.logoUrl || '',
           logoPath: companyData.branding.logoPath || '',
-          primaryColor: companyData.branding.primaryColor || '#9333ea',
+          primaryColor: companyData.branding.primaryColor || '#005C70',
           tagline: companyData.branding.tagline || '',
           companyName: companyData.name || '',
           aboutCompany: companyData.branding.aboutCompany || ''
@@ -327,11 +327,11 @@ const CompanyBranding = () => {
               type="text"
               value={branding.primaryColor}
               onChange={(e) => setBranding(prev => ({ ...prev, primaryColor: e.target.value }))}
-              placeholder="#9333ea"
+              placeholder="#005C70"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Enter a hex color code (e.g., #9333ea)
+              Enter a hex color code (e.g., #005C70)
             </p>
           </div>
           <div

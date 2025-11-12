@@ -3,326 +3,349 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Biz-CoPilot Logo Preview</title>
+  <title>Biz-CoPilot Brand System</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    :root {
+      --brand-primary: #005C70;
+      --brand-accent: #2F6F63;
+      --brand-highlight: #00BFA6;
+      --brand-yellow: #F4B400;
+      --brand-charcoal: #1F2A2D;
+      --brand-neutral: #E4ECEA;
+      --surface: #F5F7F6;
     }
-    
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-      padding: 40px;
-      background: #f5f5f5;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: var(--surface);
+      padding: 48px 32px 64px;
+      color: var(--brand-charcoal);
     }
-    
-    h1 {
-      font-size: 32px;
-      margin-bottom: 10px;
-      color: #111;
-    }
-    
-    .subtitle {
-      color: #666;
-      margin-bottom: 40px;
-      font-size: 16px;
-    }
-    
+
+    h1 { font-size: 36px; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { color: #4F5B62; margin-bottom: 40px; font-size: 16px; }
+
     .section {
-      background: white;
-      padding: 30px;
-      border-radius: 12px;
-      margin-bottom: 30px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      background: #FFFFFF;
+      border-radius: 20px;
+      padding: 32px;
+      margin-bottom: 32px;
+      box-shadow: 0 16px 40px rgba(0, 45, 55, 0.08);
+      border: 1px solid rgba(0, 92, 112, 0.06);
     }
-    
+
     .section h2 {
       font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--brand-charcoal);
       margin-bottom: 20px;
-      color: #333;
     }
-    
+
     .logo-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 30px;
-      margin-top: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 24px;
     }
-    
-    .logo-item {
-      text-align: center;
-    }
-    
+
+    .logo-item { text-align: center; }
+
     .logo-container {
-      padding: 30px;
-      border-radius: 8px;
-      margin-bottom: 15px;
+      height: 220px;
+      border-radius: 18px;
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 200px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(0, 92, 112, 0.12);
+      background: #FFFFFF;
     }
-    
-    .logo-container.light {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-    }
-    
-    .logo-container.dark {
-      background: #1f2937;
-    }
-    
-    .logo-container.gradient {
-      background: linear-gradient(135deg, #4F46E5 0%, #9333EA 50%, #EC4899 100%);
-    }
-    
-    .logo-item h3 {
-      font-size: 14px;
-      color: #666;
-      margin-bottom: 5px;
-    }
-    
-    .logo-item p {
-      font-size: 12px;
-      color: #999;
-    }
-    
+
+    .logo-container.dark { background: linear-gradient(145deg, #0D1B1F 0%, #10292F 100%); border: none; }
+    .logo-container.tinted { background: linear-gradient(145deg, rgba(0, 188, 166, 0.08), rgba(0, 92, 112, 0.14)); }
+
+    .logo-item h3 { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #4F5B62; }
+    .logo-item p { font-size: 12px; color: #707D83; margin-top: 4px; }
+
     .size-variations {
       display: flex;
-      gap: 20px;
-      justify-content: center;
-      align-items: flex-end;
       flex-wrap: wrap;
-      padding: 30px;
-      background: #f9fafb;
-      border-radius: 8px;
+      gap: 32px;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 28px;
+      border-radius: 16px;
+      border: 1px dashed rgba(0, 92, 112, 0.18);
+      background: rgba(0, 188, 166, 0.04);
     }
-    
-    .size-item {
-      text-align: center;
-    }
-    
-    .size-label {
-      margin-top: 10px;
-      font-size: 12px;
-      color: #666;
-    }
-    
-    .horizontal-logo {
-      max-width: 100%;
-      height: auto;
-    }
-    
+
+    .size-item { text-align: center; }
+    .size-label { margin-top: 8px; font-size: 12px; color: #4F5B62; }
+
     .usage-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      margin-top: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+      margin-top: 16px;
     }
-    
+
     .usage-example {
-      padding: 20px;
-      border-radius: 8px;
-      border: 2px dashed #e5e7eb;
+      border: 1px solid rgba(0, 92, 112, 0.12);
+      border-radius: 16px;
+      padding: 24px;
+      background: #FBFDFC;
     }
-    
+
     .usage-example h4 {
       font-size: 14px;
-      color: #666;
-      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--brand-accent);
+      margin-bottom: 16px;
     }
-    
+
     .app-header {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 15px;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      gap: 14px;
+      background: #FFFFFF;
+      border-radius: 14px;
+      padding: 16px 20px;
+      box-shadow: 0 10px 24px rgba(0, 45, 55, 0.08);
     }
-    
+
     .app-header span {
       font-size: 20px;
       font-weight: 700;
-      background: linear-gradient(135deg, #4F46E5 0%, #9333EA 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      color: var(--brand-primary);
+      letter-spacing: -0.02em;
     }
-    
+
+    .palette {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 20px;
+    }
+
+    .swatch {
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(0, 92, 112, 0.12);
+      background: #FFFFFF;
+    }
+
+    .swatch-chip {
+      height: 110px;
+    }
+
+    .swatch-meta {
+      padding: 14px;
+      text-align: center;
+    }
+
+    .swatch-meta strong { display: block; font-size: 13px; color: var(--brand-charcoal); }
+    .swatch-meta span { display: block; font-size: 12px; color: #4F5B62; margin-top: 6px; }
+
     .code-block {
-      background: #1f2937;
-      color: #f9fafb;
+      background: #0F1E24;
+      color: #DCE5E3;
       padding: 20px;
-      border-radius: 8px;
-      font-family: 'Courier New', monospace;
+      border-radius: 14px;
+      font-family: 'Source Code Pro', 'Courier New', monospace;
       font-size: 13px;
+      line-height: 1.65;
+      margin-top: 16px;
       overflow-x: auto;
-      margin-top: 20px;
     }
-    
+
     .download-section {
       display: flex;
-      gap: 15px;
       flex-wrap: wrap;
+      gap: 16px;
       margin-top: 20px;
     }
-    
+
     .download-btn {
-      padding: 12px 24px;
-      background: linear-gradient(135deg, #4F46E5 0%, #9333EA 100%);
-      color: white;
-      text-decoration: none;
-      border-radius: 8px;
+      padding: 14px 28px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--brand-primary), var(--brand-highlight));
+      color: #FFFFFF;
       font-weight: 600;
-      display: inline-block;
-      transition: transform 0.2s;
+      text-decoration: none;
+      letter-spacing: 0.02em;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 12px 24px rgba(0, 92, 112, 0.18);
     }
-    
-    .download-btn:hover {
-      transform: translateY(-2px);
-    }
-    
-    @media (max-width: 768px) {
-      .usage-grid {
-        grid-template-columns: 1fr;
-      }
-    }
+
+    .download-btn:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(0, 92, 112, 0.24); }
+
+    @media (max-width: 768px) { body { padding: 32px 20px 48px; } }
   </style>
 </head>
 <body>
-  <h1>🎨 Biz-CoPilot Brand Assets</h1>
-  <p class="subtitle">Logo variations and usage guidelines</p>
+  <h1>Biz-CoPilot Brand System</h1>
+  <p class="subtitle">Updated core identity · November 2025</p>
 
-  <!-- Logo Variations -->
   <div class="section">
-    <h2>Logo Variations</h2>
+    <h2>Logo Family</h2>
     <div class="logo-grid">
       <div class="logo-item">
-        <div class="logo-container light">
-          <img src="/branding/logo/logo-light.svg" alt="Primary Logo" style="width: 150px; height: 150px;">
-        </div>
-        <h3>Primary Logo</h3>
-        <p>Use on dark backgrounds</p>
-      </div>
-      
-      <div class="logo-item">
         <div class="logo-container dark">
-          <img src="/branding/logo/logo-dark.svg" alt="Light Background Logo" style="width: 150px; height: 150px;">
+          <img src="/branding/logo/logo-icon-v2.svg" alt="Primary mark for dark surfaces" style="width: 220px; height: auto;">
         </div>
-        <h3>Alternative Version</h3>
-        <p>Use on light backgrounds</p>
+        <h3>Primary Mark</h3>
+        <p>For dark or rich backgrounds</p>
       </div>
-      
       <div class="logo-item">
-        <div class="logo-container light">
-          <img src="/branding/logo/logo-horizontal.svg" alt="Horizontal Logo" class="horizontal-logo">
+        <div class="logo-container">
+          <img src="/branding/logo/logo-icon.svg" alt="Primary mark for light surfaces" style="width: 220px; height: auto;">
+        </div>
+        <h3>Light Background</h3>
+        <p>Default for dashboards & documents</p>
+      </div>
+      <div class="logo-item">
+        <div class="logo-container tinted">
+          <img src="/branding/favicon/favicon_io/android-chrome-512x512.png" alt="PNG export" style="width: 240px; height: auto;">
         </div>
         <h3>Horizontal Lockup</h3>
-        <p>Full wordmark version</p>
+        <p>Use when space is limited horizontally</p>
       </div>
     </div>
   </div>
 
-  <!-- Size Variations -->
   <div class="section">
-    <h2>Size Variations</h2>
-    <p style="color: #666; margin-bottom: 20px;">Logo remains legible at all sizes</p>
+    <h2>Iconography</h2>
     <div class="size-variations">
       <div class="size-item">
-        <img src="/branding/logo/logo-light.svg" alt="Logo" style="width: 16px; height: 16px;">
-        <div class="size-label">16x16 (Favicon)</div>
+        <img src="/favicon.svg" alt="Icon 16" style="width: 24px; height: 24px;">
+        <div class="size-label">16×16 Favicon</div>
       </div>
       <div class="size-item">
-        <img src="/branding/logo/logo-light.svg" alt="Logo" style="width: 32px; height: 32px;">
-        <div class="size-label">32x32</div>
+        <img src="/favicon.svg" alt="Icon 32" style="width: 32px; height: 32px;">
+        <div class="size-label">32×32</div>
       </div>
       <div class="size-item">
-        <img src="/branding/logo/logo-light.svg" alt="Logo" style="width: 64px; height: 64px;">
-        <div class="size-label">64x64</div>
+        <img src="/favicon.svg" alt="Icon 64" style="width: 48px; height: 48px;">
+        <div class="size-label">48×48</div>
       </div>
       <div class="size-item">
-        <img src="/branding/logo/logo-light.svg" alt="Logo" style="width: 128px; height: 128px;">
-        <div class="size-label">128x128</div>
+        <img src="/favicon.svg" alt="Icon 96" style="width: 72px; height: 72px;">
+        <div class="size-label">72×72</div>
       </div>
       <div class="size-item">
-        <img src="/branding/logo/logo-light.svg" alt="Logo" style="width: 200px; height: 200px;">
-        <div class="size-label">200x200</div>
+        <img src="/branding/logo/logo-icon.svg" alt="Icon 128" style="width: 120px; height: 120px;">
+        <div class="size-label">120×120 App Icon</div>
       </div>
     </div>
   </div>
 
-  <!-- Usage Examples -->
   <div class="section">
     <h2>Usage Examples</h2>
     <div class="usage-grid">
       <div class="usage-example">
-        <h4>App Header</h4>
+        <h4>Dashboard Header</h4>
         <div class="app-header">
-          <img src="/branding/logo/logo-light.svg" alt="Logo" style="width: 40px; height: 40px;">
+          <img src="/branding/logo/logo-icon.svg" alt="Logo" style="width: 48px; height: auto;">
           <span>Biz-CoPilot</span>
         </div>
       </div>
-      
       <div class="usage-example">
-        <h4>Navigation</h4>
-        <div class="app-header">
-          <img src="/branding/logo/logo-light.svg" alt="Logo" style="width: 32px; height: 32px;">
+        <h4>Compact Navigation</h4>
+        <div class="app-header" style="padding: 12px 18px; gap: 12px;">
+          <img src="/favicon.svg" alt="Icon" style="width: 36px; height: 36px;">
           <span style="font-size: 16px;">Biz-CoPilot</span>
+        </div>
+      </div>
+      <div class="usage-example">
+        <h4>Owner Reports</h4>
+        <div style="background: #1F2A2D; border-radius: 12px; padding: 20px; color: #F6F2E8; display: flex; align-items: center; gap: 16px;">
+          <img src="/branding/logo/logo-icon-v2.svg" alt="Logo" style="width: 56px; height: auto;">
+          <div>
+            <div style="font-size: 18px; font-weight: 600;">Biz-CoPilot Owner Brief</div>
+            <div style="font-size: 13px; opacity: 0.75;">Confidential report • Generated automatically</div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Color Palette -->
   <div class="section">
-    <h2>Brand Colors</h2>
-    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-      <div style="text-align: center;">
-        <div style="width: 100px; height: 100px; background: #4F46E5; border-radius: 8px;"></div>
-        <p style="margin-top: 10px; font-size: 12px; color: #666;">Indigo<br>#4F46E5</p>
+    <h2>Color System</h2>
+    <div class="palette">
+      <div class="swatch">
+        <div class="swatch-chip" style="background: var(--brand-primary);"></div>
+        <div class="swatch-meta">
+          <strong>Primary Blue</strong>
+          <span>#005C70 · UI Shell / Buttons</span>
+        </div>
       </div>
-      <div style="text-align: center;">
-        <div style="width: 100px; height: 100px; background: #9333EA; border-radius: 8px;"></div>
-        <p style="margin-top: 10px; font-size: 12px; color: #666;">Purple<br>#9333EA</p>
+      <div class="swatch">
+        <div class="swatch-chip" style="background: var(--brand-accent);"></div>
+        <div class="swatch-meta">
+          <strong>Accent Teal</strong>
+          <span>#2F6F63 · Data Highlights</span>
+        </div>
       </div>
-      <div style="text-align: center;">
-        <div style="width: 100px; height: 100px; background: #EC4899; border-radius: 8px;"></div>
-        <p style="margin-top: 10px; font-size: 12px; color: #666;">Pink<br>#EC4899</p>
+      <div class="swatch">
+        <div class="swatch-chip" style="background: var(--brand-highlight);"></div>
+        <div class="swatch-meta">
+          <strong>Highlight Teal</strong>
+          <span>#00BFA6 · Actions / Positive</span>
+        </div>
       </div>
-      <div style="text-align: center;">
-        <div style="width: 100px; height: 100px; background: linear-gradient(135deg, #4F46E5 0%, #9333EA 50%, #EC4899 100%); border-radius: 8px;"></div>
-        <p style="margin-top: 10px; font-size: 12px; color: #666;">Gradient<br>Brand</p>
+      <div class="swatch">
+        <div class="swatch-chip" style="background: var(--brand-yellow);"></div>
+        <div class="swatch-meta">
+          <strong>Signal Yellow</strong>
+          <span>#F4B400 · Alerts / KPI Flags</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background: var(--brand-charcoal);"></div>
+        <div class="swatch-meta">
+          <strong>Charcoal</strong>
+          <span>#1F2A2D · Primary Text</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background: var(--brand-neutral);"></div>
+        <div class="swatch-meta">
+          <strong>Neutral Mist</strong>
+          <span>#E4ECEA · Panels / Dividers</span>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Implementation Code -->
   <div class="section">
     <h2>Implementation</h2>
-    <h3 style="font-size: 16px; margin-bottom: 15px; color: #666;">HTML Favicon Tags</h3>
-    <div class="code-block">&lt;!-- Add to index.html &lt;head&gt; --&gt;
+    <h3 style="font-size: 16px; font-weight: 600; color: #4F5B62; text-transform: uppercase; letter-spacing: 0.1em;">HTML Meta</h3>
+    <div class="code-block">&lt;!-- Add inside &lt;head&gt; --&gt;
 &lt;link rel="icon" type="image/svg+xml" href="/favicon.svg"&gt;
 &lt;link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"&gt;
 &lt;link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"&gt;
 &lt;link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"&gt;</div>
-    
-    <h3 style="font-size: 16px; margin: 25px 0 15px; color: #666;">React Component Usage</h3>
-    <div class="code-block">import logo from '/branding/logo/logo-light.svg';
 
-&lt;img src={logo} alt="Biz-CoPilot" className="w-10 h-10" /&gt;</div>
+    <h3 style="font-size: 16px; font-weight: 600; color: #4F5B62; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 28px;">React Usage</h3>
+    <div class="code-block">import logoDark from '/branding/logo/logo-icon-v2.svg';
+
+function BrandMark() {
+  return (
+    &lt;img src={logoDark} alt="Biz-CoPilot" className="h-10 w-auto" /&gt;
+  );
+}</div>
   </div>
 
-  <!-- Download Section -->
   <div class="section">
-    <h2>Download Assets</h2>
-    <p style="color: #666; margin-bottom: 20px;">All logo files are in /public/branding/</p>
+    <h2>Downloads</h2>
+    <p style="color: #4F5B62; margin-bottom: 16px;">All assets live in <code>/public/branding</code>. Use SVG wherever possible.</p>
     <div class="download-section">
-      <a href="/branding/logo/logo-light.svg" download class="download-btn">Download Primary Logo</a>
-      <a href="/branding/logo/logo-horizontal.svg" download class="download-btn">Download Horizontal</a>
-      <a href="/favicon.svg" download class="download-btn">Download Favicon</a>
+      <a href="/branding/logo/logo-icon-v2.svg" download class="download-btn">Badge (SVG)</a>
+      <a href="/branding/logo/logo-icon.svg" download class="download-btn">Flat Icon (SVG)</a>
+      <a href="/branding/favicon/favicon_io/android-chrome-512x512.png" download class="download-btn">HD PNG</a>
+      <a href="/favicon.svg" download class="download-btn">Favicon (SVG)</a>
     </div>
   </div>
 </body>

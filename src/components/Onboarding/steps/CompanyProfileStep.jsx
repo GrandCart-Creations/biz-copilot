@@ -123,8 +123,8 @@ const CompanyProfileStep = ({ onNext, onPrevious }) => {
         {/* Tax Rates Display */}
         <div className="bg-white border-2 border-gray-200 rounded-lg p-6">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <FaPercentage className="w-6 h-6 text-purple-600" />
+            <div className="w-12 h-12 bg-[#D4F5EF] rounded-lg flex items-center justify-center flex-shrink-0">
+              <FaPercentage className="w-6 h-6 text-[#005C70]" />
             </div>
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -134,7 +134,7 @@ const CompanyProfileStep = ({ onNext, onPrevious }) => {
                 {selectedCountry?.taxRates.map((rate) => (
                   <span
                     key={rate}
-                    className="px-3 py-1 bg-purple-50 border border-purple-200 rounded-lg text-purple-700 font-medium"
+                    className="px-3 py-1 bg-[#F0FBF8] border border-[#B8E5DC] rounded-lg text-[#2F6F63] font-medium"
                   >
                     {rate}%
                   </span>

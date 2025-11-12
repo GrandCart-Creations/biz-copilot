@@ -189,7 +189,7 @@ export default function Signup() {
     <div className="h-screen w-full bg-gray-50 overflow-hidden flex flex-col">
       <div className="flex-1 w-full flex overflow-hidden">
         {/* Left Side - Branding & Value Proposition (40% width) */}
-        <div className="hidden lg:flex lg:w-2/5 lg:flex-shrink-0 lg:flex-grow-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 p-3 flex-col justify-between relative overflow-hidden">
+        <div className="hidden lg:flex lg:w-2/5 lg:flex-shrink-0 lg:flex-grow-0 bg-gradient-to-br from-[#005C70] via-[#2F6F63] to-[#00BFA6] p-3 flex-col justify-between relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -mr-48 -mt-48"></div>
           <div className="absolute bottom-0 left-0 w-96 h-96 bg-white/5 rounded-full -ml-48 -mb-48"></div>
@@ -197,17 +197,11 @@ export default function Signup() {
           <div className="relative z-10 flex-1 flex flex-col">
             <div>
               <div className="flex items-center gap-3 mb-2">
-                {companyBranding?.branding?.logoUrl ? (
-                  <img
-                    src={companyBranding.branding.logoUrl}
-                    alt={companyBranding.name}
-                    className="w-12 h-12 object-contain bg-white/20 rounded-lg p-1.5 backdrop-blur-sm"
-                  />
-                ) : (
-                  <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
-                    <span className="text-xl font-bold text-white">BC</span>
-                  </div>
-                )}
+                <img
+                  src={companyBranding?.branding?.logoUrl || '/branding/logo/logo-icon.svg'}
+                  alt={companyBranding?.name || 'Biz-CoPilot'}
+                  className="h-12 w-auto object-contain bg-white/10 rounded-lg p-1.5 backdrop-blur-sm"
+                />
                 <h1 className="text-2xl font-bold text-white">
                   {companyBranding?.name || 'Biz-CoPilot'}
                 </h1>
@@ -270,17 +264,11 @@ export default function Signup() {
           <div className="w-full max-w-md">
             {/* Logo for mobile */}
             <div className="lg:hidden flex items-center justify-center gap-3 mb-2">
-              {companyBranding?.branding?.logoUrl ? (
-                <img
-                  src={companyBranding.branding.logoUrl}
-                  alt={companyBranding.name}
-                  className="w-12 h-12 object-contain"
-                />
-              ) : (
-                <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
-                  <span className="text-xl font-bold text-white">BC</span>
-                </div>
-              )}
+              <img
+                src={companyBranding?.branding?.logoUrl || '/branding/logo/logo-icon.svg'}
+                alt={companyBranding?.name || 'Biz-CoPilot'}
+                className="h-12 w-auto object-contain"
+              />
               <h1 className="text-2xl font-bold text-gray-900">
                 {companyBranding?.name || 'Biz-CoPilot'}
               </h1>
@@ -431,7 +419,7 @@ export default function Signup() {
                 style={{
                   background: companyBranding?.branding?.primaryColor 
                     ? `linear-gradient(to right, ${companyBranding.branding.primaryColor}, ${companyBranding.branding.primaryColor}dd)`
-                    : 'linear-gradient(to right, #2563eb, #9333ea)',
+                    : 'linear-gradient(to right, #005C70, #00BFA6)',
                 }}
                 onMouseEnter={(e) => {
                   if (companyBranding?.branding?.primaryColor) {

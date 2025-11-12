@@ -122,7 +122,7 @@ export default function UserProfile() {
               className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
             />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm border-2 border-gray-200">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#005C70] to-[#2F6F63] flex items-center justify-center text-white font-semibold text-sm border-2 border-gray-200">
               {getInitials()}
             </div>
           )}
@@ -161,7 +161,7 @@ export default function UserProfile() {
                     className="w-12 h-12 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#005C70] to-[#2F6F63] flex items-center justify-center text-white font-semibold">
                     {getInitials()}
                   </div>
                 )}

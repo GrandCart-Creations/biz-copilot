@@ -32,11 +32,14 @@ import {
   updateCompanyIncome,
   deleteCompanyIncome
 } from '../firebase';
+import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
 
 const IncomeTracker = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
+  const headerBackground = useMemo(() => getHeaderBackground(currentCompany), [currentCompany]);
+  const accentColor = useMemo(() => getPrimaryColor(currentCompany), [currentCompany]);
   
   // Constants
   const incomeSources = ['Client Payment', 'Service Fee', 'Product Sales', 'Investment Return', 'Grant', 'Loan Disbursement', 'Other'];
@@ -310,15 +313,12 @@ const IncomeTracker = () => {
   if (!currentCompanyId) {
     return (
       <div className="min-h-screen bg-gray-50 w-full">
-        <nav className="bg-gray-800 text-white shadow-lg w-full">
+        <nav className="text-white shadow-lg w-full" style={{ background: getHeaderBackground(null) }}>
           <div className="w-full px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
                 <div className="flex-shrink-0 flex items-center">
-                  <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
-                    <span className="text-white font-bold text-lg">BC</span>
-                  </div>
-                  <span className="text-xl font-semibold">Biz-CoPilot</span>
+                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-10 w-auto" />
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -355,7 +355,10 @@ const IncomeTracker = () => {
                 <FaArrowLeft className="w-5 h-5" />
               </button>
               
-              <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                style={{ backgroundColor: accentColor }}
+              >
                 <FaDollarSign className="w-6 h-6 text-white" />
               </div>
               <div>

@@ -157,7 +157,7 @@ const OwnerActivityLog = () => {
               <FaArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <p className="text-sm font-medium uppercase tracking-wide text-[#005E7C]">Owner Control</p>
+              <p className="text-sm font-medium uppercase tracking-wide text-[#005C70]">Owner Control</p>
               <h1 className="text-2xl font-bold text-gray-900">Activity Timeline</h1>
               <p className="text-sm text-gray-500">
                 Full audit history for {currentCompany?.name || 'your company'}

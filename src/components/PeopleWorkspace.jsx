@@ -322,7 +322,7 @@ const PeopleWorkspace = () => {
         <aside className="bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="p-5 border-b border-gray-200">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-lg font-semibold" style={{ backgroundColor: '#005E7C' }}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-lg font-semibold" style={{ backgroundColor: '#005C70' }}>
                 HR
               </div>
               <div>
@@ -372,7 +372,7 @@ const PeopleWorkspace = () => {
 
           <div className="px-5 pb-5">
             <div className="rounded-lg border border-dashed border-gray-300 p-4 text-xs text-gray-500 flex items-start gap-3">
-              <FaShieldAlt className="w-4 h-4 text-[#005E7C]" />
+              <FaShieldAlt className="w-4 h-4 text-[#005C70]" />
               <p>
                 Access is limited to owners and managers. Documents are stored securely in Firebase Storage.
               </p>
@@ -388,7 +388,7 @@ const PeopleWorkspace = () => {
                   <h3 className="text-xl font-semibold text-gray-900">
                     {selectedMember.displayName || selectedMember.email}
                   </h3>
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: '#0DBFA6', color: '#05474C' }}>
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: '#00BFA6', color: '#074147' }}>
                     {selectedMember.role || 'employee'}
                   </span>
                 </div>
@@ -420,7 +420,7 @@ const PeopleWorkspace = () => {
                         value={form.role}
                         onChange={(event) => handleFieldChange('role', event.target.value)}
                         disabled={!canEdit}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0DBFA6]/40 focus:outline-none disabled:bg-gray-100"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#00BFA6]/40 focus:outline-none disabled:bg-gray-100"
                       />
                     </div>
                     <div>
@@ -431,7 +431,7 @@ const PeopleWorkspace = () => {
                         value={form.employmentType}
                         onChange={(event) => handleFieldChange('employmentType', event.target.value)}
                         disabled={!canEdit}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0DBFA6]/40 focus:outline-none disabled:bg-gray-100"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#00BFA6]/40 focus:outline-none disabled:bg-gray-100"
                       >
                         <option>Full-time</option>
                         <option>Part-time</option>
@@ -449,7 +449,7 @@ const PeopleWorkspace = () => {
                         value={form.department}
                         onChange={(event) => handleFieldChange('department', event.target.value)}
                         disabled={!canEdit}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0DBFA6]/40 focus:outline-none disabled:bg-gray-100"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#00BFA6]/40 focus:outline-none disabled:bg-gray-100"
                       />
                     </div>
                     <div>
@@ -461,7 +461,7 @@ const PeopleWorkspace = () => {
                         value={form.manager}
                         onChange={(event) => handleFieldChange('manager', event.target.value)}
                         disabled={!canEdit}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0DBFA6]/40 focus:outline-none disabled:bg-gray-100"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#00BFA6]/40 focus:outline-none disabled:bg-gray-100"
                       />
                     </div>
                     <div>
@@ -473,7 +473,7 @@ const PeopleWorkspace = () => {
                         value={form.startDate ? form.startDate.slice(0, 10) : ''}
                         onChange={(event) => handleFieldChange('startDate', event.target.value)}
                         disabled={!canEdit}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0DBFA6]/40 focus:outline-none disabled:bg-gray-100"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#00BFA6]/40 focus:outline-none disabled:bg-gray-100"
                       />
                     </div>
                   </div>
@@ -487,14 +487,14 @@ const PeopleWorkspace = () => {
                       value={form.responsibilities}
                       onChange={(event) => handleFieldChange('responsibilities', event.target.value)}
                       disabled={!canEdit}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0DBFA6]/40 focus:outline-none disabled:bg-gray-100"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#00BFA6]/40 focus:outline-none disabled:bg-gray-100"
                       placeholder="Outline key duties, deliverables, and success metrics for this role."
                     />
                   </div>
 
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <FaClipboardList className="w-4 h-4 text-[#005E7C]" />
+                      <FaClipboardList className="w-4 h-4 text-[#005C70]" />
                       <h4 className="text-sm font-semibold text-gray-800">Onboarding checklist</h4>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
@@ -505,7 +505,7 @@ const PeopleWorkspace = () => {
                             checked={form.onboarding?.[item.key] || false}
                             onChange={() => handleOnboardingToggle(item.key)}
                             disabled={!canEdit}
-                            className="rounded border-gray-300 text-[#0DBFA6] focus:ring-[#0DBFA6]"
+                            className="rounded border-gray-300 text-[#00BFA6] focus:ring-[#00BFA6]"
                           />
                           {item.label}
                         </label>
@@ -522,7 +522,7 @@ const PeopleWorkspace = () => {
                       value={form.notes}
                       onChange={(event) => handleFieldChange('notes', event.target.value)}
                       disabled={!canEdit}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0DBFA6]/40 focus:outline-none disabled:bg-gray-100"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#00BFA6]/40 focus:outline-none disabled:bg-gray-100"
                       placeholder="Document feedback, goals, or conversations relevant to this teammate."
                     />
                   </div>
@@ -532,7 +532,7 @@ const PeopleWorkspace = () => {
                       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                         Attachments
                       </label>
-                      <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-white cursor-pointer" style={{ backgroundColor: '#005E7C' }}>
+                      <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-white cursor-pointer" style={{ backgroundColor: '#005C70' }}>
                         <FaFileUpload className="w-3.5 h-3.5" />
                         Upload file
                         <input
@@ -552,7 +552,7 @@ const PeopleWorkspace = () => {
                             className="h-2 rounded"
                             style={{
                               width: `${uploadProgress}%`,
-                              backgroundColor: '#0DBFA6'
+                              backgroundColor: '#00BFA6'
                             }}
                           />
                         </div>
@@ -590,7 +590,7 @@ const PeopleWorkspace = () => {
                   {canEdit && (
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-gray-200 pt-4">
                       <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <FaCheckCircle className="w-3.5 h-3.5 text-[#0DBFA6]" />
+                        <FaCheckCircle className="w-3.5 h-3.5 text-[#00BFA6]" />
                         Updates are saved to your Firebase workspace and tracked in the owner timeline.
                       </div>
                       <div className="flex gap-3">
@@ -599,7 +599,7 @@ const PeopleWorkspace = () => {
                           onClick={handleSaveProfile}
                           disabled={saving}
                           className="px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm transition"
-                          style={{ backgroundColor: '#005E7C' }}
+                          style={{ backgroundColor: '#005C70' }}
                         >
                           {saving ? 'Saving…' : 'Save profile'}
                         </button>
@@ -619,7 +619,7 @@ const PeopleWorkspace = () => {
 
       <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
         <header className="flex items-center gap-3 border-b border-gray-200 pb-4 mb-4">
-          <FaFolderOpen className="w-5 h-5 text-[#005E7C]" />
+          <FaFolderOpen className="w-5 h-5 text-[#005C70]" />
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Biz-CoPilot Company OS</h3>
             <p className="text-sm text-gray-500">

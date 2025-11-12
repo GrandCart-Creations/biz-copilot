@@ -272,7 +272,7 @@ const ProfilePage = () => {
                   className="w-32 h-32 rounded-full object-cover border-4 border-white shadow"
                 />
               ) : (
-                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl font-semibold text-white shadow">
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#005C70] to-[#2F6F63] flex items-center justify-center text-2xl font-semibold text-white shadow">
                   {(displayName || currentUser.email)?.slice(0, 2).toUpperCase()}
                 </div>
               )}

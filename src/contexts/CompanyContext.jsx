@@ -1,7 +1,7 @@
 // src/contexts/CompanyContext.jsx
 // Company Management Context for Multi-Company Support
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import {
   collection,
@@ -18,6 +18,8 @@ import {
   collectionGroup
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { DEFAULT_AI_POLICIES } from '../utils/accessGateway';
+import { getCompanyAIPolicies } from '../utils/companySettings';
 
 const CompanyContext = createContext();
 
@@ -45,6 +47,7 @@ export const CompanyProvider = ({ children }) => {
   const [currentCompany, setCurrentCompany] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [aiPolicies, setAIPolicies] = useState(DEFAULT_AI_POLICIES);
 
   // Load user's companies on mount
   useEffect(() => {
@@ -55,6 +58,7 @@ export const CompanyProvider = ({ children }) => {
       setCompanies([]);
       setCurrentCompany(null);
       setCurrentCompanyId(null);
+      setAIPolicies(DEFAULT_AI_POLICIES);
     }
   }, [currentUser]);
 
@@ -389,6 +393,18 @@ export const CompanyProvider = ({ children }) => {
   /**
    * Load specific company data and user role
    */
+  const refreshAIPolicies = useCallback(async (companyIdOverride = null) => {
+    const targetCompanyId = companyIdOverride || currentCompanyId;
+    if (!targetCompanyId) {
+      setAIPolicies(DEFAULT_AI_POLICIES);
+      return DEFAULT_AI_POLICIES;
+    }
+
+    const policies = await getCompanyAIPolicies(targetCompanyId);
+    setAIPolicies(policies);
+    return policies;
+  }, [currentCompanyId]);
+
   const loadCompanyData = async (companyId) => {
     if (!currentUser || !companyId) return;
 
@@ -426,6 +442,7 @@ export const CompanyProvider = ({ children }) => {
       }
 
       setCurrentCompany(companyData);
+      await refreshAIPolicies(companyId);
       setLoading(false);
     } catch (error) {
       console.error('Error loading company data:', error);
@@ -1010,6 +1027,7 @@ export const CompanyProvider = ({ children }) => {
     currentCompany,
     companies,
     userRole,
+    aiPolicies,
     subscriptionTier: currentCompany?.subscriptionTier || 'business',
     loading,
 
@@ -1020,6 +1038,7 @@ export const CompanyProvider = ({ children }) => {
     deleteCompany,
     loadUserCompanies,
     refreshCompany: () => loadCompanyData(currentCompanyId),
+    refreshAIPolicies,
     performExpenseMigration
   };
 

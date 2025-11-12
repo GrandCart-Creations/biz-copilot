@@ -5,7 +5,7 @@
  * Will be fully implemented in future phases
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
 import CompanySelector from './CompanySelector';
@@ -29,14 +29,13 @@ import {
   FaRocket,
   FaStream
 } from 'react-icons/fa';
+import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
 
 const SettingsDashboard = () => {
   const navigate = useNavigate();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
   const [loading] = useState(false);
   const [activeTab, setActiveTab] = useState('team'); // 'team' | 'people' | 'accounts' | 'funding' | 'branding' | 'onboarding'
-  
-  const canManage = userRole === 'owner' || userRole === 'manager';
 
   if (loading) {
     return (
@@ -46,19 +45,46 @@ const SettingsDashboard = () => {
     );
   }
 
+  const accentColor = useMemo(() => getPrimaryColor(currentCompany), [currentCompany]);
+  const tabButtonClasses = 'px-5 py-3 text-sm font-medium transition-all rounded-xl border flex items-center gap-2 focus:outline-none';
+  const tabStyle = (tabId, disabled = false) => {
+    const isActive = activeTab === tabId;
+    const baseBg = disabled ? '#1F2937' : isActive ? accentColor : '#111827';
+    const baseColor = disabled ? '#6B7280' : isActive ? '#FFFFFF' : '#9CA3AF';
+    return {
+      backgroundColor: baseBg,
+      color: baseColor,
+      borderColor: 'transparent',
+      boxShadow: isActive ? '0 12px 28px rgba(0, 92, 112, 0.25)' : 'none',
+      transform: isActive ? 'scale(1.02)' : 'scale(1)',
+      opacity: disabled ? 0.6 : 1,
+      cursor: disabled ? 'not-allowed' : 'pointer'
+    };
+  };
+  const iconColor = (tabId, disabled = false) => {
+    if (disabled) return '#6B7280';
+    return activeTab === tabId ? '#FFFFFF' : '#9CA3AF';
+  };
+  const tabItems = [
+    { id: 'team', label: 'Team Management', icon: FaUsers },
+    { id: 'people', label: 'People Workspace', icon: FaUserTie },
+    { id: 'accounts', label: 'Financial Accounts', icon: FaUniversity, roles: ['owner'] },
+    { id: 'funding', label: 'Funding & Investors', icon: FaSeedling, roles: ['owner', 'manager'] },
+    { id: 'branding', label: 'Branding', icon: FaPaintBrush, roles: ['owner'] },
+    { id: 'onboarding', label: 'Onboarding', icon: FaRocket, roles: ['owner'] }
+  ];
+  const visibleTabs = tabItems.filter(tab => !tab.roles || tab.roles.includes(userRole));
+
   if (!currentCompanyId) {
     return (
       <div className="min-h-screen bg-gray-50 w-full">
         {/* Header */}
-        <nav className="bg-gray-800 text-white shadow-lg w-full">
+        <nav className="text-white shadow-lg w-full" style={{ background: getHeaderBackground(null) }}>
           <div className="w-full px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
                 <div className="flex-shrink-0 flex items-center">
-                  <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
-                    <span className="text-white font-bold text-lg">BC</span>
-                  </div>
-                  <span className="text-xl font-semibold">Biz-CoPilot</span>
+                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-10 w-auto" />
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -98,7 +124,7 @@ const SettingsDashboard = () => {
               </button>
               
               {/* Settings Icon & Title */}
-              <div className="w-10 h-10 bg-gray-600 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: accentColor }}>
                 <FaCog className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -119,111 +145,31 @@ const SettingsDashboard = () => {
         {/* Settings Tabs */}
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="border-b border-gray-200">
-            <nav className="flex -mb-px items-center">
-              <button
-                onClick={() => setActiveTab('team')}
-                className={`px-6 py-4 text-sm font-medium transition-colors ${
-                  activeTab === 'team'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <FaUsers className="w-4 h-4" />
-                  Team Management
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('people')}
-                className={`px-6 py-4 text-sm font-medium transition-colors ${
-                  activeTab === 'people'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <FaUserTie className="w-4 h-4" />
-                  People Workspace
-                </div>
-              </button>
-              <div className="ml-auto flex items-center gap-3 pr-4">
-                {userRole === 'owner' && (
-                  <button
-                    onClick={() => navigate('/owner/activity')}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition"
-                    style={{ backgroundColor: '#005E7C' }}
-                    title="Open owner timeline"
-                  >
-                    <FaUsers className="w-3.5 h-3.5" />
-                    Activity Timeline
-                  </button>
-                )}
-              </div>
-              {/* Financial Accounts tab - OWNER ONLY */}
+            <nav className="flex flex-wrap items-center gap-3">
+              {visibleTabs.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setActiveTab(id)}
+                  className={tabButtonClasses}
+                  style={tabStyle(id)}
+                >
+                  <Icon className="w-4 h-4" style={{ color: iconColor(id) }} />
+                  {label}
+                </button>
+              ))}
               {userRole === 'owner' && (
                 <button
-                  onClick={() => setActiveTab('accounts')}
-                  className={`px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === 'accounts'
-                      ? 'text-blue-600 border-b-2 border-blue-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                  onClick={() => navigate('/owner/activity')}
+                  className={`${tabButtonClasses} ml-auto`}
+                  style={{
+                    backgroundColor: accentColor,
+                    color: '#FFFFFF',
+                    boxShadow: '0 12px 28px rgba(0, 92, 112, 0.25)'
+                  }}
+                  title="Open owner timeline"
                 >
-                  <div className="flex items-center gap-2">
-                    <FaUniversity className="w-4 h-4" />
-                    Financial Accounts
-                  </div>
-                </button>
-              )}
-              
-              {/* Funding & Investors tab - OWNER/MANAGER */}
-              {canManage && (
-                <button
-                  onClick={() => setActiveTab('funding')}
-                  className={`px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === 'funding'
-                      ? 'text-blue-600 border-b-2 border-blue-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <FaSeedling className="w-4 h-4" />
-                    Funding & Investors
-                  </div>
-                </button>
-              )}
-              
-              {/* Branding tab - OWNER ONLY */}
-              {userRole === 'owner' && (
-                <button
-                  onClick={() => setActiveTab('branding')}
-                  className={`px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === 'branding'
-                      ? 'text-blue-600 border-b-2 border-blue-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <FaPaintBrush className="w-4 h-4" />
-                    Branding
-                  </div>
-                </button>
-              )}
-              
-              {/* Onboarding tab - OWNER ONLY */}
-              {userRole === 'owner' && (
-                <button
-                  onClick={() => setActiveTab('onboarding')}
-                  className={`px-6 py-4 text-sm font-medium transition-colors ${
-                    activeTab === 'onboarding'
-                      ? 'text-blue-600 border-b-2 border-blue-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <FaRocket className="w-4 h-4" />
-                    Onboarding
-                  </div>
+                  <FaUsers className="w-4 h-4" style={{ color: '#FFFFFF' }} />
+                  Activity Timeline
                 </button>
               )}
             </nav>

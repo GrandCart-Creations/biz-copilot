@@ -436,7 +436,7 @@ const TeamManagement = () => {
   const getRoleColor = (role) => {
     switch (role) {
       case 'owner':
-        return 'bg-purple-100 text-purple-800';
+        return 'bg-[#D4F5EF] text-[#184E55]';
       case 'manager':
         return 'bg-blue-100 text-blue-800';
       case 'accountant':

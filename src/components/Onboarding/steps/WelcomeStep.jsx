@@ -40,7 +40,7 @@ const WelcomeStep = ({ onNext }) => {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="text-center mb-8">
-        <div className="inline-block w-20 h-20 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mb-4">
+        <div className="inline-block w-20 h-20 bg-gradient-to-r from-[#005C70] to-[#00BFA6] rounded-full flex items-center justify-center mb-4">
           <span className="text-white font-bold text-3xl">BC</span>
         </div>
         <h1 className="text-4xl font-bold text-gray-900 mb-4">
@@ -60,11 +60,11 @@ const WelcomeStep = ({ onNext }) => {
           return (
             <div
               key={index}
-              className="bg-white border-2 border-gray-200 rounded-lg p-6 hover:border-purple-300 transition-colors"
+              className="bg-white border-2 border-gray-200 rounded-lg p-6 hover:border-[#8FD4C5] transition-colors"
             >
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-6 h-6 text-purple-600" />
+                <div className="w-12 h-12 bg-[#D4F5EF] rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-6 h-6 text-[#005C70]" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-2">{feature.title}</h3>
@@ -106,7 +106,7 @@ const WelcomeStep = ({ onNext }) => {
       <div className="mt-8 flex justify-center">
         <button
           onClick={() => onNext()}
-          className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl"
+          className="px-8 py-3 bg-gradient-to-r from-[#005C70] to-[#00BFA6] text-white rounded-lg font-semibold hover:from-[#014A5A] hover:to-[#019884] transition-all shadow-lg hover:shadow-xl"
         >
           Let's Get Started →
         </button>

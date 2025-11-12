@@ -71,8 +71,8 @@ const CompanySetupStep = ({ onNext, onPrevious }) => {
         <div className="space-y-6">
           <div className="bg-white border-2 border-gray-200 rounded-lg p-6">
             <div className="flex items-start gap-4 mb-6">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <FaBuilding className="w-6 h-6 text-purple-600" />
+              <div className="w-12 h-12 bg-[#D4F5EF] rounded-lg flex items-center justify-center flex-shrink-0">
+                <FaBuilding className="w-6 h-6 text-[#005C70]" />
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900 mb-2">Create Your Company</h3>
@@ -95,7 +95,7 @@ const CompanySetupStep = ({ onNext, onPrevious }) => {
                     setError('');
                   }}
                   placeholder="e.g., GrandCart Creations"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00BFA6] focus:border-transparent"
                   autoFocus
                   disabled={creating}
                 />
@@ -107,7 +107,7 @@ const CompanySetupStep = ({ onNext, onPrevious }) => {
               <button
                 onClick={handleCreateCompany}
                 disabled={creating || !companyName.trim()}
-                className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full px-6 py-3 bg-gradient-to-r from-[#005C70] to-[#00BFA6] text-white rounded-lg font-semibold hover:from-[#014A5A] hover:to-[#019884] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {creating ? (
                   <>

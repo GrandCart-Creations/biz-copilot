@@ -153,7 +153,7 @@ const SecurityDashboard = () => {
               <button
                 onClick={() => navigate('/owner/activity')}
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition"
-                style={{ backgroundColor: '#005E7C' }}
+                style={{ backgroundColor: '#005C70' }}
                 title="Open owner activity timeline"
               >
                 <FaStream className="w-3.5 h-3.5" />

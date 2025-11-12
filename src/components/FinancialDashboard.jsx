@@ -41,11 +41,14 @@ import {
   FaChartBar,
   FaPercentage
 } from 'react-icons/fa';
+import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
 
 const FinancialDashboard = () => {
   const navigate = useNavigate();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
   const { currentUser } = useAuth();
+  const headerBackground = useMemo(() => getHeaderBackground(currentCompany), [currentCompany]);
+  const accentColor = useMemo(() => getPrimaryColor(currentCompany), [currentCompany]);
   
   // Data State
   const [expenses, setExpenses] = useState([]);
@@ -160,10 +163,23 @@ const FinancialDashboard = () => {
   }, [income, period]);
   
   // Calculate Key Metrics
+  const analyticsExpenses = useMemo(() => {
+    return filteredExpenses.filter((exp) => {
+      const docType = (exp.documentType || '').toLowerCase();
+      if (docType === 'receipt' && exp.linkedInvoiceExpenseId) {
+        return false;
+      }
+      if (docType === 'statement' && exp.linkedReceiptExpenseId) {
+        return false;
+      }
+      return true;
+    });
+  }, [filteredExpenses]);
+
   const metrics = useMemo(() => {
-    const totalExpenses = filteredExpenses.reduce((sum, exp) => {
-      const amount = parseFloat(exp.amount) || 0;
-      if (typeof amount === 'string' && exp.amount_encrypted) return sum;
+    const totalExpenses = analyticsExpenses.reduce((sum, exp) => {
+      const amount = parseFloat(exp.amount);
+      if (!Number.isFinite(amount)) return sum;
       return sum + amount;
     }, 0);
     
@@ -172,9 +188,9 @@ const FinancialDashboard = () => {
     const netProfit = totalIncome - totalExpenses;
     const profitMargin = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0;
     
-    const totalExpenseVAT = filteredExpenses.reduce((sum, exp) => {
-      const amount = parseFloat(exp.amount) || 0;
-      if (typeof amount === 'string' && exp.amount_encrypted) return sum;
+    const totalExpenseVAT = analyticsExpenses.reduce((sum, exp) => {
+      const amount = parseFloat(exp.amount);
+      if (!Number.isFinite(amount)) return sum;
       const vatRate = parseFloat(exp.btw || 0) / 100;
       return sum + (amount * vatRate);
     }, 0);
@@ -202,7 +218,7 @@ const FinancialDashboard = () => {
       totalAccountBalance,
       totalFunding,
       totalInvestments,
-      expenseCount: filteredExpenses.length,
+      expenseCount: analyticsExpenses.length,
       incomeCount: filteredIncome.length,
       accountCount: accounts.length,
       investorCount: investors.length
@@ -245,8 +261,15 @@ const FinancialDashboard = () => {
       const prevExpenses = expenses
         .filter(exp => exp.date >= prevStart.toISOString().split('T')[0] && exp.date <= prevEnd.toISOString().split('T')[0])
         .reduce((sum, exp) => {
-          const amount = parseFloat(exp.amount) || 0;
-          if (typeof amount === 'string' && exp.amount_encrypted) return sum;
+          const docType = (exp.documentType || '').toLowerCase();
+          if (docType === 'receipt' && exp.linkedInvoiceExpenseId) {
+            return sum;
+          }
+          if (docType === 'statement' && exp.linkedReceiptExpenseId) {
+            return sum;
+          }
+          const amount = parseFloat(exp.amount);
+          if (!Number.isFinite(amount)) return sum;
           return sum + amount;
         }, 0);
       
@@ -445,15 +468,12 @@ const FinancialDashboard = () => {
   if (!currentCompanyId) {
     return (
       <div className="min-h-screen bg-gray-50 w-full">
-        <nav className="bg-gray-800 text-white shadow-lg w-full">
+        <nav className="text-white shadow-lg w-full" style={{ background: getHeaderBackground(null) }}>
           <div className="w-full px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
                 <div className="flex-shrink-0 flex items-center">
-                  <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
-                    <span className="text-white font-bold text-lg">BC</span>
-                  </div>
-                  <span className="text-xl font-semibold">Biz-CoPilot</span>
+                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-10 w-auto" />
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -548,8 +568,11 @@ const FinancialDashboard = () => {
                 <FaArrowLeft className="w-5 h-5" />
               </button>
               
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <FaChartLine className="w-6 h-6 text-white" />
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                style={{ background: headerBackground }}
+              >
+                <FaChartLine className="w-6 h-6" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Financial Dashboard</h1>
@@ -647,14 +670,16 @@ const FinancialDashboard = () => {
           </div>
           
           {/* Account Balance */}
-          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl shadow-lg p-6 border border-purple-200">
+          <div className="bg-gradient-to-br from-[#F0FBF8] to-[#EAF4F6] rounded-xl shadow-lg p-6 border border-[#B8E5DC]">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-sm font-medium text-purple-700 mb-1">Total Balance</p>
-                <p className="text-3xl font-bold text-purple-600">{formatCurrency(metrics.totalAccountBalance)}</p>
+                <p className="text-sm font-medium text-[#2F6F63] mb-1">Total Balance</p>
+                <p className="text-3xl font-bold" style={{ color: accentColor }}>
+                  {formatCurrency(metrics.totalAccountBalance)}
+                </p>
               </div>
-              <div className="w-12 h-12 bg-purple-200 rounded-lg flex items-center justify-center">
-                <FaWallet className="w-6 h-6 text-purple-600" />
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#D4F5EF' }}>
+                <FaWallet className="w-6 h-6" style={{ color: accentColor }} />
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm">
@@ -908,7 +933,7 @@ const FinancialDashboard = () => {
             {investors.length > 0 && (
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <FaUserTie className="w-5 h-5 text-purple-600" />
+                <FaUserTie className="w-5 h-5" style={{ color: accentColor }} />
                   Investors
                 </h3>
                 <div className="space-y-3">
@@ -1007,7 +1032,7 @@ const FinancialDashboard = () => {
           </button>
           <button
             onClick={() => navigate('/modules/settings')}
-            className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg p-4 transition-colors flex items-center justify-center gap-2"
+            className="bg-[#00BFA6] hover:bg-[#019884] text-white rounded-lg p-4 transition-colors flex items-center justify-center gap-2"
           >
             <FaUniversity />
             Manage Accounts

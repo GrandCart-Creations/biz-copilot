@@ -5,12 +5,13 @@
  * Shows available modules as clickable cards
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
 import { getVisibleModules, getModule, meetsTierRequirement } from '../utils/modules';
 import CompanySelector from './CompanySelector';
 import UserProfile from './UserProfile';
+import { getHeaderBackground, getHeaderLogo } from '../utils/theme';
 import {
   FaChartLine,
   FaDollarSign,
@@ -47,7 +48,7 @@ const ModuleDashboard = () => {
     const colors = {
       blue: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100',
       green: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100',
-      purple: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100',
+      purple: 'bg-[#F0FBF8] border-[#B8E5DC] text-[#2F6F63] hover:bg-[#D4F5EF]',
       orange: 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100',
       indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100',
       gray: 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100',
@@ -62,7 +63,7 @@ const ModuleDashboard = () => {
     const colors = {
       blue: 'bg-blue-100 text-blue-600',
       green: 'bg-green-100 text-green-600',
-      purple: 'bg-purple-100 text-purple-600',
+      purple: 'bg-[#D4F5EF] text-[#005C70]',
       orange: 'bg-orange-100 text-orange-600',
       indigo: 'bg-indigo-100 text-indigo-600',
       gray: 'bg-gray-100 text-gray-600',
@@ -102,12 +103,18 @@ const ModuleDashboard = () => {
     }
   };
 
+  const headerBackground = useMemo(() => getHeaderBackground(currentCompany), [currentCompany]);
+  const headerLogo = useMemo(() => getHeaderLogo(currentCompany), [currentCompany]);
+  const headerAlt = currentCompany?.branding?.logoUrl
+    ? `${currentCompany?.name || 'Company'} logo`
+    : 'Biz-CoPilot';
+
   // Loading state
   if (companyLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00BFA6] mx-auto mb-4"></div>
           <p className="text-gray-600">Loading dashboard...</p>
         </div>
       </div>
@@ -119,15 +126,12 @@ const ModuleDashboard = () => {
     return (
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
-        <nav className="bg-gray-800 text-white shadow-lg">
+        <nav className="text-white shadow-lg" style={{ background: getHeaderBackground(null) }}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
                 <div className="flex-shrink-0 flex items-center">
-                  <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
-                    <span className="text-white font-bold text-lg">BC</span>
-                  </div>
-                  <span className="text-xl font-semibold">Biz-CoPilot</span>
+                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-10 w-auto" />
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -159,15 +163,12 @@ const ModuleDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <nav className="bg-gray-800 text-white shadow-lg w-full">
+      <nav className="text-white shadow-lg w-full" style={{ background: headerBackground }}>
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <div className="flex-shrink-0 flex items-center">
-                <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
-                  <span className="text-white font-bold text-lg">BC</span>
-                </div>
-                <span className="text-xl font-semibold">Biz-CoPilot</span>
+                <img src={headerLogo} alt={headerAlt} className="h-10 w-auto" />
               </div>
             </div>
             <div className="flex items-center gap-4">

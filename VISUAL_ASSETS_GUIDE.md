@@ -207,10 +207,10 @@ Create this folder structure in your project:
   /branding
     /logo
       - logo.svg (main logo vector)
-      - logo-light.svg (for dark backgrounds)
-      - logo-dark.svg (for light backgrounds)
-      - logo-icon.svg (icon only)
-      - logo-horizontal.svg (horizontal lockup)
+      - logo-icon-v2.svg (badge with typography)
+      - logo-icon.svg (flat icon)
+      - logo-icon-simple.svg (minimal icon)
+      - logo-icon.png (high-res export)
       - logo-mark.png (1024x1024 - master)
       - logo-sm.png (256x256)
       - logo-xs.png (128x128)
