@@ -25,13 +25,22 @@ export const parseExpensesWithExcelJS = async (file) => {
     throw new Error('No worksheet found in Excel file.');
   }
 
-  const sheetValues = worksheet.getSheetValues().map((rowValues, index) => ({
-    rowNumber: index,
-    values: Array.isArray(rowValues) ? rowValues.slice(1) : [],
-  }));
+  const rawSheetValues = worksheet.getSheetValues();
+  const sheetValues = [];
 
-  const headerCandidate = sheetValues.find(({ values }) => {
-    const joined = values.map((value) => String(value || '').toLowerCase()).join(' ');
+  rawSheetValues.forEach((rowValues, index) => {
+    const values = Array.isArray(rowValues) ? rowValues.slice(1) : [];
+    sheetValues.push({
+      rowNumber: index,
+      values,
+    });
+  });
+
+  const headerCandidate = sheetValues.find((entry) => {
+    if (!entry || !Array.isArray(entry.values)) {
+      return false;
+    }
+    const joined = entry.values.map((value) => String(value || '').toLowerCase()).join(' ');
     return HEADER_KEYWORDS.some((keyword) => joined.includes(keyword));
   });
 

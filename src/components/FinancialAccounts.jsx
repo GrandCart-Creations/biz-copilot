@@ -196,6 +196,8 @@ const FinancialAccounts = () => {
   };
   
   const handleDeleteAccount = (account) => {
+    setError('');
+    setSuccess('');
     setDeletingAccount(account);
     setShowDeleteConfirm(true);
   };
@@ -256,7 +258,12 @@ const FinancialAccounts = () => {
   
   const confirmDelete = async () => {
     if (!deletingAccount) return;
-    
+
+    if (Math.abs(deletingAccount.currentBalance || 0) > 0.01) {
+      setError('Please move or reconcile remaining funds before deleting this account.');
+      return;
+    }
+
     setSaving(true);
     try {
       await deleteFinancialAccount(currentCompanyId, deletingAccount.id);
@@ -392,7 +399,14 @@ const FinancialAccounts = () => {
                     {formatBalance(account.currentBalance, account.currency)}
                   </p>
                 </div>
-                
+
+                {account.ledgerAccountId && (
+                  <div>
+                    <p className="text-xs text-gray-500">Ledger Account ID</p>
+                    <p className="text-xs font-mono text-gray-700">{account.ledgerAccountId}</p>
+                  </div>
+                )}
+
                 {account.bankName && (
                   <div>
                     <p className="text-xs text-gray-500">Bank</p>

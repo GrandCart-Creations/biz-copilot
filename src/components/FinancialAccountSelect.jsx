@@ -5,7 +5,7 @@
  * Used in Expense and Income forms
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useCompany } from '../contexts/CompanyContext';
 import { getCompanyFinancialAccounts } from '../firebase';
 import { FaUniversity, FaCreditCard, FaMoneyBillWave, FaChartLine, FaHandHoldingUsd, FaWallet, FaPlusCircle, FaSpinner } from 'react-icons/fa';
@@ -19,12 +19,18 @@ const FinancialAccountSelect = ({
   required = false,
   onAddAccount = null, // Callback to open add account modal
   showBalance = true, // Show current balance next to account name
-  className = ''
+  className = '',
+  accounts: providedAccounts = undefined,
+  loading: providedLoading = false,
+  error: providedError = ''
 }) => {
   const { currentCompanyId } = useCompany();
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [internalAccounts, setInternalAccounts] = useState([]);
+  const [internalLoading, setInternalLoading] = useState(false);
+  const [internalError, setInternalError] = useState('');
+
+  const usingExternalAccounts = providedAccounts !== undefined && providedAccounts !== null;
+  const shouldLoadInternally = !usingExternalAccounts;
 
   const accountTypeIcons = {
     bank: FaUniversity,
@@ -36,40 +42,34 @@ const FinancialAccountSelect = ({
   };
 
   useEffect(() => {
+    if (!shouldLoadInternally) {
+      setInternalAccounts([]);
+      setInternalLoading(false);
+      setInternalError('');
+      return;
+    }
+
     loadAccounts();
-  }, [currentCompanyId, filterBy]);
+  }, [shouldLoadInternally, currentCompanyId, filterBy]);
 
   const loadAccounts = async () => {
     if (!currentCompanyId) {
-      setAccounts([]);
-      setLoading(false);
+      setInternalAccounts([]);
+      setInternalLoading(false);
+      setInternalError('');
       return;
     }
 
     try {
-      setLoading(true);
-      let accountsList = await getCompanyFinancialAccounts(currentCompanyId);
-      
-      // Filter accounts if filterBy is specified
-      if (filterBy.length > 0) {
-        accountsList = accountsList.filter(account => {
-          if (!account.linkedTo || account.linkedTo.length === 0) {
-            return false; // Exclude accounts not linked to anything
-          }
-          // Account must be linked to at least one of the specified types
-          return filterBy.some(filter => account.linkedTo.includes(filter));
-        });
-      }
-      
-      // Only show active accounts
-      accountsList = accountsList.filter(account => account.isActive !== false);
-      
-      setAccounts(accountsList);
+      setInternalLoading(true);
+      const accountsList = await getCompanyFinancialAccounts(currentCompanyId);
+      setInternalAccounts(Array.isArray(accountsList) ? accountsList : []);
     } catch (error) {
       console.error('Error loading financial accounts:', error);
-      setError('Failed to load accounts');
+      setInternalError('Failed to load accounts');
+      setInternalAccounts([]);
     } finally {
-      setLoading(false);
+      setInternalLoading(false);
     }
   };
 
@@ -87,11 +87,59 @@ const FinancialAccountSelect = ({
     return <Icon className="w-4 h-4 inline mr-2" />;
   };
 
-  const getSelectedAccount = () => {
-    return accounts.find(acc => acc.id === value);
-  };
+  const rawAccounts = useMemo(() => {
+    if (usingExternalAccounts) {
+      return Array.isArray(providedAccounts) ? providedAccounts : [];
+    }
+    return internalAccounts;
+  }, [usingExternalAccounts, providedAccounts, internalAccounts]);
 
-  const selectedAccount = getSelectedAccount();
+  const filteredAccounts = useMemo(() => {
+    if (!Array.isArray(rawAccounts)) {
+      return [];
+    }
+
+    const results = [];
+    const seen = new Map();
+
+    rawAccounts.forEach((account) => {
+      if (!account || !account.id) return;
+      if (account.isActive === false) return;
+
+      if (filterBy.length > 0) {
+        const links = Array.isArray(account.linkedTo) ? account.linkedTo : [];
+        if (links.length === 0) {
+          return;
+        }
+        const matches = filterBy.some(filter => links.includes(filter));
+        if (!matches) {
+          return;
+        }
+      }
+
+      if (!seen.has(account.id)) {
+        seen.set(account.id, account);
+        results.push(account);
+      }
+    });
+
+    if (value && !seen.has(value)) {
+      const existing = rawAccounts.find(account => account && account.id === value);
+      if (existing && existing.isActive !== false) {
+        results.push(existing);
+      }
+    }
+
+    return results.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+  }, [rawAccounts, filterBy, value]);
+
+  const selectedAccount = useMemo(() => {
+    if (!value) return undefined;
+    return rawAccounts.find(account => account && account.id === value);
+  }, [rawAccounts, value]);
+
+  const loading = usingExternalAccounts ? providedLoading : internalLoading;
+  const error = usingExternalAccounts ? providedError : internalError;
 
   if (loading) {
     return (
@@ -139,7 +187,7 @@ const FinancialAccountSelect = ({
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white text-gray-900"
         >
           <option value="" className="text-gray-900">Select an account...</option>
-          {accounts.map((account) => (
+          {filteredAccounts.map((account) => (
             <option key={account.id} value={account.id} className="text-gray-900">
               {account.name} {showBalance && account.currentBalance !== undefined && `(${formatBalance(account.currentBalance, account.currency)})`}
             </option>
@@ -189,7 +237,7 @@ const FinancialAccountSelect = ({
         </button>
       )}
       
-      {accounts.length === 0 && (
+      {filteredAccounts.length === 0 && !loading && (
         <p className="mt-2 text-sm text-gray-500">
           No accounts available. {onAddAccount && (
             <button

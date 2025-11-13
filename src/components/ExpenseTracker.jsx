@@ -30,7 +30,11 @@ import {
   FaCreditCard,
   FaLink,
   FaHistory,
-  FaSyncAlt
+  FaSyncAlt,
+  FaClipboardCheck,
+  FaClock,
+  FaCalendarCheck,
+  FaTimesCircle
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
 import CompanySelector from './CompanySelector';
@@ -43,9 +47,11 @@ import {
   updateCompanyExpense,
   deleteCompanyExpense,
   uploadExpenseFile,
-  updateAccountBalance,
   validateVatNumber,
-  getUserProfile
+  getUserProfile,
+  subscribeToCompanyVendors,
+  upsertCompanyVendorProfile,
+  getCompanyFinancialAccounts
 } from '../firebase';
 import { trackEvent } from '../utils/analytics';
 
@@ -214,6 +220,7 @@ const AttachmentPanel = ({
   const paymentStatusLabel = paymentStatus
     ? paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1)
     : 'Status';
+  const optionsAreVisible = showOptions ? showOptions : true;
 
   const adjustZoom = (delta) => {
     setZoomLevel(prev => {
@@ -292,7 +299,7 @@ const AttachmentPanel = ({
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center text-sm text-gray-500 space-y-2">
         <FaFileAlt className="w-10 h-10 text-gray-400" />
-        <p>Preview not available. Use “Open” to view this file in a new tab.</p>
+        <p>Preview not available. Use "Open" to view this file in a new tab.</p>
       </div>
     );
   };
@@ -340,7 +347,7 @@ const AttachmentPanel = ({
                 <option value="other">Other</option>
               </select>
               <p className="mt-1 text-xs text-gray-500">
-                Tag what you’re capturing so badges and filters stay accurate.
+                Tag what you're capturing so badges and filters stay accurate.
               </p>
             </div>
             <div>
@@ -522,6 +529,151 @@ const AttachmentPanel = ({
   );
 };
 
+const normalizeVendorName = (value = '') => {
+  return value
+    ?.toString()
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || '';
+};
+
+const normalizeInvoiceNumber = (value = '') => {
+  return value
+    ?.toString()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .trim() || '';
+};
+
+const tokenizeVendorName = (value = '') => {
+  const normalized = normalizeVendorName(value);
+  if (!normalized) return [];
+  return Array.from(new Set(normalized.split(' ').filter(Boolean)));
+};
+
+const computeVendorMatchScore = (profile, details, normalizedVendor, normalizedInvoice) => {
+  if (!profile || !details) return 0;
+
+  let score = 0;
+  const profileName = profile.normalizedName || normalizeVendorName(profile.name || '');
+  const profileTokens = tokenizeVendorName(profileName || profile.displayName || '');
+  const candidateVendor = details.vendor || details.vendorName || '';
+  const candidateTokens = tokenizeVendorName(candidateVendor);
+
+  if (normalizedVendor && profileName) {
+    if (profileName === normalizedVendor) {
+      score += 70;
+    } else if (profileName.includes(normalizedVendor) || normalizedVendor.includes(profileName)) {
+      score += 45;
+    }
+  }
+
+  if (candidateTokens.length > 0 && profileTokens.length > 0) {
+    const sharedTokens = candidateTokens.filter(token => profileTokens.includes(token));
+    if (sharedTokens.length > 0) {
+      score += sharedTokens.length * 12;
+      if (sharedTokens.length >= Math.min(2, profileTokens.length)) {
+        score += 20;
+      }
+    }
+  }
+
+  if (normalizedInvoice) {
+    const invoiceMatches =
+      (Array.isArray(profile.invoiceNumbers) && profile.invoiceNumbers.some(num => normalizeInvoiceNumber(num) === normalizedInvoice)) ||
+      (profile.lastInvoiceNumber && normalizeInvoiceNumber(profile.lastInvoiceNumber) === normalizedInvoice);
+    if (invoiceMatches) {
+      score += 80;
+    }
+  }
+
+  const candidateCountry = details.vendorCountry || details.country || '';
+  if (candidateCountry) {
+    if (
+      (profile.country && profile.country === candidateCountry) ||
+      (Array.isArray(profile.countries) && profile.countries.includes(candidateCountry))
+    ) {
+      score += 12;
+    }
+  }
+
+  const candidateCurrency = details.currency || details.baseCurrency || '';
+  if (candidateCurrency) {
+    if (profile.preferredCurrency === candidateCurrency) {
+      score += 10;
+    } else if (Array.isArray(profile.currencies) && profile.currencies.includes(candidateCurrency)) {
+      score += 6;
+    }
+  }
+
+  const candidateAddress = details.vendorAddress || '';
+  if (candidateAddress && profile.primaryAddress) {
+    const addressTokens = tokenizeVendorName(candidateAddress);
+    const profileAddressTokens = tokenizeVendorName(profile.primaryAddress);
+    const sharedAddressTokens = addressTokens.filter(token => profileAddressTokens.includes(token));
+    if (sharedAddressTokens.length >= 2) {
+      score += 10;
+    }
+  }
+
+  if (profile.usageCount) {
+    score += Math.min(10, profile.usageCount);
+  }
+
+  return score;
+};
+
+const vendorTextLooksNoisy = (value = '') => {
+  if (!value) return false;
+  const text = value.toString().trim();
+  if (text.length === 0) return false;
+  if (text.length > 80) return true;
+  const lower = text.toLowerCase();
+  const noiseKeywords = [
+    'invoice number',
+    'receipt',
+    'subtotal',
+    'total',
+    'amount paid',
+    'payment method',
+    'page ',
+    'bill to'
+  ];
+  if (noiseKeywords.some(keyword => lower.includes(keyword))) {
+    return true;
+  }
+  const commaCount = (text.match(/,/g) || []).length;
+  if (commaCount >= 5) {
+    return true;
+  }
+  return false;
+};
+
+const vendorAddressNeedsAssistance = (value = '') => {
+  const text = value?.toString().trim();
+  if (!text) return true;
+  if (text.length < 10) return true;
+  const lower = text.toLowerCase();
+  if (
+    lower.includes('bill to') ||
+    lower.includes('ship to') ||
+    lower.includes('customer') ||
+    lower.includes('client') ||
+    lower.includes('subtotal') ||
+    lower.includes('total') ||
+    lower.includes('amount paid') ||
+    lower.includes('@') ||
+    lower.includes('http')
+  ) {
+    return true;
+  }
+  const commaCount = (text.match(/,/g) || []).length;
+  if (commaCount >= 6) return true;
+  return false;
+};
+
 
 const ExpenseTracker = () => {
   const navigate = useNavigate();
@@ -567,11 +719,35 @@ const paymentStatusStyles = {
   late: { label: 'Late', classes: 'bg-red-100 text-red-800' }
 };
 
+const approvalStatusChoices = [
+  { value: 'draft', label: 'Draft' },
+  { value: 'awaiting', label: 'Awaiting Approval' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' }
+];
+
+const approvalFilterOptions = [
+  { value: 'all', label: 'All Approvals' },
+  ...approvalStatusChoices
+];
+
+const approvalStatusStyles = {
+  draft: { label: 'Draft', classes: 'bg-gray-100 text-gray-700' },
+  awaiting: { label: 'Awaiting Approval', classes: 'bg-orange-100 text-orange-700' },
+  approved: { label: 'Approved', classes: 'bg-green-100 text-green-800' },
+  rejected: { label: 'Rejected', classes: 'bg-red-100 text-red-700' }
+};
+
   // State Management
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(false); // Start false to render UI immediately
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
+
+  const [financialAccounts, setFinancialAccounts] = useState([]);
+  const [financialAccountsLoading, setFinancialAccountsLoading] = useState(false);
+  const [financialAccountsError, setFinancialAccountsError] = useState('');
+  const [formError, setFormError] = useState('');
 
   const [currentAccountId] = useState(1);
 
@@ -711,6 +887,15 @@ const paymentStatusStyles = {
     const value = parseFloat(sanitized);
     if (!Number.isFinite(value)) return null;
     return value;
+  };
+
+  const buildImportKey = ({ date, invoiceDate, vendor, amount, invoiceNumber }) => {
+    const canonicalDate = (date || invoiceDate || '').slice(0, 10);
+    const vendorKey = (vendor || '').toLowerCase().trim();
+    const invoiceKey = (invoiceNumber || '').toLowerCase().trim();
+    const numericAmount = Number.isFinite(amount) ? amount : parseFloat(amount || 0);
+    const amountKey = Number.isFinite(numericAmount) ? numericAmount.toFixed(2) : '0.00';
+    return `${canonicalDate}|${vendorKey}|${amountKey}|${invoiceKey}`;
   };
 
   const toDateInstance = (value) => {
@@ -1267,6 +1452,9 @@ const paymentStatusStyles = {
     }
 
     const updated = { ...current };
+    const normalizedVatNumber = typeof extracted.vatNumber === 'string'
+      ? extracted.vatNumber.replace(/\s+/g, '').toUpperCase()
+      : extracted.vatNumber;
 
     const assignIfEmptyOrDefault = (field, value) => {
       if (value === undefined || value === null || value === '') return;
@@ -1288,8 +1476,11 @@ const paymentStatusStyles = {
     assignIfEmptyOrDefault('description', extracted.description);
     assignIfEmptyOrDefault('notes', extracted.notes);
     assignIfEmptyOrDefault('vendorCountry', extracted.vendorCountry);
-    assignIfEmptyOrDefault('vatNumber', extracted.vatNumber);
+    assignIfEmptyOrDefault('vatNumber', normalizedVatNumber);
     assignIfEmptyOrDefault('currency', extracted.currency);
+    assignIfEmptyOrDefault('chamberOfCommerceNumber', extracted.chamberOfCommerceNumber);
+    assignIfEmptyOrDefault('paymentMethod', extracted.paymentMethod);
+    assignIfEmptyOrDefault('paymentMethodDetails', extracted.paymentMethodDetails);
 
     if (extracted.amount && (!current.amount || parseFloat(current.amount) === 0 || current.amount === '0')) {
       updated.amount = extracted.amount;
@@ -1301,6 +1492,22 @@ const paymentStatusStyles = {
 
     if (typeof extracted.reverseCharge === 'boolean') {
       updated.reverseCharge = extracted.reverseCharge;
+    }
+
+    if (updated.vendor) {
+      updated.vendor = updated.vendor.replace(/\s{2,}/g, ' ').trim();
+      if (vendorTextLooksNoisy(updated.vendor) && extracted.vendor && !vendorTextLooksNoisy(extracted.vendor)) {
+        updated.vendor = extracted.vendor.trim();
+      }
+    }
+
+    if (updated.vendorAddress) {
+      updated.vendorAddress = updated.vendorAddress
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean)
+        .filter((part, index, arr) => arr.indexOf(part) === index)
+        .join(', ');
     }
 
     return updated;
@@ -1339,6 +1546,527 @@ const paymentStatusStyles = {
     await worker.terminate();
     return text;
   };
+
+  // Attachments modal state
+  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
+  const [viewingExpense, setViewingExpense] = useState(null);
+
+  // Import state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importedData, setImportedData] = useState([]);
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importType, setImportType] = useState('excel'); // 'excel' or 'ocr'
+  const [ocrProcessing, setOcrProcessing] = useState(false);
+  const addDocumentMenuRef = useRef(null);
+  const [showAddDocumentMenu, setShowAddDocumentMenu] = useState(false);
+  const [showAddDocumentIntro, setShowAddDocumentIntro] = useState(false);
+  const prepareImportedRows = useCallback((rows = []) => {
+    const existingKeys = new Set(
+      (expenses || []).map(expense => buildImportKey({
+        date: expense.date,
+        invoiceDate: expense.invoiceDate,
+        vendor: expense.vendor,
+        amount: parseFloat(expense.amount),
+        invoiceNumber: expense.invoiceNumber
+      }))
+    );
+
+    return rows.map((row) => {
+      const vendor = (row.vendor || '').toString().trim();
+      const description = (row.description || vendor || 'Imported expense').toString().trim();
+      const parsedAmount = typeof row.amount === 'number'
+        ? row.amount
+        : parseNumericAmount(String(row.amount || ''));
+
+      const validationErrors = [];
+      if (!Number.isFinite(parsedAmount) || parsedAmount === 0) {
+        validationErrors.push('Amount is missing or invalid.');
+      }
+      if (!row.date && !row.invoiceDate) {
+        validationErrors.push('Date is missing.');
+      }
+      if (!vendor) {
+        validationErrors.push('Vendor is missing.');
+      }
+
+      const dedupeKey = validationErrors.length === 0
+        ? buildImportKey({
+          date: row.date,
+          invoiceDate: row.invoiceDate,
+          vendor,
+          amount: parsedAmount,
+          invoiceNumber: row.invoiceNumber
+        })
+        : null;
+
+      const isDuplicate = Boolean(dedupeKey && existingKeys.has(dedupeKey));
+
+      return {
+        ...row,
+        vendor,
+        description,
+        parsedAmount,
+        validationErrors,
+        dedupeKey,
+        isDuplicate
+      };
+    });
+  }, [expenses]);
+  const importDiagnostics = useMemo(() => {
+    if (!Array.isArray(importedData) || importedData.length === 0) {
+      return { total: 0, duplicates: 0, errors: 0, ready: 0, errorRows: [] };
+    }
+    const diagnostics = importedData.reduce((acc, row) => {
+      if (row?.validationErrors?.length) {
+        acc.errors += 1;
+        acc.errorRows.push({
+          rowIndex: row.rowIndex,
+          issues: row.validationErrors
+        });
+      } else if (row?.isDuplicate) {
+        acc.duplicates += 1;
+      } else {
+        acc.ready += 1;
+      }
+      return acc;
+    }, {
+      total: importedData.length,
+      duplicates: 0,
+      errors: 0,
+      ready: 0,
+      errorRows: []
+    });
+    return diagnostics;
+  }, [importedData]);
+
+  useEffect(() => {
+    if (!showAddDocumentMenu) {
+      return undefined;
+    }
+
+    const handleClickOutside = (event) => {
+      if (addDocumentMenuRef.current && !addDocumentMenuRef.current.contains(event.target)) {
+        setShowAddDocumentMenu(false);
+      }
+    };
+
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') {
+        setShowAddDocumentMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [showAddDocumentMenu]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (showAddExpense && !editingExpense) {
+      const hasSeen = window.localStorage.getItem(ADD_DOCUMENT_ONBOARDING_KEY);
+      if (!hasSeen) {
+        setShowAddDocumentIntro(true);
+        trackEvent('add_document_onboarding_shown', {
+          context: 'expense_modal'
+        });
+      }
+    } else {
+      setShowAddDocumentIntro(false);
+    }
+  }, [showAddExpense, editingExpense]);
+
+  const completeAddDocumentOnboarding = (reason = 'dismissed') => {
+    let alreadyCompleted = false;
+    if (typeof window !== 'undefined') {
+      alreadyCompleted = window.localStorage.getItem(ADD_DOCUMENT_ONBOARDING_KEY) === 'true';
+      window.localStorage.setItem(ADD_DOCUMENT_ONBOARDING_KEY, 'true');
+    }
+    setShowAddDocumentIntro(false);
+    if (!alreadyCompleted) {
+      trackEvent('add_document_onboarding_completed', {
+        context: 'expense_modal',
+        reason
+      });
+    }
+  };
+
+  const resetFormState = () => {
+    setFormData({
+      date: todayIso,
+      invoiceDate: '',
+      dueDate: '',
+      scheduledPaymentDate: '',
+      paidDate: '',
+      category: 'Subscriptions',
+      currency: 'EUR',
+      vendor: '',
+      vendorAddress: '',
+      vendorCountry: companyCountry,
+      invoiceNumber: '',
+      vatNumber: '',
+      chamberOfCommerceNumber: '',
+      description: '',
+      amount: '',
+      btw: 21,
+      reverseCharge: false,
+      bankAccount: 'Business Checking',
+      financialAccountId: '',
+      paymentMethod: 'Debit Card',
+      paymentMethodDetails: '',
+      documentType: 'invoice',
+      paymentStatus: 'open',
+      approvalStatus: 'draft',
+      approvalNotes: '',
+      approvalRequestedAt: '',
+      approvedAt: '',
+      contractReference: '',
+      contractUrl: '',
+      paymentScheduleNotes: '',
+      vatValidationStatus: 'idle',
+      vatValidatedAt: '',
+      notes: ''
+    });
+    setVatValidationState({
+      status: 'idle',
+      message: '',
+      lastChecked: null
+    });
+    setSelectedFiles([]);
+    setExistingAttachments([]);
+    setCurrentPreviewId(null);
+    setZoomLevel(DEFAULT_ZOOM);
+    setUploadProgress(0);
+    setLastAutoFilledFile(null);
+    setUploadingFiles(false);
+    resetAutoFillState();
+    setShowAddDocumentMenu(false);
+    lastMatchedVendorProfileRef.current = null;
+    setFormError('');
+  };
+
+  const handleCloseModal = (reason = 'close_button') => {
+    if (!showAddExpense) return;
+    resetFormState();
+    setEditingExpense(null);
+    setShowAddExpense(false);
+    trackEvent('add_document_cancelled', {
+      context: 'expense_modal',
+      reason,
+      wasEditing: Boolean(editingExpense),
+      companyId: currentCompanyId || 'unknown'
+    });
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!showAddExpense) return;
+    resetFormState();
+    setEditingExpense(null);
+    setShowAddExpense(false);
+    trackEvent('add_document_cancelled', {
+      context: 'expense_modal',
+      reason,
+      wasEditing: Boolean(editingExpense),
+      companyId: currentCompanyId || 'unknown'
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [showAddExpense, editingExpense, currentCompanyId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!currentCompanyId) {
+      setFinancialAccounts([]);
+      setFinancialAccountsError('');
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const fetchAccounts = async () => {
+      try {
+        setFinancialAccountsLoading(true);
+        setFinancialAccountsError('');
+        const accounts = await getCompanyFinancialAccounts(currentCompanyId);
+        if (isMounted) {
+          setFinancialAccounts(accounts);
+        }
+      } catch (error) {
+        console.error('Failed to load financial accounts:', error);
+        if (isMounted) {
+          setFinancialAccountsError('Unable to load financial accounts.');
+          setFinancialAccounts([]);
+        }
+      } finally {
+        if (isMounted) {
+          setFinancialAccountsLoading(false);
+        }
+      }
+    };
+
+    fetchAccounts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentCompanyId]);
+
+  // Track last loaded company to prevent unnecessary reloads
+  const lastLoadedCompanyIdRef = useRef(null);
+  const conversionRateCacheRef = useRef(new Map());
+
+  // Filters
+  const [filters, setFilters] = useState({
+    category: 'all',
+    financialAccountId: 'all',
+    paymentMethod: 'all',
+    vendor: 'all',
+    documentType: 'all',
+    paymentStatus: 'all',
+    approvalStatus: 'all',
+    periodType: 'all', // 'all', 'today', 'week', 'month', 'year', 'custom'
+    startDate: '',
+    endDate: ''
+  });
+  const [userProfiles, setUserProfiles] = useState({});
+  const loadedUserIdsRef = useRef(new Set());
+  const [expandedLinkedReceipts, setExpandedLinkedReceipts] = useState(() => new Set());
+  const [vendorProfiles, setVendorProfiles] = useState([]);
+  const vendorSubscriptionRef = useRef(null);
+  const vendorLookupRef = useRef({
+    byNormalizedName: new Map(),
+    invoiceToVendor: new Map(),
+    tokenToVendors: new Map()
+  });
+  const lastMatchedVendorProfileRef = useRef(null);
+  const lastConversionErrorsRef = useRef([]);
+  const lastUsedFinancialAccountRef = useRef('');
+  const updateVendorLookup = useCallback((profiles = []) => {
+    const byNormalizedName = new Map();
+    const invoiceToVendor = new Map();
+    const tokenToVendors = new Map();
+
+    const registerToken = (token, profile) => {
+      if (!token || !profile) return;
+      const normalizedToken = token.toString().toLowerCase().trim();
+      if (!normalizedToken) return;
+      const existing = tokenToVendors.get(normalizedToken);
+      if (existing) {
+        if (!existing.some(item => item.id === profile.id)) {
+          existing.push(profile);
+        }
+      } else {
+        tokenToVendors.set(normalizedToken, [profile]);
+      }
+    };
+
+    profiles.forEach(profile => {
+      if (!profile) return;
+
+      const normalizedName = profile.normalizedName || normalizeVendorName(profile.name || '');
+      if (normalizedName) {
+        const existingProfile = byNormalizedName.get(normalizedName);
+        if (!existingProfile || (profile.usageCount || 0) >= (existingProfile.usageCount || 0)) {
+          byNormalizedName.set(normalizedName, profile);
+        }
+
+        tokenizeVendorName(normalizedName).forEach(token => registerToken(token, profile));
+      }
+
+      const nameHistory = Array.isArray(profile.nameHistory) ? profile.nameHistory : [];
+      nameHistory.forEach(historyName => {
+        tokenizeVendorName(historyName).forEach(token => registerToken(token, profile));
+      });
+
+      const searchTokens = Array.isArray(profile.searchTokens) ? profile.searchTokens : [];
+      searchTokens.forEach(token => registerToken(token, profile));
+
+      const invoiceNumbers = Array.isArray(profile.invoiceNumbers) ? profile.invoiceNumbers : [];
+      invoiceNumbers.forEach(invoice => {
+        const normalizedInvoice = normalizeInvoiceNumber(invoice);
+        if (!normalizedInvoice) return;
+        const existingInvoiceProfile = invoiceToVendor.get(normalizedInvoice);
+        if (!existingInvoiceProfile || (profile.usageCount || 0) >= (existingInvoiceProfile.usageCount || 0)) {
+          invoiceToVendor.set(normalizedInvoice, profile);
+        }
+      });
+
+      if (profile.lastInvoiceNumber) {
+        const normalizedInvoice = normalizeInvoiceNumber(profile.lastInvoiceNumber);
+        if (normalizedInvoice && !invoiceToVendor.has(normalizedInvoice)) {
+          invoiceToVendor.set(normalizedInvoice, profile);
+        }
+      }
+    });
+
+    vendorLookupRef.current = { byNormalizedName, invoiceToVendor, tokenToVendors };
+  }, []);
+
+  const findVendorProfileMatch = useCallback((details = {}) => {
+    if (!details) return null;
+
+    const normalizedVendor = normalizeVendorName(details.vendor || details.vendorName || '');
+    const normalizedInvoice = normalizeInvoiceNumber(details.invoiceNumber || details.referenceNumber || '');
+    const lookup = vendorLookupRef.current || {};
+
+    if (normalizedInvoice && lookup.invoiceToVendor?.get(normalizedInvoice)) {
+      return lookup.invoiceToVendor.get(normalizedInvoice);
+    }
+
+    const candidates = new Map();
+    const considerProfile = (profile, baseScore = 0) => {
+      if (!profile) return;
+      const key = profile.id || profile.normalizedName || profile.name;
+      if (!key) return;
+      const existing = candidates.get(key);
+      if (existing) {
+        existing.baseScore = Math.max(existing.baseScore, baseScore);
+      } else {
+        candidates.set(key, { profile, baseScore });
+      }
+    };
+
+    if (normalizedVendor && lookup.byNormalizedName?.get(normalizedVendor)) {
+      considerProfile(lookup.byNormalizedName.get(normalizedVendor), 60);
+    }
+
+    const candidateTokens = tokenizeVendorName(details.vendor || details.vendorName || '');
+    if (candidateTokens.length > 0 && lookup.tokenToVendors) {
+      candidateTokens.forEach(token => {
+        const matches = lookup.tokenToVendors.get(token.toLowerCase());
+        if (matches && matches.length) {
+          matches.forEach(profile => considerProfile(profile, 20));
+        }
+      });
+    }
+
+    if (normalizedInvoice && vendorProfiles.length > 0) {
+      vendorProfiles.forEach(profile => {
+        if (!profile) return;
+        if (
+          (Array.isArray(profile.invoiceNumbers) && profile.invoiceNumbers.some(num => normalizeInvoiceNumber(num) === normalizedInvoice)) ||
+          (profile.lastInvoiceNumber && normalizeInvoiceNumber(profile.lastInvoiceNumber) === normalizedInvoice)
+        ) {
+          considerProfile(profile, 40);
+        }
+      });
+    }
+
+    if (!normalizedVendor && candidates.size === 0 && vendorProfiles.length === 1) {
+      considerProfile(vendorProfiles[0], 30);
+    }
+
+    let bestProfile = null;
+    let bestScore = 0;
+
+    candidates.forEach(({ profile, baseScore }) => {
+      const totalScore = baseScore + computeVendorMatchScore(profile, details, normalizedVendor, normalizedInvoice);
+      if (totalScore > bestScore) {
+        bestScore = totalScore;
+        bestProfile = profile;
+      }
+    });
+
+    const threshold = normalizedInvoice ? 50 : 60;
+    return bestScore >= threshold ? bestProfile : null;
+  }, [vendorProfiles]);
+
+  const enrichWithVendorProfile = useCallback((extracted = {}, currentForm = {}) => {
+    if (!extracted) {
+      return { fields: extracted, match: null };
+    }
+
+    const candidateDetails = {
+      ...extracted,
+      vendor: extracted.vendor || currentForm.vendor || '',
+      vendorName: extracted.vendor || currentForm.vendor || '',
+      vendorCountry: extracted.vendorCountry || currentForm.vendorCountry || '',
+      invoiceNumber: extracted.invoiceNumber || currentForm.invoiceNumber || '',
+      referenceNumber: extracted.invoiceNumber || currentForm.invoiceNumber || '',
+      currency: extracted.currency || currentForm.currency || '',
+      vendorAddress: extracted.vendorAddress || currentForm.vendorAddress || ''
+    };
+
+    const matchedProfile = findVendorProfileMatch(candidateDetails);
+    if (!matchedProfile) {
+      return { fields: extracted, match: null };
+    }
+
+    const nextFields = { ...extracted };
+    const profileVendorName = matchedProfile.name || matchedProfile.displayName || matchedProfile.normalizedName;
+    if (profileVendorName) {
+      if (!nextFields.vendor || vendorTextLooksNoisy(nextFields.vendor)) {
+        nextFields.vendor = profileVendorName;
+      } else {
+        const existingNormalized = normalizeVendorName(nextFields.vendor);
+        const profileNormalized = normalizeVendorName(profileVendorName);
+        if (
+          existingNormalized &&
+          profileNormalized &&
+          existingNormalized !== profileNormalized &&
+          vendorTextLooksNoisy(nextFields.vendor)
+        ) {
+          nextFields.vendor = profileVendorName;
+        }
+      }
+    }
+
+    const profileAddress = matchedProfile.primaryAddress
+      || (Array.isArray(matchedProfile.addresses) ? matchedProfile.addresses[0] : '');
+    if (profileAddress) {
+      if (!nextFields.vendorAddress || vendorAddressNeedsAssistance(nextFields.vendorAddress)) {
+        nextFields.vendorAddress = profileAddress;
+      }
+    }
+
+    const profileCountry = matchedProfile.country
+      || (Array.isArray(matchedProfile.countries) ? matchedProfile.countries[0] : '');
+    if (profileCountry && !nextFields.vendorCountry) {
+      nextFields.vendorCountry = profileCountry;
+    }
+
+    const profileCurrency = matchedProfile.preferredCurrency
+      || (Array.isArray(matchedProfile.currencies) ? matchedProfile.currencies[0] : '');
+    if (profileCurrency && !nextFields.currency) {
+      nextFields.currency = profileCurrency;
+    }
+
+    if (!nextFields.vatNumber && matchedProfile.primaryVatNumber) {
+      nextFields.vatNumber = matchedProfile.primaryVatNumber;
+    }
+
+    if (!nextFields.chamberOfCommerceNumber && matchedProfile.primaryChamberOfCommerceNumber) {
+      nextFields.chamberOfCommerceNumber = matchedProfile.primaryChamberOfCommerceNumber;
+    }
+
+    if (!nextFields.paymentMethod && matchedProfile.defaultPaymentMethod) {
+      nextFields.paymentMethod = matchedProfile.defaultPaymentMethod;
+    }
+
+    if (!nextFields.paymentMethodDetails && matchedProfile.defaultPaymentMethodDetails) {
+      nextFields.paymentMethodDetails = matchedProfile.defaultPaymentMethodDetails;
+    }
+
+    if (!nextFields.vendorAddress && profileAddress) {
+      nextFields.vendorAddress = profileAddress;
+    }
+
+    return {
+      fields: nextFields,
+      match: matchedProfile
+    };
+  }, [findVendorProfileMatch]);
 
   useEffect(() => {
     if (selectedFiles.length === 0) {
@@ -1409,10 +2137,23 @@ const paymentStatusStyles = {
           }, 6000);
           return;
         }
-
-        setFormData(prev => applySmartFillToForm(prev, extractedFields));
+        let matchedVendorProfileName = null;
+        setFormData(prev => {
+          const { fields, match } = enrichWithVendorProfile(extractedFields, prev);
+          if (match) {
+            lastMatchedVendorProfileRef.current = match;
+            matchedVendorProfileName = match.displayName || match.name || match.normalizedName || null;
+          } else {
+            lastMatchedVendorProfileRef.current = null;
+          }
+          return applySmartFillToForm(prev, fields);
+        });
         setAutoFillStatus('success');
-        setAutoFillMessage('Smart fill applied. Please verify the details before saving.');
+        setAutoFillMessage(
+          matchedVendorProfileName
+            ? `Smart fill matched saved provider ${matchedVendorProfileName}. Review the detected values.`
+            : 'Smart fill applied. Please verify the details before saving.'
+        );
         setAutoFillProgress(100);
         setLastAutoFilledFile(signature);
 
@@ -1444,165 +2185,15 @@ const paymentStatusStyles = {
         clearTimeout(successTimeout);
       }
     };
-  }, [selectedFiles, lastAutoFilledFile]);
-
-  // Attachments modal state
-  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
-  const [viewingExpense, setViewingExpense] = useState(null);
-
-  // Import state
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importFile, setImportFile] = useState(null);
-  const [importedData, setImportedData] = useState([]);
-  const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState(0);
-  const [importType, setImportType] = useState('excel'); // 'excel' or 'ocr'
-  const [ocrProcessing, setOcrProcessing] = useState(false);
-  const addDocumentMenuRef = useRef(null);
-  const [showAddDocumentMenu, setShowAddDocumentMenu] = useState(false);
-  const [showAddDocumentIntro, setShowAddDocumentIntro] = useState(false);
-
-  useEffect(() => {
-    if (!showAddDocumentMenu) {
-      return undefined;
-    }
-
-    const handleClickOutside = (event) => {
-      if (addDocumentMenuRef.current && !addDocumentMenuRef.current.contains(event.target)) {
-        setShowAddDocumentMenu(false);
-      }
-    };
-
-    const handleEsc = (event) => {
-      if (event.key === 'Escape') {
-        setShowAddDocumentMenu(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEsc);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEsc);
-    };
-  }, [showAddDocumentMenu]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    if (showAddExpense && !editingExpense) {
-      const hasSeen = window.localStorage.getItem(ADD_DOCUMENT_ONBOARDING_KEY);
-      if (!hasSeen) {
-        setShowAddDocumentIntro(true);
-        trackEvent('add_document_onboarding_shown', {
-          context: 'expense_modal'
-        });
-      }
-    } else {
-      setShowAddDocumentIntro(false);
-    }
-  }, [showAddExpense, editingExpense]);
-
-  const completeAddDocumentOnboarding = (reason = 'dismissed') => {
-    let alreadyCompleted = false;
-    if (typeof window !== 'undefined') {
-      alreadyCompleted = window.localStorage.getItem(ADD_DOCUMENT_ONBOARDING_KEY) === 'true';
-      window.localStorage.setItem(ADD_DOCUMENT_ONBOARDING_KEY, 'true');
-    }
-    setShowAddDocumentIntro(false);
-    if (!alreadyCompleted) {
-      trackEvent('add_document_onboarding_completed', {
-        context: 'expense_modal',
-        reason
-      });
-    }
-  };
-
-  const resetFormState = () => {
-    setFormData({
-      date: todayIso,
-      invoiceDate: '',
-      dueDate: '',
-      paidDate: '',
-      category: 'Subscriptions',
-      currency: 'EUR',
-      vendor: '',
-      vendorAddress: '',
-      vendorCountry: companyCountry,
-      invoiceNumber: '',
-      vatNumber: '',
-      chamberOfCommerceNumber: '',
-      description: '',
-      amount: '',
-      btw: 21,
-      reverseCharge: false,
-      bankAccount: 'Business Checking',
-      financialAccountId: '',
-      paymentMethod: 'Debit Card',
-      paymentMethodDetails: '',
-      documentType: 'invoice',
-      paymentStatus: 'open',
-      vatValidationStatus: 'idle',
-      vatValidatedAt: '',
-      notes: ''
-    });
-    setVatValidationState({
-      status: 'idle',
-      message: '',
-      lastChecked: null
-    });
-    setSelectedFiles([]);
-    setExistingAttachments([]);
-    setCurrentPreviewId(null);
-    setZoomLevel(DEFAULT_ZOOM);
-    setUploadProgress(0);
-    setLastAutoFilledFile(null);
-    setUploadingFiles(false);
-    resetAutoFillState();
-    setShowAddDocumentMenu(false);
-  };
-
-  const handleCloseModal = (reason = 'close_button') => {
-    if (!showAddExpense) return;
-    resetFormState();
-    setEditingExpense(null);
-    setShowAddExpense(false);
-    trackEvent('add_document_cancelled', {
-      context: 'expense_modal',
-      reason,
-      wasEditing: Boolean(editingExpense),
-      companyId: currentCompanyId || 'unknown'
-    });
-  };
-
-  // Track last loaded company to prevent unnecessary reloads
-  const lastLoadedCompanyIdRef = useRef(null);
-  const conversionRateCacheRef = useRef(new Map());
-
-  // Filters
-  const [filters, setFilters] = useState({
-    category: 'all',
-    bankAccount: 'all',
-    paymentMethod: 'all',
-    documentType: 'all',
-    paymentStatus: 'all',
-    periodType: 'all', // 'all', 'today', 'week', 'month', 'year', 'custom'
-    startDate: '',
-    endDate: ''
-  });
-  const [userProfiles, setUserProfiles] = useState({});
-  const loadedUserIdsRef = useRef(new Set());
-  const [expandedLinkedReceipts, setExpandedLinkedReceipts] = useState(() => new Set());
+  }, [selectedFiles, lastAutoFilledFile, enrichWithVendorProfile]);
 
   // Form State
   const [formData, setFormData] = useState({
     date: todayIso,
     invoiceDate: '',
     dueDate: '',
-  paidDate: '',
+    scheduledPaymentDate: '',
+    paidDate: '',
     category: 'Subscriptions',
     currency: 'EUR',
     vendor: '',
@@ -1621,6 +2212,13 @@ const paymentStatusStyles = {
     paymentMethodDetails: '',
     documentType: 'invoice',
     paymentStatus: 'open',
+    approvalStatus: 'draft',
+    approvalNotes: '',
+    approvalRequestedAt: '',
+    approvedAt: '',
+    contractReference: '',
+    contractUrl: '',
+    paymentScheduleNotes: '',
     vatValidationStatus: 'idle',
     vatValidatedAt: '',
     notes: ''
@@ -1632,24 +2230,45 @@ const paymentStatusStyles = {
   });
 
   const previousPaymentStatusRef = useRef(formData.paymentStatus);
+  const previousApprovalStatusRef = useRef(formData.approvalStatus);
 
   useEffect(() => {
-  if (previousPaymentStatusRef.current === 'paid' && formData.paymentStatus !== 'paid') {
-    setFormData(prev => ({
-      ...prev,
-      financialAccountId: '',
-      paymentMethodDetails: '',
-      paidDate: ''
-    }));
-  }
-  if (formData.paymentStatus === 'paid' && !formData.paidDate) {
-    setFormData(prev => ({
-      ...prev,
-      paidDate: todayIso
-    }));
-  }
-  previousPaymentStatusRef.current = formData.paymentStatus;
-}, [formData.paymentStatus]);
+    if (previousPaymentStatusRef.current === 'paid' && formData.paymentStatus !== 'paid') {
+      setFormData(prev => ({
+        ...prev,
+        paymentMethodDetails: '',
+        paidDate: ''
+      }));
+    }
+    if (formData.paymentStatus === 'paid' && !formData.paidDate) {
+      setFormData(prev => ({
+        ...prev,
+        paidDate: todayIso
+      }));
+    }
+    previousPaymentStatusRef.current = formData.paymentStatus;
+  }, [formData.paymentStatus]);
+
+  useEffect(() => {
+    const previousStatus = previousApprovalStatusRef.current;
+    const currentStatus = formData.approvalStatus;
+    if (previousStatus !== currentStatus) {
+      setFormData(prev => {
+        const updates = {};
+        if (currentStatus === 'approved' && !prev.approvedAt) {
+          updates.approvedAt = new Date().toISOString();
+        }
+        if (previousStatus === 'approved' && currentStatus !== 'approved' && prev.approvedAt) {
+          updates.approvedAt = '';
+        }
+        if (currentStatus === 'awaiting' && !prev.approvalRequestedAt) {
+          updates.approvalRequestedAt = new Date().toISOString();
+        }
+        return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+      });
+    }
+    previousApprovalStatusRef.current = currentStatus;
+  }, [formData.approvalStatus]);
 
   const paymentSectionVisible = formData.paymentStatus === 'paid';
 
@@ -1669,6 +2288,36 @@ const paymentStatusStyles = {
       loadExpenses();
     }
   }, [currentUser, currentCompanyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (vendorSubscriptionRef.current) {
+      vendorSubscriptionRef.current();
+      vendorSubscriptionRef.current = null;
+    }
+
+    if (!currentCompanyId) {
+      setVendorProfiles([]);
+      vendorLookupRef.current = {
+        byNormalizedName: new Map(),
+        invoiceToVendor: new Map(),
+        tokenToVendors: new Map()
+      };
+      return undefined;
+    }
+
+    vendorSubscriptionRef.current = subscribeToCompanyVendors(currentCompanyId, (profiles = []) => {
+      const sorted = [...profiles].sort((a, b) => (b?.usageCount || 0) - (a?.usageCount || 0));
+      setVendorProfiles(sorted);
+      updateVendorLookup(sorted);
+    });
+
+    return () => {
+      if (vendorSubscriptionRef.current) {
+        vendorSubscriptionRef.current();
+        vendorSubscriptionRef.current = null;
+      }
+    };
+  }, [currentCompanyId, updateVendorLookup]);
 
   useEffect(() => {
     if (!editingExpense) {
@@ -2198,8 +2847,8 @@ const paymentStatusStyles = {
     e.preventDefault();
 
     try {
-      setUploadingFiles(true);
       let expenseId;
+      setFormError('');
       const payload = {
         ...formData,
         vendorCountry: formData.vendorCountry === 'OTHER' ? '' : formData.vendorCountry
@@ -2211,20 +2860,44 @@ const paymentStatusStyles = {
       }
 
       const isMarkedAsPaid = payload.paymentStatus === 'paid';
-  if (isMarkedAsPaid && !payload.paidDate) {
-    payload.paidDate = todayIso;
-  } else if (!isMarkedAsPaid) {
-    payload.paidDate = '';
-  }
+      if (isMarkedAsPaid && !payload.paidDate) {
+        payload.paidDate = todayIso;
+      } else if (!isMarkedAsPaid) {
+        payload.paidDate = '';
+      }
+
+      if (!payload.financialAccountId) {
+        const fallbackAccountId = getDefaultExpenseAccountId();
+        if (fallbackAccountId) {
+          payload.financialAccountId = fallbackAccountId;
+          payload.bankAccount = 'Financial Account';
+        }
+      }
+
+      if (isMarkedAsPaid && !payload.financialAccountId && financialAccounts.length > 0) {
+        setFormError('Select a financial account before saving a paid document. You can add new accounts from Settings → Financial Accounts.');
+        return;
+      }
+
+      setUploadingFiles(true);
+
       const expensePayload = {
         ...payload,
-        financialAccountId: isMarkedAsPaid ? payload.financialAccountId : '',
-        paymentMethod: isMarkedAsPaid ? payload.paymentMethod : '',
-    paymentMethodDetails: isMarkedAsPaid ? payload.paymentMethodDetails : '',
-    paidDate: isMarkedAsPaid ? (payload.paidDate || todayIso) : ''
+        financialAccountId: payload.financialAccountId || '',
+        paymentMethod: payload.paymentMethod || '',
+        paymentMethodDetails: isMarkedAsPaid ? payload.paymentMethodDetails : '',
+        paidDate: isMarkedAsPaid ? (payload.paidDate || todayIso) : ''
       };
-      const newAmount = parseFloat(formData.amount || 0);
-      const newAccountId = isMarkedAsPaid ? expensePayload.financialAccountId : '';
+
+      if (expensePayload.approvalStatus === 'approved' && !expensePayload.approvedAt) {
+        expensePayload.approvedAt = new Date().toISOString();
+      }
+      if (expensePayload.approvalStatus === 'awaiting' && !expensePayload.approvalRequestedAt) {
+        expensePayload.approvalRequestedAt = new Date().toISOString();
+      }
+      if (expensePayload.approvalStatus !== 'approved') {
+        expensePayload.approvedAt = '';
+      }
 
       if (!currentCompanyId) {
         alert('Please select a company to add expenses.');
@@ -2235,42 +2908,11 @@ const paymentStatusStyles = {
       if (editingExpense) {
         // Update existing expense
         expenseId = editingExpense.id;
-        const oldAmount = parseFloat(editingExpense.amount || 0);
-        const oldAccountId = editingExpense.financialAccountId || '';
-        const wasPreviouslyPaid = editingExpense.paymentStatus === 'paid';
-        
         await updateCompanyExpense(currentCompanyId, expenseId, {
           ...expensePayload,
           updatedAt: new Date().toISOString()
         });
         
-        // Update account balances when payment state changes
-        if (wasPreviouslyPaid && !isMarkedAsPaid) {
-          if (oldAccountId && oldAmount > 0) {
-            await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
-          }
-        } else if (!wasPreviouslyPaid && isMarkedAsPaid) {
-          if (newAccountId && newAmount > 0) {
-            await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
-          }
-        } else if (wasPreviouslyPaid && isMarkedAsPaid) {
-        if (oldAccountId && oldAccountId !== newAccountId) {
-            if (oldAccountId && oldAmount > 0) {
-          await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
-            }
-            if (newAccountId && newAmount > 0) {
-            await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
-          }
-        } else if (newAccountId && oldAmount !== newAmount) {
-          const difference = oldAmount - newAmount;
-          if (difference !== 0) {
-            await updateAccountBalance(currentCompanyId, newAccountId, difference, 'expense');
-            }
-          } else if (!newAccountId && oldAccountId && oldAmount > 0) {
-            // Payment account removed while remaining paid — reverse previous deduction
-            await updateAccountBalance(currentCompanyId, oldAccountId, oldAmount, 'expense');
-          }
-        }
       } else {
         // Add new expense
         expenseId = await addCompanyExpense(currentCompanyId, currentUser.uid, {
@@ -2278,11 +2920,6 @@ const paymentStatusStyles = {
           accountId: currentAccountId,
           createdAt: new Date().toISOString()
         });
-        
-        // Update account balance only when marking as paid
-        if (isMarkedAsPaid && newAccountId && newAmount > 0) {
-          await updateAccountBalance(currentCompanyId, newAccountId, -newAmount, 'expense');
-        }
       }
 
       // Upload files if any
@@ -2329,6 +2966,43 @@ const paymentStatusStyles = {
       }
 
       // Reload expenses
+      const matchedProfile = (() => {
+        const candidate = lastMatchedVendorProfileRef.current;
+        if (!candidate) return null;
+        const normalizedCandidate = normalizeVendorName(candidate.name || candidate.displayName || candidate.normalizedName || '');
+        const normalizedVendor = normalizeVendorName(expensePayload.vendor || '');
+        if (normalizedCandidate && normalizedVendor && normalizedCandidate === normalizedVendor) {
+          return candidate;
+        }
+        return null;
+      })();
+      try {
+        if (expensePayload.vendor || expensePayload.invoiceNumber) {
+          await upsertCompanyVendorProfile(currentCompanyId, currentUser.uid, {
+            name: expensePayload.vendor,
+            vendor: expensePayload.vendor,
+            vendorAddress: expensePayload.vendorAddress,
+            vendorCountry: expensePayload.vendorCountry,
+            currency: expensePayload.currency,
+            vatNumber: expensePayload.vatNumber,
+            chamberOfCommerceNumber: expensePayload.chamberOfCommerceNumber,
+            paymentMethod: expensePayload.paymentMethod,
+            paymentMethodDetails: expensePayload.paymentMethodDetails,
+            invoiceNumber: expensePayload.invoiceNumber,
+            invoiceDate: expensePayload.invoiceDate,
+            dueDate: expensePayload.dueDate,
+            amount: Number.isFinite(newAmount) ? Number(newAmount) : undefined,
+            paymentStatus: expensePayload.paymentStatus,
+            documentType: expensePayload.documentType,
+            notes: expensePayload.notes,
+            source: matchedProfile ? 'smart_fill_profile_match' : 'expense_form',
+            matchedProfileId: matchedProfile?.id || null
+          });
+        }
+      } catch (vendorError) {
+        console.error('Failed to update vendor profile:', vendorError);
+      }
+      lastMatchedVendorProfileRef.current = null;
       await loadExpenses();
 
       trackEvent('document_saved', {
@@ -2410,7 +3084,11 @@ const paymentStatusStyles = {
         if (templateExpense.dueDate) next.dueDate = templateExpense.dueDate;
         if (templateExpense.description && !next.description) next.description = templateExpense.description;
         if (templateExpense.paidDate) next.paidDate = templateExpense.paidDate;
-
+        if (templateExpense.financialAccountId) {
+          next.financialAccountId = templateExpense.financialAccountId;
+          next.bankAccount = 'Financial Account';
+        }
+ 
         if (normalizedDocType === 'receipt') {
           if (templateExpense.amount) {
             const parsedAmount = parseNumericAmount(String(templateExpense.amount));
@@ -2446,6 +3124,14 @@ const paymentStatusStyles = {
         next.paidDate = todayIso;
       }
 
+      if (!next.financialAccountId) {
+        const fallbackAccountId = getDefaultExpenseAccountId();
+        if (fallbackAccountId) {
+          next.financialAccountId = fallbackAccountId;
+          next.bankAccount = 'Financial Account';
+        }
+      }
+
       return next;
     });
     setEditingExpense(null);
@@ -2461,8 +3147,9 @@ const paymentStatusStyles = {
     setFormData({
       date: expense.date,
       invoiceDate: expense.invoiceDate || expense.date,
-    dueDate: expense.dueDate || '',
-    paidDate: expense.paidDate || '',
+      dueDate: expense.dueDate || '',
+      scheduledPaymentDate: expense.scheduledPaymentDate || '',
+      paidDate: expense.paidDate || '',
       category: expense.category,
       currency: expense.currency || 'EUR',
       vendor: expense.vendor,
@@ -2475,12 +3162,19 @@ const paymentStatusStyles = {
       amount: expense.amount,
       btw: expense.btw,
       reverseCharge: Boolean(expense.reverseCharge),
-      bankAccount: expense.bankAccount || 'Business Checking',
+      bankAccount: expense.financialAccountId ? 'Financial Account' : (expense.bankAccount || 'Business Checking'),
       financialAccountId: expense.financialAccountId || '',
       paymentMethod: expense.paymentMethod,
       paymentMethodDetails: expense.paymentMethodDetails || '',
       documentType: expense.documentType || 'invoice',
       paymentStatus: expense.paymentStatus || 'open',
+      approvalStatus: expense.approvalStatus || 'draft',
+      approvalNotes: expense.approvalNotes || '',
+      approvalRequestedAt: expense.approvalRequestedAt || '',
+      approvedAt: expense.approvedAt || '',
+      contractReference: expense.contractReference || '',
+      contractUrl: expense.contractUrl || '',
+      paymentScheduleNotes: expense.paymentScheduleNotes || '',
       vatValidationStatus: expense.vatValidationStatus || 'idle',
       vatValidatedAt: expense.vatValidatedAt || '',
       notes: expense.notes || ''
@@ -2520,8 +3214,9 @@ const paymentStatusStyles = {
       try {
         const mappedData = await parseExpensesWithExcelJS(file);
         if (Array.isArray(mappedData) && mappedData.length > 0) {
-          setImportedData(mappedData);
-          setShowImportModal(true);
+        const preparedRows = prepareImportedRows(mappedData);
+        setImportedData(preparedRows);
+        setShowImportModal(true);
           return;
         }
       } catch (excelJsError) {
@@ -2592,10 +3287,35 @@ const paymentStatusStyles = {
             
             // Map columns based on header names
             headers.forEach((header, colIndex) => {
-              const value = row[colIndex] ? String(row[colIndex]).trim() : '';
+              const rawValue = row[colIndex];
+              const value = rawValue !== undefined && rawValue !== null ? String(rawValue).trim() : '';
               
               if (header.includes('date')) {
                 // Handle various date formats
+                if (rawValue instanceof Date) {
+                  const iso = rawValue.toISOString().split('T')[0];
+                  if (header.includes('due')) {
+                    expense.dueDate = iso;
+                  } else if (header.includes('invoice')) {
+                    expense.invoiceDate = iso;
+                  } else {
+                    expense.date = iso;
+                  }
+                } else if (typeof rawValue === 'number') {
+                  const dateCode = XLSX.SSF?.parse_date_code?.(rawValue);
+                  if (dateCode) {
+                    const isoDate = `${dateCode.y.toString().padStart(4, '0')}-${dateCode.m.toString().padStart(2, '0')}-${dateCode.d.toString().padStart(2, '0')}`;
+                    if (header.includes('due')) {
+                      expense.dueDate = isoDate;
+                    } else if (header.includes('invoice')) {
+                      expense.invoiceDate = isoDate;
+                    } else {
+                      expense.date = isoDate;
+                    }
+                    return;
+                  }
+                }
+
                 if (value) {
                   const date = new Date(value);
                   if (!isNaN(date.getTime())) {
@@ -2635,12 +3355,21 @@ const paymentStatusStyles = {
                 expense.description = value;
               } else if (header.includes('amount') && !header.includes('vat')) {
                 // Remove currency symbols and parse
-                const amountStr = value.replace(/[€$£,\s]/g, '').replace(',', '.');
-                expense.amount = parseFloat(amountStr) || 0;
+                if (typeof rawValue === 'number') {
+                  expense.amount = rawValue;
+                } else {
+                  const sanitized = value.replace(/[€$£]/g, '').replace(/\s/g, '');
+                  const normalized = sanitized.replace(/,/g, '.');
+                  const numeric = parseFloat(normalized);
+                  expense.amount = Number.isFinite(numeric) ? parseFloat(numeric.toFixed(2)) : 0;
+                }
+
                 if (value.includes('$')) {
                   expense.currency = 'USD';
                 } else if (value.includes('£')) {
                   expense.currency = 'GBP';
+                } else if (value.includes('€')) {
+                  expense.currency = 'EUR';
                 }
               } else if (header.includes('payment') && header.includes('method')) {
                 const paymentParts = value.split('#');
@@ -2676,7 +3405,9 @@ const paymentStatusStyles = {
           })
           .filter(expense => expense.vendor || expense.description || expense.amount > 0);
         
-        setImportedData(mappedData);
+        const preparedRows = prepareImportedRows(mappedData);
+        setImportedData(preparedRows);
+        setImportErrors([]);
         setShowImportModal(true);
       };
       
@@ -2685,6 +3416,39 @@ const paymentStatusStyles = {
       console.error('Error reading Excel file:', error);
       alert('Error reading Excel file. Please ensure it\'s a valid .xlsx or .xls file.');
     }
+  };
+
+  const downloadImportErrors = (errorRows = []) => {
+    if (!Array.isArray(errorRows) || errorRows.length === 0) {
+      alert('No validation issues to download.');
+      return;
+    }
+
+    const header = ['rowIndex', 'issues', 'date', 'invoiceDate', 'vendor', 'amount', 'description'];
+    const rows = errorRows.map((row) => [
+      row.rowIndex,
+      (row.issues || []).join('; '),
+      row.data?.date || row.data?.invoiceDate || '',
+      row.data?.invoiceDate || '',
+      row.data?.vendor || '',
+      row.data?.amount || '',
+      (row.data?.description || '').replace(/\n/g, ' ')
+    ]);
+
+    const csvContent = [header, ...rows]
+      .map((line) => line.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bizcopilot-import-errors-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Handle OCR processing for bank statements
@@ -2814,26 +3578,76 @@ const paymentStatusStyles = {
     
     try {
       let successCount = 0;
-      let errorCount = 0;
-      
+      let duplicateCount = 0;
+      const errorDetails = [];
+      const errorRows = [];
+
+      const buildExpenseKey = ({ date, invoiceDate, vendor, amount, invoiceNumber }) => {
+        const canonicalDate = (date || invoiceDate || '').slice(0, 10);
+        const vendorKey = (vendor || '').toLowerCase().trim();
+        const invoiceKey = (invoiceNumber || '').toLowerCase().trim();
+        const amountNumber = Number.isFinite(amount) ? amount : parseFloat(amount || 0);
+        const amountKey = Number.isFinite(amountNumber) ? amountNumber.toFixed(2) : '0.00';
+        return `${canonicalDate}|${vendorKey}|${amountKey}|${invoiceKey}`;
+      };
+
+      const existingKeys = new Set(
+        (expenses || []).map((expense) =>
+          buildExpenseKey({
+            date: expense.date,
+            invoiceDate: expense.invoiceDate,
+            vendor: expense.vendor,
+            amount: parseFloat(expense.amount),
+            invoiceNumber: expense.invoiceNumber
+          })
+        )
+      );
+
       for (let i = 0; i < importedData.length; i++) {
         const expenseData = importedData[i];
-        
-        // Skip if missing required fields
-        if (!expenseData.date || !expenseData.vendor || !expenseData.amount) {
-          errorCount++;
-          continue;
-        }
-        
+        const rowLabel = expenseData.rowIndex ? `Row ${expenseData.rowIndex}` : `Row ${i + 1}`;
+
         try {
-          // Map to form data structure
           const parsedAmount = typeof expenseData.amount === 'number'
             ? expenseData.amount
-            : parseNumericAmount(expenseData.amount);
-          const expenseToAdd = {
+            : parseNumericAmount(String(expenseData.amount || ''));
+
+          if (!Number.isFinite(parsedAmount) || parsedAmount === 0) {
+            throw new Error('Amount is missing or invalid.');
+          }
+          if (!expenseData.date && !expenseData.invoiceDate) {
+            throw new Error('Date is missing.');
+          }
+          if (!expenseData.vendor) {
+            throw new Error('Vendor is missing.');
+          }
+
+          const dedupeKey = buildExpenseKey({
             date: expenseData.date,
+            invoiceDate: expenseData.invoiceDate,
+            vendor: expenseData.vendor,
+            amount: parsedAmount,
+            invoiceNumber: expenseData.invoiceNumber
+          });
+
+          if (existingKeys.has(dedupeKey)) {
+            duplicateCount += 1;
+            errorDetails.push(`${rowLabel} — Duplicate detected (skipped).`);
+            errorRows.push({
+              rowIndex: expenseData.rowIndex || i + 1,
+              issues: ['Duplicate detected (skipped).'],
+              data: expenseData
+            });
+            continue;
+          }
+
+          const descriptionValue = (expenseData.description || expenseData.vendor || 'Imported expense').toString();
+
+          const expenseToAdd = {
+            date: expenseData.date || expenseData.invoiceDate,
             invoiceDate: expenseData.invoiceDate || expenseData.date,
             dueDate: expenseData.dueDate || '',
+            scheduledPaymentDate: expenseData.scheduledPaymentDate || '',
             category: expenseData.category || 'Other',
             currency: expenseData.currency || 'EUR',
             vendor: expenseData.vendor,
@@ -2842,8 +3656,8 @@ const paymentStatusStyles = {
             invoiceNumber: expenseData.invoiceNumber || '',
             vatNumber: expenseData.vatNumber || '',
             chamberOfCommerceNumber: expenseData.chamberOfCommerceNumber || '',
-            description: expenseData.description || expenseData.vendor,
-            amount: Number.isFinite(parsedAmount) ? parsedAmount.toFixed(2) : '0',
+            description: descriptionValue,
+            amount: parsedAmount.toFixed(2),
             btw: typeof expenseData.btw === 'number' ? expenseData.btw : 21,
             reverseCharge: Boolean(expenseData.reverseCharge),
             bankAccount: 'Business Checking',
@@ -2851,37 +3665,54 @@ const paymentStatusStyles = {
             paymentMethod: expenseData.paymentMethod || 'Debit Card',
             paymentMethodDetails: expenseData.paymentMethodDetails || '',
             documentType: importType === 'ocr' ? 'statement' : (expenseData.documentType || 'invoice'),
-            paymentStatus: expenseData.paymentStatus || 'open',
+            paymentStatus: (expenseData.paymentStatus || 'open').toLowerCase(),
+            approvalStatus: (expenseData.approvalStatus || 'awaiting').toLowerCase(),
+            approvalNotes: expenseData.approvalNotes || '',
+            approvalRequestedAt: expenseData.approvalRequestedAt || new Date().toISOString(),
+            approvedAt: expenseData.approvedAt || '',
+            contractReference: expenseData.contractReference || '',
+            contractUrl: expenseData.contractUrl || '',
+            paymentScheduleNotes: expenseData.paymentScheduleNotes || '',
             notes: expenseData.notes || '',
             vatValidationStatus: 'idle',
             vatValidatedAt: '',
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            importedFromExcel: true
           };
-          
+
           await addCompanyExpense(currentCompanyId, currentUser.uid, expenseToAdd);
-          successCount++;
+          successCount += 1;
+          existingKeys.add(dedupeKey);
         } catch (error) {
-          console.error(`Error importing row ${expenseData.rowIndex}:`, error);
-          errorCount++;
+          console.error(`Error importing ${rowLabel}:`, error);
+          errorDetails.push(`${rowLabel} — ${error?.message || 'Unknown error'}`);
+          errorRows.push({
+            rowIndex: expenseData.rowIndex || i + 1,
+            issues: [error?.message || 'Unknown error'],
+            data: expenseData
+          });
         }
-        
-        // Update progress
+
         setImportProgress(((i + 1) / importedData.length) * 100);
       }
-      
-      // Reload expenses
+
       await loadExpenses();
+
+      const errorCount = errorDetails.length;
+      const issuesSummary = errorCount > 0
+        ? `\nErrors: ${errorCount}\n\nTop issues:\n${errorDetails.slice(0, 5).join('\n')}${errorCount > 5 ? '\n...' : ''}`
+        : '';
+      const duplicateSummary = duplicateCount > 0
+        ? `\nSkipped duplicates: ${duplicateCount}`
+        : '';
       
-      // Show results
-      alert(`Import completed!\nSuccessfully imported: ${successCount}\nErrors: ${errorCount}`);
-      
-      // Close modal and reset
+      alert(`Import completed!\nSuccessfully imported: ${successCount}${duplicateSummary}${issuesSummary}`);
       setShowImportModal(false);
       setImportedData([]);
       setImportFile(null);
     } catch (error) {
       console.error('Error during bulk import:', error);
-      alert('Error during import. Please try again.');
+      alert(`Error during import. Please try again.\n${error?.message || ''}`);
     } finally {
       setImporting(false);
       setImportProgress(0);
@@ -2937,6 +3768,29 @@ const paymentStatusStyles = {
     }
   };
 
+  const { vendorOptions, vendorHasMissing } = useMemo(() => {
+    const nameSet = new Set();
+    let hasMissing = false;
+
+    expenses.forEach(expense => {
+      const vendorName = (expense.vendor || '').trim();
+      if (vendorName) {
+        nameSet.add(vendorName);
+      } else {
+        hasMissing = true;
+      }
+    });
+
+    const sorted = Array.from(nameSet).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' })
+    );
+
+    return {
+      vendorOptions: sorted,
+      vendorHasMissing: hasMissing
+    };
+  }, [expenses]);
+
   // Update date range when period type changes
   useEffect(() => {
     if (filters.periodType && filters.periodType !== 'all' && filters.periodType !== 'custom') {
@@ -2953,8 +3807,24 @@ const paymentStatusStyles = {
   const filteredExpenses = useMemo(() => {
     return expenses.filter(exp => {
       if (filters.category !== 'all' && exp.category !== filters.category) return false;
-      if (filters.bankAccount !== 'all' && exp.bankAccount !== filters.bankAccount) return false;
+      if (filters.financialAccountId !== 'all') {
+        if (filters.financialAccountId.startsWith('legacy:')) {
+          const legacyName = filters.financialAccountId.replace('legacy:', '');
+          const expenseBank = (exp.bankAccount || '').toLowerCase();
+          if (expenseBank !== legacyName.toLowerCase()) return false;
+        } else if ((exp.financialAccountId || '') !== filters.financialAccountId) {
+          return false;
+        }
+      }
       if (filters.paymentMethod !== 'all' && exp.paymentMethod !== filters.paymentMethod) return false;
+      if (filters.vendor !== 'all') {
+        const expenseVendor = (exp.vendor || '').trim();
+        if (filters.vendor === '__missing__') {
+          if (expenseVendor) return false;
+        } else if (expenseVendor.toLowerCase() !== filters.vendor.toLowerCase()) {
+          return false;
+        }
+      }
       const docType = (exp.documentType || 'invoice').toLowerCase();
       if (filters.documentType !== 'all' && docType !== filters.documentType) return false;
       const paymentStatus = (exp.paymentStatus || 'open').toLowerCase();
@@ -3016,6 +3886,23 @@ const paymentStatusStyles = {
     return summary;
   }, [expensesRequiringConversion]);
 
+  const approvalSummary = useMemo(() => {
+    const counts = approvalStatusChoices.reduce((acc, choice) => {
+      acc[choice.value] = 0;
+      return acc;
+    }, { total: 0 });
+
+    filteredExpenses.forEach((expense) => {
+      const status = (expense.approvalStatus || 'draft').toLowerCase();
+      if (counts[status] !== undefined) {
+        counts[status] += 1;
+      }
+      counts.total += 1;
+    });
+
+    return counts;
+  }, [filteredExpenses]);
+
   const normalizationRunning = normalizeStatus.state === 'running';
   const normalizeProgressPercent = normalizeStatus.total > 0
     ? Math.round((normalizeStatus.processed / normalizeStatus.total) * 100)
@@ -3057,45 +3944,170 @@ const paymentStatusStyles = {
     }, 0);
   }, [filteredExpenses]);
 
-  const getConversionRate = useCallback(async (fromCurrency, toCurrency, date) => {
+  const getConversionRate = useCallback(async (fromCurrency, toCurrency, requestedDate) => {
     const from = (fromCurrency || BASE_CURRENCY).toUpperCase();
     const to = (toCurrency || BASE_CURRENCY).toUpperCase();
+    const failureMessages = [];
+    lastConversionErrorsRef.current = [];
 
     if (from === to) {
-      return 1;
+      lastConversionErrorsRef.current = [];
+      return {
+        rate: 1,
+        rateDate: requestedDate || 'latest',
+        source: 'convert'
+      };
     }
 
-    const cacheKey = `${from}-${to}-${date || 'latest'}`;
-    if (conversionRateCacheRef.current.has(cacheKey)) {
-      return conversionRateCacheRef.current.get(cacheKey);
+    const attempts = [];
+    const attemptKeys = new Set();
+    const pushAttempt = (value) => {
+      const key = value || 'latest';
+      if (!attemptKeys.has(key)) {
+        attemptKeys.add(key);
+        attempts.push(value);
+      }
+    };
+
+    if (requestedDate) {
+      const parsed = new Date(requestedDate);
+      if (!Number.isNaN(parsed.getTime())) {
+        parsed.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (parsed > today) {
+          pushAttempt(null);
+        } else {
+          pushAttempt(formatDateLocal(parsed));
+          for (let offset = 1; offset <= 7; offset += 1) {
+            const fallback = new Date(parsed);
+            fallback.setDate(parsed.getDate() - offset);
+            if (fallback.getFullYear() < 2000) {
+              break;
+            }
+            pushAttempt(formatDateLocal(fallback));
+          }
+          pushAttempt(null);
+        }
+      } else {
+        pushAttempt(null);
+      }
+    } else {
+      pushAttempt(null);
     }
 
-    try {
-      const params = new URLSearchParams({
-        from,
-        to,
-        amount: '1'
-      });
-      if (date) {
-        params.set('date', date);
+    for (const attemptDate of attempts) {
+      const cacheKey = `${from}-${to}-${attemptDate || 'latest'}`;
+      const cachedResult = conversionRateCacheRef.current.get(cacheKey);
+      if (cachedResult && cachedResult.rate) {
+        lastConversionErrorsRef.current = [];
+        return cachedResult;
       }
-      params.set('places', '6');
 
-      const response = await fetch(`https://api.exchangerate.host/convert?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error(`Rate request failed with status ${response.status}`);
+      const candidateResults = [];
+
+      const fetchStrategies = [
+        async () => {
+          const params = new URLSearchParams({
+            from,
+            to,
+            amount: '1'
+          });
+          if (attemptDate) {
+            params.set('date', attemptDate);
+          }
+          params.set('places', '6');
+
+          const response = await fetch(`https://api.exchangerate.host/convert?${params.toString()}`);
+          if (!response.ok) {
+            throw new Error(`convert endpoint HTTP ${response.status}`);
+          }
+          const data = await response.json();
+          const rate = typeof data?.info?.rate === 'number' && Number.isFinite(data.info.rate)
+            ? data.info.rate
+            : (typeof data?.result === 'number' && Number.isFinite(data.result) ? data.result : null);
+          if (rate) {
+            return {
+              rate,
+              rateDate: data?.date || attemptDate || 'latest',
+              source: 'convert'
+            };
+          }
+          const errorReason = data?.error?.type || data?.error || 'Invalid conversion data';
+          throw new Error(typeof errorReason === 'string' ? errorReason : JSON.stringify(errorReason));
+        },
+        async () => {
+          const endpointDate = attemptDate || 'latest';
+          const params = new URLSearchParams({
+            base: from,
+            symbols: to
+          });
+          const response = await fetch(`https://api.exchangerate.host/${endpointDate}?${params.toString()}`);
+          if (!response.ok) {
+            throw new Error(`historical endpoint HTTP ${response.status}`);
+          }
+          const data = await response.json();
+          const rate = typeof data?.rates?.[to] === 'number' && Number.isFinite(data.rates[to])
+            ? data.rates[to]
+            : null;
+          if (rate) {
+            return {
+              rate,
+              rateDate: data?.date || endpointDate,
+              source: 'historical'
+            };
+          }
+          const errorReason = data?.error?.type || data?.error || 'Invalid historical data';
+          throw new Error(typeof errorReason === 'string' ? errorReason : JSON.stringify(errorReason));
+        },
+        async () => {
+          const frankfurtDate = attemptDate || 'latest';
+          const params = new URLSearchParams({
+            from,
+            to
+          });
+          const response = await fetch(`https://api.frankfurter.app/${frankfurtDate}?${params.toString()}`);
+          if (!response.ok) {
+            throw new Error(`frankfurter endpoint HTTP ${response.status}`);
+          }
+          const data = await response.json();
+          const rate = typeof data?.rates?.[to] === 'number' && Number.isFinite(data.rates[to])
+            ? data.rates[to]
+            : null;
+          if (rate) {
+            return {
+              rate,
+              rateDate: data?.date || frankfurtDate,
+              source: 'frankfurter'
+            };
+          }
+          const errorReason = data?.error?.message || data?.error || 'Invalid frankfurter data';
+          throw new Error(typeof errorReason === 'string' ? errorReason : JSON.stringify(errorReason));
+        }
+      ];
+
+      for (const strategy of fetchStrategies) {
+        try {
+          const result = await strategy();
+          if (result?.rate) {
+            conversionRateCacheRef.current.set(cacheKey, result);
+            lastConversionErrorsRef.current = [];
+            return result;
+          }
+        } catch (error) {
+          candidateResults.push(`(${attemptDate || 'latest'}) ${error?.message || error}`);
+          failureMessages.push(`(${attemptDate || 'latest'}) ${error?.message || error}`);
+          console.warn(`Conversion rate fallback (${from}→${to}) failed:`, error?.message || error);
+        }
       }
-      const data = await response.json();
-      const rate = data?.info?.rate || data?.result;
-      if (typeof rate === 'number' && Number.isFinite(rate)) {
-        conversionRateCacheRef.current.set(cacheKey, rate);
-        return rate;
-      }
-      throw new Error('Invalid conversion data');
-    } catch (error) {
-      console.error(`Conversion rate error (${from}→${to} @ ${date || 'latest'}):`, error);
-      return null;
     }
+
+    if (failureMessages.length) {
+      lastConversionErrorsRef.current = failureMessages;
+    }
+
+    return null;
   }, []);
 
   const handleNormalizeCurrency = useCallback(async () => {
@@ -3143,9 +4155,12 @@ const paymentStatusStyles = {
       }
 
       const referenceDate = expense.invoiceDate || expense.paidDate || expense.date || todayIso;
-      const rate = await getConversionRate(originalCurrency, BASE_CURRENCY, referenceDate);
-      if (!rate) {
-        errors.push(`Rate unavailable for ${originalCurrency} → ${BASE_CURRENCY} on ${referenceDate}.`);
+      const rateResult = await getConversionRate(originalCurrency, BASE_CURRENCY, referenceDate);
+      if (!rateResult || !rateResult.rate) {
+        const failureNotes = Array.isArray(lastConversionErrorsRef.current) && lastConversionErrorsRef.current.length
+          ? `Details: ${lastConversionErrorsRef.current.join('; ')}`
+          : 'Rate service returned no data.';
+        errors.push(`Rate unavailable for ${originalCurrency} → ${BASE_CURRENCY} on ${referenceDate} (including historical fallback). ${failureNotes}`);
         setNormalizeStatus(prev => ({
           ...prev,
           processed: prev.processed + 1,
@@ -3155,6 +4170,12 @@ const paymentStatusStyles = {
         continue;
       }
 
+      const { rate, rateDate } = rateResult;
+      const conversionSourceLabel = rateResult.source === 'historical'
+        ? 'exchangerate.host (historical)'
+        : rateResult.source === 'frankfurter'
+          ? 'frankfurter.app'
+          : 'exchangerate.host';
       const convertedAmount = (amount * rate).toFixed(2);
       try {
         await updateCompanyExpense(currentCompanyId, expense.id, {
@@ -3164,8 +4185,9 @@ const paymentStatusStyles = {
             originalAmount: amount,
             originalCurrency,
             conversionRate: rate,
-            conversionDate: referenceDate,
-            conversionSource: 'exchangerate.host',
+            requestedDate: referenceDate,
+            rateDateUsed: rateDate,
+            conversionSource: conversionSourceLabel,
             convertedAt: new Date().toISOString()
           }
         });
@@ -3205,6 +4227,97 @@ const paymentStatusStyles = {
       currency: 'EUR'
     }).format(amount || 0);
   };
+
+  const formatCurrencyFor = (amount, currencyCode = BASE_CURRENCY) => {
+    if (!Number.isFinite(amount)) {
+      return `${currencyCode || ''} ${amount}`;
+    }
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: currencyCode || BASE_CURRENCY
+      }).format(amount);
+    } catch (error) {
+      return `${amount.toFixed(2)} ${currencyCode || ''}`;
+    }
+  };
+
+  const financialAccountFilterOptions = useMemo(() => {
+    if (!Array.isArray(financialAccounts)) return [];
+    return financialAccounts.map((account) => ({
+      value: account.id,
+      label: account.name || 'Unnamed account',
+      currency: account.currency || 'EUR'
+    }));
+  }, [financialAccounts]);
+
+  const legacyBankOptions = useMemo(() => {
+    const banks = new Set();
+    (expenses || []).forEach((expense) => {
+      if (!expense) return;
+      const bankName = (expense.bankAccount || '').toString().trim();
+      if (!bankName) return;
+      if (bankName.toLowerCase() === 'financial account') return;
+      banks.add(bankName);
+    });
+    return Array.from(banks)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .map((name) => ({
+        value: `legacy:${name}`,
+        label: `${name} (legacy)`
+      }));
+  }, [expenses]);
+
+  const financialAccountFilterOptionsWithLegacy = useMemo(() => {
+    return [
+      ...financialAccountFilterOptions,
+      ...legacyBankOptions
+    ];
+  }, [financialAccountFilterOptions, legacyBankOptions]);
+
+  const financialAccountLookup = useMemo(() => {
+    const map = new Map();
+    (financialAccounts || []).forEach((account) => {
+      if (account && account.id) {
+        map.set(account.id, account);
+      }
+    });
+    return map;
+  }, [financialAccounts]);
+
+  const expenseEligibleAccounts = useMemo(() => {
+    if (!Array.isArray(financialAccounts)) return [];
+    return financialAccounts.filter((account) => {
+      if (!account || account.isActive === false) return false;
+      const links = Array.isArray(account.linkedTo) ? account.linkedTo : [];
+      if (links.length === 0) return true;
+      return links.includes('expenses');
+    });
+  }, [financialAccounts]);
+
+  const getDefaultExpenseAccountId = useCallback(() => {
+    if (!Array.isArray(financialAccounts) || financialAccounts.length === 0) {
+      return '';
+    }
+
+    const eligible = expenseEligibleAccounts.length > 0
+      ? expenseEligibleAccounts
+      : financialAccounts.filter((account) => account && account.isActive !== false);
+
+    if (eligible.length === 0) {
+      return '';
+    }
+
+    const lastUsed = lastUsedFinancialAccountRef.current;
+    if (lastUsed) {
+      const match = eligible.find((account) => account.id === lastUsed);
+      if (match) {
+        return match.id;
+      }
+    }
+
+    return eligible[0]?.id || '';
+  }, [financialAccounts, expenseEligibleAccounts]);
 
   // Show skeleton UI instead of blocking blank screen
   return (
@@ -3250,7 +4363,7 @@ const paymentStatusStyles = {
                   {editingExpense ? 'Edit Expense' : 'Add New Expense'}
                 </h3>
                 <div className="flex items-center gap-2">
-                  <button
+                <button
                     type="button"
                     onClick={() => handleCloseModal('cancel_button')}
                     className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400"
@@ -3410,7 +4523,7 @@ const paymentStatusStyles = {
                         <option value="OTHER">Outside EU / Manual</option>
                       </select>
                       <p className="text-xs text-gray-500 mt-1">
-                        Defaults to your company’s country. Adjust if this vendor is based elsewhere.
+                        Defaults to your company's country. Adjust if this vendor is based elsewhere.
                       </p>
                     </div>
                 <div>
@@ -3428,75 +4541,77 @@ const paymentStatusStyles = {
                 </div>
               </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-4 items-end">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    VAT Number (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    name="vatNumber"
-                    value={formData.vatNumber}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g. NL123456789B01"
-                  />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleVatValidation}
-                      className="inline-flex items-center justify-center px-4 py-2 border border-blue-500 text-blue-600 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      Validate VAT
-                    </button>
-                </div>
-
-                  {vatValidationState.status !== 'idle' && (
-                    <div
-                      className={`text-sm rounded-md px-3 py-2 ${
-                        vatValidationState.status === 'success'
-                          ? 'bg-green-50 text-green-700 border border-green-200'
-                          : vatValidationState.status === 'loading'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
-                      }`}
-                    >
-                      <p>{vatValidationState.message}</p>
-                      {vatValidationState.lastChecked && (
-                        <p className="text-xs mt-1">
-                          Last checked: {new Date(vatValidationState.lastChecked).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Chamber of Commerce Number (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    name="chamberOfCommerceNumber"
-                    value={formData.chamberOfCommerceNumber}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="KVK Number"
-                  />
-                </div>
-                    <div className="flex items-center gap-3 mt-6 md:mt-9">
-                      <input
-                        id="reverseCharge"
-                        type="checkbox"
-                        checked={formData.reverseCharge}
-                        onChange={handleReverseChargeChange}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <label htmlFor="reverseCharge" className="text-sm text-gray-700">
-                        Reverse charge applies (cross-border B2B)
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-4 items-end">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        VAT Number (Optional)
                       </label>
+                      <input
+                        type="text"
+                        name="vatNumber"
+                        value={formData.vatNumber}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g. NL123456789B01"
+                      />
                     </div>
-              </div>
+                        <button
+                          type="button"
+                          onClick={handleVatValidation}
+                          className="inline-flex items-center justify-center px-4 py-2 border border-blue-500 text-blue-600 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          Validate VAT
+                        </button>
+                  </div>
+
+                      {vatValidationState.status !== 'idle' && (
+                        <div
+                          className={`text-sm rounded-md px-3 py-2 ${
+                            vatValidationState.status === 'success'
+                              ? 'bg-green-50 text-green-700 border border-green-200'
+                              : vatValidationState.status === 'loading'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                          }`}
+                        >
+                          <p>{vatValidationState.message}</p>
+                          {vatValidationState.lastChecked && (
+                            <p className="text-xs mt-1">
+                              Last checked: {new Date(vatValidationState.lastChecked).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Chamber of Commerce Number (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        name="chamberOfCommerceNumber"
+                        value={formData.chamberOfCommerceNumber}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="KVK Number"
+                      />
+                    </div>
+                        <div className="flex items-center gap-3 mt-6 md:mt-9">
+                          <input
+                            id="reverseCharge"
+                            type="checkbox"
+                            checked={formData.reverseCharge}
+                            onChange={handleReverseChargeChange}
+                            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <label htmlFor="reverseCharge" className="text-sm text-gray-700">
+                            Reverse charge applies (cross-border B2B)
+                          </label>
+                    </div>
+                  </div>
+                    </>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -3563,94 +4678,214 @@ const paymentStatusStyles = {
                 </div>
               </div>
 
+              <div className="border-t border-gray-200 pt-4 mt-6 space-y-4">
+                <h4 className="text-base font-semibold text-gray-900">Approval & Scheduling</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Approval Status
+                    </label>
+                    <select
+                      name="approvalStatus"
+                      value={formData.approvalStatus}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {approvalStatusChoices.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Scheduled Payment Date
+                    </label>
+                    <input
+                      type="date"
+                      name="scheduledPaymentDate"
+                      value={formData.scheduledPaymentDate}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Contract Reference
+                    </label>
+                    <input
+                      type="text"
+                      name="contractReference"
+                      value={formData.contractReference}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g., MSP Master Agreement"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Contract Link (optional)
+                    </label>
+                    <input
+                      type="url"
+                      name="contractUrl"
+                      value={formData.contractUrl}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Notes (optional)
+                    </label>
+                    <textarea
+                      name="paymentScheduleNotes"
+                      value={formData.paymentScheduleNotes}
+                      onChange={handleInputChange}
+                      rows="2"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Add reminders or payment instructions"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Approval Notes (internal)
+                  </label>
+                  <textarea
+                    name="approvalNotes"
+                    value={formData.approvalNotes}
+                    onChange={handleInputChange}
+                    rows="3"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Add context for the approver or record decisions"
+                  />
+                </div>
+              </div>
+
+          {editingExpense?.conversionMeta && (
+            <div className="mt-3 bg-indigo-50 border border-indigo-200 rounded-md px-3 py-3 text-sm text-indigo-800 space-y-1">
+              <p className="font-semibold flex items-center gap-2">
+                <FaSyncAlt className="w-4 h-4" />
+                Currency normalization details
+              </p>
+              <p>
+                {formatCurrencyFor(editingExpense.conversionMeta.originalAmount, editingExpense.conversionMeta.originalCurrency)} → {formatCurrency(parseFloat(formData.amount) || 0)}
+              </p>
+              <p>
+                Rate {Number.isFinite(editingExpense.conversionMeta.conversionRate) ? editingExpense.conversionMeta.conversionRate.toFixed(4) : '—'} • {editingExpense.conversionMeta.rateDateUsed ? `Rate date ${formatDateTime(editingExpense.conversionMeta.rateDateUsed, { dateStyle: 'medium' })}` : 'Latest available'} • Source {editingExpense.conversionMeta.conversionSource || 'Unknown'}
+              </p>
+              {editingExpense.conversionMeta.convertedAt && (
+                <p className="text-xs text-indigo-600">
+                  Converted {formatDateTime(editingExpense.conversionMeta.convertedAt, { dateStyle: 'medium', timeStyle: 'short' })}
+                </p>
+              )}
+            </div>
+          )}
+
                   {paymentSectionVisible ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <FinancialAccountSelect
-                    value={formData.financialAccountId}
-                    onChange={(e) => {
-                      setFormData(prev => ({
-                        ...prev,
-                        financialAccountId: e.target.value,
-                        bankAccount: e.target.value ? 'Financial Account' : prev.bankAccount
-                      }));
-                    }}
-                    filterBy={['expenses']}
-                    label="Financial Account"
-                    required={false}
-                    showBalance={true}
-                    onAddAccount={() => {
-                      window.open('/settings?tab=accounts', '_blank');
-                    }}
-                  />
-                  {!formData.financialAccountId && (
-                    <div className="mt-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Bank Account (Legacy)
-                      </label>
-                      <select
-                        name="bankAccount"
-                        value={formData.bankAccount}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {bankAccounts.map(account => (
-                          <option key={account} value={account}>{account}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-                <div className="md:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Payment Method
-                  </label>
-                  <select
-                    name="paymentMethod"
-                    value={formData.paymentMethod}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {paymentMethods.map(method => (
-                      <option key={method} value={method}>{method}</option>
-                    ))}
-                  </select>
-                  {(formData.paymentMethod === 'Debit Card' || formData.paymentMethod === 'Credit Card') && (
-                    <div className="mt-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Card Details (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        name="paymentMethodDetails"
-                        value={formData.paymentMethodDetails}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g., MC #5248***2552, Visa #4532****1234"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Enter card type and last 4 digits (e.g., MC #5248***2552)
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div className="md:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Paid Date
-                  </label>
-                  <input
-                    type="date"
-                    name="paidDate"
-                    value={formData.paidDate}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Use the date the payment cleared or the receipt was issued.
-                  </p>
-                </div>
+                      <div>
+                        <FinancialAccountSelect
+                          value={formData.financialAccountId}
+                          onChange={(e) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              financialAccountId: e.target.value,
+                              bankAccount: e.target.value ? 'Financial Account' : prev.bankAccount
+                            }));
+                          }}
+                          filterBy={['expenses']}
+                          label="Financial Account"
+                          required={false}
+                          showBalance={true}
+                          accounts={financialAccounts}
+                          loading={financialAccountsLoading}
+                          error={financialAccountsError}
+                          onAddAccount={() => {
+                            window.open('/settings?tab=accounts', '_blank');
+                          }}
+                        />
+                        {paymentSectionVisible && !financialAccountsLoading && financialAccounts.length === 0 && (
+                          <p className="mt-2 text-xs text-orange-600">
+                            No financial accounts are configured yet. Add one from Settings → Financial Accounts to track payments accurately.
+                          </p>
+                        )}
+                        {paymentSectionVisible && financialAccounts.length > 0 && !formData.financialAccountId && (
+                          <p className="mt-2 text-xs text-orange-600">
+                            Select a managed financial account so this payment posts against the correct balance.
+                          </p>
+                        )}
+                        {!formData.financialAccountId && (
+                          <div className="mt-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Bank Account (Legacy)
+                            </label>
+                            <select
+                              name="bankAccount"
+                              value={formData.bankAccount}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              {bankAccounts.map(account => (
+                                <option key={account} value={account}>{account}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      <div className="md:col-span-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Payment Method
+                        </label>
+                        <select
+                          name="paymentMethod"
+                          value={formData.paymentMethod}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {paymentMethods.map(method => (
+                            <option key={method} value={method}>{method}</option>
+                          ))}
+                        </select>
+                        {(formData.paymentMethod === 'Debit Card' || formData.paymentMethod === 'Credit Card') && (
+                          <div className="mt-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Card Details (Optional)
+                            </label>
+                            <input
+                              type="text"
+                              name="paymentMethodDetails"
+                              value={formData.paymentMethodDetails}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="e.g., MC #5248***2552, Visa #4532****1234"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                              Enter card type and last 4 digits (e.g., MC #5248***2552)
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="md:col-span-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Paid Date
+                        </label>
+                        <input
+                          type="date"
+                          name="paidDate"
+                          value={formData.paidDate}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Use the date the payment cleared or the receipt was issued.
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     <div className="bg-blue-50 border border-blue-200 text-sm text-blue-700 rounded-md px-3 py-3">
@@ -3660,48 +4895,48 @@ const paymentStatusStyles = {
                   )}
               </div>
 
-                <div className="overflow-y-auto pr-2 lg:max-h-[72vh]">
-                  <AttachmentPanel
-                    selectedFiles={selectedFiles}
+              <div className="overflow-y-auto pr-2 lg:max-h-[72vh]">
+                <AttachmentPanel
+                  selectedFiles={selectedFiles}
                   onFilesChange={setSelectedFiles}
-                    previewItems={previewItems}
-                    existingAttachments={existingAttachments}
-                    currentPreviewId={currentPreviewId}
-                    setCurrentPreviewId={setCurrentPreviewId}
-                    zoomLevel={zoomLevel}
-                    setZoomLevel={setZoomLevel}
-                    notesValue={formData.notes}
-                    onNotesChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
-                    documentType={formData.documentType}
-                    onDocumentTypeChange={(value) => setFormData(prev => ({ ...prev, documentType: value }))}
-                    paymentStatus={formData.paymentStatus}
-                    onPaymentStatusChange={(value) => setFormData(prev => ({ ...prev, paymentStatus: value }))}
-                    autoFillStatus={autoFillStatus}
-                    autoFillMessage={autoFillMessage}
-                    autoFillProgress={autoFillProgress}
-                    className="h-full"
+                  previewItems={previewItems}
+                  existingAttachments={existingAttachments}
+                  currentPreviewId={currentPreviewId}
+                  setCurrentPreviewId={setCurrentPreviewId}
+                  zoomLevel={zoomLevel}
+                  setZoomLevel={setZoomLevel}
+                  notesValue={formData.notes}
+                  onNotesChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
+                  documentType={formData.documentType}
+                  onDocumentTypeChange={(value) => setFormData(prev => ({ ...prev, documentType: value }))}
+                  paymentStatus={formData.paymentStatus}
+                  onPaymentStatusChange={(value) => setFormData(prev => ({ ...prev, paymentStatus: value }))}
+                  autoFillStatus={autoFillStatus}
+                  autoFillMessage={autoFillMessage}
+                  autoFillProgress={autoFillProgress}
+                  className="h-full"
                 />
               </div>
-              </div>
+            </div>
 
-              {uploadingFiles && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-blue-700">
-                      Uploading files...
-                    </span>
-                    <span className="text-sm text-blue-600">
-                      {Math.round(uploadProgress)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-blue-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
+            {uploadingFiles && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-700">
+                    Uploading files...
+                  </span>
+                  <span className="text-sm text-blue-600">
+                    {Math.round(uploadProgress)}%
+                  </span>
                 </div>
-              )}
+                <div className="w-full bg-blue-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             </form>
           </div>
@@ -3718,19 +4953,19 @@ const paymentStatusStyles = {
                   Convert {normalizeStatus.total} expense{normalizeStatus.total === 1 ? '' : 's'} currently stored in other currencies.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
+                <button
+                  type="button"
+                  onClick={() => {
                   if (!normalizationRunning) {
                     setShowNormalizeModal(false);
                   }
-                }}
+                  }}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
                 disabled={normalizationRunning}
                 title="Close"
-              >
+                >
                 <FaTimes className="w-4 h-4" />
-              </button>
+                </button>
             </div>
             <div className="px-5 py-4 space-y-4">
               {Object.keys(conversionSummary).length > 0 ? (
@@ -3785,7 +5020,7 @@ const paymentStatusStyles = {
               )}
             </div>
             <div className="px-5 py-4 border-t flex items-center justify-end gap-3 bg-gray-50 rounded-b-2xl">
-              <button
+                <button
                 type="button"
                 onClick={() => {
                   if (!normalizationRunning) {
@@ -3796,7 +5031,7 @@ const paymentStatusStyles = {
                 disabled={normalizationRunning}
               >
                 {normalizeStatus.state === 'success' || normalizeStatus.state === 'error' ? 'Close' : 'Cancel'}
-              </button>
+                </button>
               {normalizeStatus.state === 'idle' && (
                 <button
                   type="button"
@@ -3826,7 +5061,7 @@ const paymentStatusStyles = {
                   Done
                 </button>
               )}
-            </div>
+              </div>
           </div>
         </div>
       )}
@@ -3967,14 +5202,22 @@ const paymentStatusStyles = {
                 {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
               </select>
 
-              <select
-                value={filters.bankAccount}
-                onChange={(e) => setFilters({...filters, bankAccount: e.target.value})}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="all">All Bank Accounts</option>
-                {bankAccounts.map(acc => <option key={acc} value={acc}>{acc}</option>)}
-              </select>
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-500 uppercase">Financial Account</label>
+                <select
+                  value={filters.financialAccountId}
+                  onChange={(e) => setFilters({...filters, financialAccountId: e.target.value})}
+                  className="mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  disabled={financialAccountsLoading}
+                >
+                  <option value="all">All Financial Accounts</option>
+                  {financialAccountFilterOptionsWithLegacy.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <select
                 value={filters.paymentMethod}
@@ -3986,33 +5229,68 @@ const paymentStatusStyles = {
               </select>
 
               <select
-                value={filters.documentType}
-                onChange={(e) => setFilters({...filters, documentType: e.target.value})}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                value={filters.vendor}
+                onChange={(e) => setFilters({...filters, vendor: e.target.value})}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm min-w-[180px]"
               >
-                {documentTypeOptions.map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+                <option value="all">All Vendors</option>
+                {vendorOptions.map((vendorName) => (
+                  <option key={vendorName} value={vendorName}>
+                    {vendorName}
+                  </option>
                 ))}
+                {vendorHasMissing && (
+                  <option value="__missing__">Missing Vendor</option>
+                )}
               </select>
 
-              <select
-                value={filters.paymentStatus}
-                onChange={(e) => setFilters({...filters, paymentStatus: e.target.value})}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                {paymentStatusOptions.map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-500 uppercase">Document Type</label>
+                <select
+                  value={filters.documentType}
+                  onChange={(e) => setFilters({...filters, documentType: e.target.value})}
+                  className="mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  {documentTypeOptions.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-500 uppercase">Payment Status</label>
+                <select
+                  value={filters.paymentStatus}
+                  onChange={(e) => setFilters({...filters, paymentStatus: e.target.value})}
+                  className="mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  {paymentStatusOptions.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-500 uppercase">Approval Status</label>
+                <select
+                  value={filters.approvalStatus}
+                  onChange={(e) => setFilters({...filters, approvalStatus: e.target.value})}
+                  className="mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  {approvalFilterOptions.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
 
-              {(filters.category !== 'all' || filters.bankAccount !== 'all' || filters.paymentMethod !== 'all' || filters.periodType !== 'all' || filters.documentType !== 'all' || filters.paymentStatus !== 'all') && (
+              {(filters.category !== 'all' || filters.financialAccountId !== 'all' || filters.paymentMethod !== 'all' || filters.vendor !== 'all' || filters.periodType !== 'all' || filters.documentType !== 'all' || filters.paymentStatus !== 'all' || filters.approvalStatus !== 'all') && (
                 <button
                   onClick={() => setFilters({
                     category: 'all',
-                    bankAccount: 'all',
+                    financialAccountId: 'all',
                     paymentMethod: 'all',
+                    vendor: 'all',
                     documentType: 'all',
                     paymentStatus: 'all',
+                    approvalStatus: 'all',
                     periodType: 'all',
                     startDate: '',
                     endDate: ''
@@ -4134,15 +5412,41 @@ const paymentStatusStyles = {
             </div>
           )}
         </div>
-      </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase text-gray-500">Awaiting Approval</p>
+              <p className="text-xl font-semibold text-orange-600">{approvalSummary.awaiting || 0}</p>
+            </div>
+            <FaClipboardCheck className="w-6 h-6 text-orange-500" />
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase text-gray-500">Approved</p>
+              <p className="text-xl font-semibold text-green-600">{approvalSummary.approved || 0}</p>
+            </div>
+            <FaCalendarCheck className="w-6 h-6 text-green-500" />
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase text-gray-500">Draft / Rejected</p>
+              <p className="text-xl font-semibold text-gray-700">{(approvalSummary.draft || 0) + (approvalSummary.rejected || 0)}</p>
+            </div>
+            <FaTimesCircle className="w-6 h-6 text-gray-500" />
+          </div>
+        </div>
 
         {/* Expenses Table */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">All Expenses</h2>
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-medium text-gray-900">All Expenses</h2>
+            </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full divide-y divide-gray-200">
+            <table className="w-full min-w-[1200px] divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
@@ -4154,26 +5458,26 @@ const paymentStatusStyles = {
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                       Vendor
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                      Invoice #
-                    </th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
                       Document
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
                       Status
                     </th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36">
+                      Approval
+                    </th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Description
+                      Description & Notes
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
-                      Bank Account
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
+                      Payment Details
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                      Payment
-                    </th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
                       Amount
+                    </th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
+                      Issues
                     </th>
                     <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                       Files
@@ -4189,22 +5493,23 @@ const paymentStatusStyles = {
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                        <td className="px-3 py-4"><div className="h-6 bg-gray-200 rounded w-24"></div></td>
                         <td className="px-3 py-4"><div className="h-6 bg-gray-200 rounded w-20"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-32"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-28"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-48"></div></td>
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-36"></div></td>
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-20 ml-auto"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-8 mx-auto"></div></td>
+                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-60"></div></td>
+                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-48"></div></td>
+                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-24 ml-auto"></div></td>
+                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-48"></div></td>
+                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-10 mx-auto"></div></td>
                         <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-16 mx-auto"></div></td>
                       </tr>
                     ))
                   ) : visibleExpenses.length === 0 ? (
                     <tr>
-                      <td colSpan="12" className="px-6 py-8 text-center">
+                      <td colSpan="10" className="px-6 py-8 text-center">
                         <div className="flex flex-col items-center gap-4">
                           {!currentCompanyId ? (
                             <>
@@ -4251,7 +5556,7 @@ const paymentStatusStyles = {
                               <button
                                 onClick={() => setFilters({
                                   category: 'all',
-                                  bankAccount: 'all',
+                                  financialAccountId: 'all',
                                   paymentMethod: 'all',
                                   documentType: 'all',
                                   paymentStatus: 'all',
@@ -4275,7 +5580,20 @@ const paymentStatusStyles = {
                       const paymentStatusKey = (expense.paymentStatus || 'open').toLowerCase();
                       const paymentMeta = paymentStatusStyles[paymentStatusKey] || paymentStatusStyles.open;
                       const statementMeta = documentTypeStyles.statement;
-                      const paymentDetailsRecorded = paymentStatusKey === 'paid' && (expense.paymentMethod || expense.paymentMethodDetails);
+                      const paymentAccount = expense.financialAccountId ? financialAccountLookup.get(expense.financialAccountId) : null;
+                      const paymentDetailsRecorded = paymentStatusKey === 'paid' && (paymentAccount || expense.paymentMethod || expense.paymentMethodDetails);
+                      const paymentDetailsLabel = paymentDetailsRecorded
+                        ? (paymentAccount && !expense.paymentMethod && !expense.paymentMethodDetails
+                          ? `Posted to ${paymentAccount.name}${paymentAccount.currency ? ` • ${paymentAccount.currency}` : ''}`
+                          : `${expense.paymentMethod || ''} ${expense.paymentMethodDetails || ''}`.trim() || 'Payment recorded')
+                        : 'No payment recorded';
+                      const paymentDetailsTitle = paymentDetailsRecorded
+                        ? (expense.paymentMethod || expense.paymentMethodDetails
+                          ? `${expense.paymentMethod || ''} ${expense.paymentMethodDetails || ''}`.trim()
+                          : (paymentAccount
+                              ? `Payment routed via ${paymentAccount.name}`
+                              : 'Payment recorded'))
+                        : 'No payment recorded';
                       const linkedInvoice = linkedInvoicesByReceipt.get(expense.id);
                       const linkedStatement = linkedStatementsByReceipt.get(expense.id);
                       const hasLinkedInvoice = Boolean(linkedInvoice);
@@ -4284,6 +5602,24 @@ const paymentStatusStyles = {
                       const isExpanded = hasLinkedDocuments && expandedLinkedReceipts.has(expense.id);
                       const statementConfidence = typeof expense.linkedStatementMatchConfidence === 'number'
                         ? Math.round(expense.linkedStatementMatchConfidence * 100)
+                        : null;
+                      const conversionMeta = expense.conversionMeta || null;
+                      const approvalStatus = (expense.approvalStatus || 'draft').toLowerCase();
+                      const approvalMeta = approvalStatusStyles[approvalStatus] || approvalStatusStyles.draft;
+                      const normalizedAmount = Number.isFinite(parseFloat(expense.amount))
+                        ? parseFloat(expense.amount)
+                        : null;
+                      const conversionSummary = conversionMeta
+                        ? [
+                            `${formatCurrencyFor(conversionMeta.originalAmount, conversionMeta.originalCurrency)} → ${normalizedAmount !== null ? formatCurrency(normalizedAmount) : 'EUR'}`,
+                            `Rate ${Number.isFinite(conversionMeta.conversionRate) ? conversionMeta.conversionRate.toFixed(4) : '—'}`,
+                            conversionMeta.rateDateUsed ? `Rate date ${formatDateTime(conversionMeta.rateDateUsed, { dateStyle: 'medium' })}` : null,
+                            conversionMeta.conversionSource ? `Source ${conversionMeta.conversionSource}` : null
+                          ].filter(Boolean).join(' • ')
+                        : null;
+                      const dueDateLabel = expense.dueDate ? formatDateTime(expense.dueDate, { dateStyle: 'medium' }) : null;
+                      const scheduledPaymentLabel = expense.scheduledPaymentDate
+                        ? formatDateTime(expense.scheduledPaymentDate, { dateStyle: 'medium' })
                         : null;
 
                       const timelineEvents = [];
@@ -4298,6 +5634,53 @@ const paymentStatusStyles = {
                             : null
                         });
                       }
+                      if (conversionMeta) {
+                        timelineEvents.push({
+                          icon: <FaSyncAlt className="w-3.5 h-3.5" />,
+                          label: 'Currency normalized',
+                          at: conversionMeta.convertedAt || expense.updatedAt || expense.date,
+                          meta: conversionSummary
+                        });
+                      }
+                      if (expense.approvalRequestedAt) {
+                        timelineEvents.push({
+                          icon: <FaClipboardCheck className="w-3.5 h-3.5" />,
+                          label: 'Approval requested',
+                          at: expense.approvalRequestedAt,
+                          meta: expense.approvalNotes || null
+                        });
+                      }
+                      if (expense.approvedAt) {
+                        timelineEvents.push({
+                          icon: <FaCalendarCheck className="w-3.5 h-3.5" />,
+                          label: 'Approved',
+                          at: expense.approvedAt,
+                          meta: expense.approvalNotes || null
+                        });
+                      } else if (approvalStatus === 'rejected') {
+                        timelineEvents.push({
+                          icon: <FaTimesCircle className="w-3.5 h-3.5" />,
+                          label: 'Rejected',
+                          at: expense.updatedAt || expense.date,
+                          meta: expense.approvalNotes || null
+                        });
+                      }
+                      if (expense.dueDate) {
+                        timelineEvents.push({
+                          icon: <FaClock className="w-3.5 h-3.5" />,
+                          label: 'Invoice due',
+                          at: expense.dueDate,
+                          meta: null
+                        });
+                      }
+                      if (expense.scheduledPaymentDate) {
+                        timelineEvents.push({
+                          icon: <FaCalendarCheck className="w-3.5 h-3.5" />,
+                          label: 'Payment scheduled',
+                          at: expense.scheduledPaymentDate,
+                          meta: expense.paymentScheduleNotes || null
+                        });
+                      }
                       if (hasLinkedInvoice && linkedInvoice.createdAt) {
                         timelineEvents.push({
                           icon: <FaFileInvoiceDollar className="w-3.5 h-3.5" />,
@@ -4307,41 +5690,21 @@ const paymentStatusStyles = {
                           meta: linkedInvoice.invoiceNumber ? `Number: ${linkedInvoice.invoiceNumber}` : null
                         });
                       }
-                      if (hasLinkedInvoice && linkedInvoice.linkedPaymentRecordedAt) {
-                        timelineEvents.push({
-                          icon: <FaLink className="w-3.5 h-3.5" />,
-                          label: 'Invoice marked paid via receipt',
-                          at: linkedInvoice.linkedPaymentRecordedAt,
-                          userId: linkedInvoice.linkedPaymentRecordedBy,
-                          meta: linkedInvoice.paymentMethod || linkedInvoice.paymentMethodDetails
-                            ? `Method: ${linkedInvoice.paymentMethodDetails || linkedInvoice.paymentMethod}`
-                            : null
-                        });
-                      }
-                      if (hasLinkedStatement && linkedStatement.createdAt) {
-                        timelineEvents.push({
-                          icon: <FaCreditCard className="w-3.5 h-3.5" />,
-                          label: 'Bank statement entry imported',
-                          at: linkedStatement.createdAt,
-                          userId: linkedStatement.createdBy,
-                          meta: linkedStatement.bankAccount
-                            ? `Account: ${linkedStatement.bankAccount}`
-                            : null
-                        });
-                      }
-                      if (expense.linkedStatementMatchedAt) {
-                        timelineEvents.push({
-                          icon: <FaHistory className="w-3.5 h-3.5" />,
-                          label: 'Receipt reconciled with bank statement',
-                          at: expense.linkedStatementMatchedAt,
-                          userId: expense.linkedStatementMatchedBy,
-                          meta: statementConfidence !== null ? `Match confidence: ${statementConfidence}%` : null
-                        });
-                      }
+
+                      const hasValidationErrors = Array.isArray(expense.validationErrors) && expense.validationErrors.length > 0;
+                      const isDuplicateRow = !hasValidationErrors && expense.isDuplicate;
+                      const rowTone = hasValidationErrors
+                        ? 'bg-red-50/80'
+                        : isDuplicateRow
+                          ? 'bg-yellow-50/60'
+                          : '';
+                      const amountToDisplay = Number.isFinite(expense.parsedAmount)
+                        ? expense.parsedAmount
+                        : parseNumericAmount(String(expense.amount || ''));
 
                       return (
                         <React.Fragment key={expense.id}>
-                          <tr className="hover:bg-gray-50">
+                          <tr className={`hover:bg-gray-50 ${rowTone}`}>
                         <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
                               {formatDateTime(expense.date, { dateStyle: 'medium' })}
                         </td>
@@ -4351,13 +5714,16 @@ const paymentStatusStyles = {
                           </span>
                         </td>
                         <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <div className="max-w-[120px] truncate" title={expense.vendor}>
-                            {expense.vendor}
-                          </div>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <div className="max-w-[120px] truncate" title={expense.invoiceNumber || '-'}>
-                            {expense.invoiceNumber || '-'}
+                          <div className="max-w-[180px]">
+                            <p className="truncate font-medium" title={expense.vendor}>
+                              {expense.vendor || '—'}
+                            </p>
+                            {(expense.invoiceNumber || expense.invoiceDate) && (
+                              <p className="mt-1 text-xs text-gray-500 truncate">
+                                {expense.invoiceNumber ? `Invoice ${expense.invoiceNumber}` : ''}
+                                {expense.invoiceDate ? ` • ${formatDateTime(expense.invoiceDate, { dateStyle: 'medium' })}` : ''}
+                              </p>
+                            )}
                           </div>
                         </td>
                             <td className="px-3 py-4 whitespace-nowrap text-sm">
@@ -4380,39 +5746,96 @@ const paymentStatusStyles = {
                                     <FaChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                   </button>
                                 )}
-                              </div>
-                            </td>
+                          </div>
+                        </td>
                             <td className="px-3 py-4 whitespace-nowrap text-sm">
                               <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${paymentMeta.classes}`}>
                                 {paymentMeta.label}
                               </span>
                             </td>
+                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <div className="flex flex-col gap-1">
+                                <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${approvalMeta.classes}`}>
+                                  {approvalMeta.label}
+                                </span>
+                                {dueDateLabel && (
+                                  <span className="text-xs text-gray-500">Due {dueDateLabel}</span>
+                                )}
+                                {scheduledPaymentLabel && (
+                                  <span className="text-xs text-gray-500">Scheduled {scheduledPaymentLabel}</span>
+                                )}
+                              </div>
+                            </td>
                         <td className="px-3 py-4 text-sm text-gray-900">
-                          <div className="max-w-xs break-words">
-                            {expense.description}
+                          <div className="max-w-xl space-y-2">
+                            <div className="space-y-1">
+                              <p className="whitespace-pre-wrap break-words leading-snug font-medium text-gray-900">
+                                {expense.description}
+                              </p>
+                              {expense.notes && (
+                                <p className="text-xs text-gray-500 whitespace-pre-wrap break-words">
+                                  {expense.notes}
+                                </p>
+                              )}
+                            </div>
+                            {conversionMeta && (
+                              <div className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-md px-2 py-2 space-y-1">
+                                <p className="font-semibold flex items-center gap-1">
+                                  <FaSyncAlt className="w-3.5 h-3.5" />
+                                  Currency normalized
+                                </p>
+                                <p>
+                                  {formatCurrencyFor(conversionMeta.originalAmount, conversionMeta.originalCurrency)} → {normalizedAmount !== null ? formatCurrency(normalizedAmount) : 'EUR'}
+                                </p>
+                                <p>
+                                  Rate {Number.isFinite(conversionMeta.conversionRate) ? conversionMeta.conversionRate.toFixed(4) : '—'} • {conversionMeta.rateDateUsed ? `Rate date ${formatDateTime(conversionMeta.rateDateUsed, { dateStyle: 'medium' })}` : 'Rate date unknown'}
+                                </p>
+                                <p>
+                                  Source {conversionMeta.conversionSource || 'Unknown'}{conversionMeta.convertedAt ? ` • Converted ${formatDateTime(conversionMeta.convertedAt, { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <div className="max-w-[140px] truncate" title={expense.bankAccount || 'N/A'}>
-                            {expense.bankAccount || 'N/A'}
+                        <td className="px-3 py-4 text-sm text-gray-600">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-xs">
+                              <FaCreditCard className="w-3 h-3 text-gray-400" />
+                              <span className="truncate">
+                                {paymentAccount
+                                  ? `${paymentAccount.name}${paymentAccount.currency ? ` • ${paymentAccount.currency}` : ''}`
+                                  : (expense.bankAccount && expense.bankAccount.toLowerCase() !== 'financial account'
+                                      ? expense.bankAccount
+                                      : 'No account recorded')}
+                              </span>
+                            </div>
+                            {!paymentAccount && expense.financialAccountId && (
+                              <span className="text-xs text-orange-600 block">
+                                Account unavailable. Check Settings → Financial Accounts.
+                              </span>
+                            )}
+                            <div className="text-xs truncate" title={paymentDetailsTitle}>
+                              {paymentDetailsLabel}
+                            </div>
                           </div>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {paymentDetailsRecorded ? (
-                                <div className="flex items-center gap-2">
-                                  <span>{expense.paymentMethod || 'Recorded'}</span>
-                          {expense.paymentMethodDetails && (
-                                    <span className="text-xs text-gray-400">
-                              ({expense.paymentMethodDetails})
-                            </span>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-gray-400">Pending</span>
-                          )}
                         </td>
                         <td className="px-3 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
-                              {formatCurrency(parseFloat(expense.amount) || 0)}
+                              {Number.isFinite(amountToDisplay) ? formatCurrency(amountToDisplay) : '-'}
+                        </td>
+                        <td className="px-3 py-4 text-xs">
+                          {hasValidationErrors ? (
+                            <div className="space-y-1 text-red-600">
+                              {expense.validationErrors.map((error, idx) => (
+                                <p key={idx}>{error}</p>
+                              ))}
+                            </div>
+                          ) : isDuplicateRow ? (
+                            <span className="text-yellow-700">
+                              Duplicate detected (already captured).
+                            </span>
+                          ) : (
+                            <span className="text-green-600">Ready to import</span>
+                          )}
                         </td>
                         <td className="px-3 py-4 whitespace-nowrap text-center text-sm">
                           {expense.attachments && expense.attachments.length > 0 ? (
@@ -4446,7 +5869,9 @@ const paymentStatusStyles = {
                                     dueDate: expense.dueDate || '',
                                     paidDate: expense.paidDate,
                                     paymentMethod: expense.paymentMethod,
-                                    paymentMethodDetails: expense.paymentMethodDetails
+                                    paymentMethodDetails: expense.paymentMethodDetails,
+                                    financialAccountId: expense.financialAccountId,
+                                    bankAccount: expense.financialAccountId ? 'Financial Account' : expense.bankAccount
                                   })}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold shadow-sm hover:bg-blue-100 hover:border-blue-300 transition"
                                   title="Add receipt for this invoice"
@@ -4467,7 +5892,9 @@ const paymentStatusStyles = {
                                     description: expense.description,
                                     paidDate: expense.paidDate,
                                     paymentMethod: expense.paymentMethod,
-                                    paymentMethodDetails: expense.paymentMethodDetails
+                                    paymentMethodDetails: expense.paymentMethodDetails,
+                                    financialAccountId: expense.financialAccountId,
+                                    bankAccount: expense.financialAccountId ? 'Financial Account' : expense.bankAccount
                                   })}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-teal-200 bg-teal-50 text-teal-700 text-xs font-semibold shadow-sm hover:bg-teal-100 hover:border-teal-300 transition"
                                   title="Add bank statement entry"
@@ -4477,142 +5904,117 @@ const paymentStatusStyles = {
                                 </button>
                               </>
                             )}
-                            <button
-                              onClick={() => handleEditExpense(expense)}
+                          <button
+                            onClick={() => handleEditExpense(expense)}
                               className="text-blue-600 hover:text-blue-900"
-                              title="Edit"
-                            >
-                              <FaEdit className="w-4 h-4 inline" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteExpense(expense.id)}
-                              className="text-red-600 hover:text-red-900"
-                              title="Delete"
-                            >
-                              <FaTrash className="w-4 h-4 inline" />
-                            </button>
+                            title="Edit"
+                          >
+                            <FaEdit className="w-4 h-4 inline" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteExpense(expense.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete"
+                          >
+                            <FaTrash className="w-4 h-4 inline" />
+                          </button>
                           </div>
                         </td>
                       </tr>
                           {hasLinkedDocuments && isExpanded && (
                             <tr>
-                              <td colSpan="12" className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                              <td colSpan="10" className="px-6 py-4 bg-gray-50 border-t border-gray-200">
                                 <div className="flex flex-col gap-4">
-                                  {hasLinkedInvoice && (
-                                    <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-                                      <div className="flex flex-wrap items-center justify-between gap-3">
+                                  {conversionMeta && (
+                                    <section className="bg-white border border-indigo-200 rounded-lg p-4 shadow-sm">
+                                      <div className="flex items-center justify-between flex-wrap gap-2">
                                         <div>
-                                          <p className="text-sm font-semibold text-gray-800">Linked invoice</p>
-                                          <p className="text-xs text-gray-500">
-                                            {(linkedInvoice.invoiceNumber || 'Invoice')} • {formatDateTime(linkedInvoice.date || expense.date, { dateStyle: 'medium' })}
+                                          <p className="text-sm font-semibold text-indigo-900 flex items-center gap-2">
+                                            <FaSyncAlt className="w-4 h-4" />
+                                            Currency normalization
+                                          </p>
+                                          <p className="text-xs text-indigo-600 mt-1">
+                                            Converted {formatCurrencyFor(conversionMeta.originalAmount, conversionMeta.originalCurrency)} to {normalizedAmount !== null ? formatCurrency(normalizedAmount) : 'EUR'} on {formatDateTime(conversionMeta.convertedAt || expense.updatedAt, { dateStyle: 'medium', timeStyle: 'short' })}
                                           </p>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                          <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
-                                            Invoice
-                                          </span>
-                                          <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${paymentMeta.classes}`}>
-                                            {paymentMeta.label}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleEditExpense(linkedInvoice)}
-                                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
-                                          >
-                                            Edit invoice
-                                          </button>
+                                        <span className="px-3 py-1 text-xs font-semibold bg-indigo-100 text-indigo-700 rounded-full border border-indigo-200">
+                                          {conversionMeta.conversionSource || 'Unknown source'}
+                                        </span>
+                                      </div>
+                                      <div className="grid md:grid-cols-3 gap-3 text-sm text-indigo-800 mt-3">
+                                        <div>
+                                          <span className="block text-xs uppercase text-indigo-500">Requested date</span>
+                                          <span>{conversionMeta.requestedDate ? formatDateTime(conversionMeta.requestedDate, { dateStyle: 'medium' }) : '—'}</span>
+                                        </div>
+                                        <div>
+                                          <span className="block text-xs uppercase text-indigo-500">Rate date</span>
+                                          <span>{conversionMeta.rateDateUsed ? formatDateTime(conversionMeta.rateDateUsed, { dateStyle: 'medium' }) : 'Latest available'}</span>
+                                        </div>
+                                        <div>
+                                          <span className="block text-xs uppercase text-indigo-500">Rate applied</span>
+                                          <span>{Number.isFinite(conversionMeta.conversionRate) ? conversionMeta.conversionRate.toFixed(6) : '—'}</span>
                                         </div>
                                       </div>
-                                      <div className="grid md:grid-cols-4 gap-4 text-sm text-gray-700 mt-3">
+                                    </section>
+                                  )}
+                                  {(expense.approvalStatus || expense.approvalNotes || expense.approvalRequestedAt || expense.approvedAt) && (
+                                    <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Approval Workflow</h4>
+                                      <div className="grid md:grid-cols-3 gap-4 text-sm text-gray-700">
                                         <div>
-                                          <p className="text-xs uppercase text-gray-400">Vendor</p>
-                                          <p>{linkedInvoice.vendor || '-'}</p>
+                                          <span className="block text-xs uppercase text-gray-400">Status</span>
+                                          <span className={`inline-flex mt-1 px-2 py-1 text-xs font-semibold rounded-full ${approvalMeta.classes}`}>
+                                            {approvalMeta.label}
+                                          </span>
                                         </div>
                                         <div>
-                                          <p className="text-xs uppercase text-gray-400">Amount</p>
-                                          <p>{formatCurrency(parseFloat(linkedInvoice.amount) || 0)}</p>
+                                          <span className="block text-xs uppercase text-gray-400">Requested</span>
+                                          <span>{expense.approvalRequestedAt ? formatDateTime(expense.approvalRequestedAt, { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</span>
                                         </div>
                                         <div>
-                                          <p className="text-xs uppercase text-gray-400">Payment method</p>
-                                          <p>{linkedInvoice.paymentMethod || linkedInvoice.paymentMethodDetails || expense.paymentMethod || '-'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs uppercase text-gray-400">Attachments</p>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleViewAttachments(linkedInvoice)}
-                                            className="inline-flex items-center text-blue-600 hover:text-blue-900"
-                                          >
-                                            <FaPaperclip className="w-4 h-4 mr-1" />
-                                            <span>{linkedInvoice.attachments?.length || 0}</span>
-                                          </button>
+                                          <span className="block text-xs uppercase text-gray-400">Approved</span>
+                                          <span>{expense.approvedAt ? formatDateTime(expense.approvedAt, { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</span>
                                         </div>
                                       </div>
-                                      {linkedInvoice.description && (
-                                        <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3 mt-3">
-                                          <p className="text-xs uppercase text-gray-400 mb-1">Invoice description</p>
-                                          <p className="whitespace-pre-wrap">{linkedInvoice.description}</p>
+                                      {expense.approvalNotes && (
+                                        <div className="mt-3 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3">
+                                          <span className="block text-xs uppercase text-gray-400 mb-1">Notes</span>
+                                          <p className="whitespace-pre-wrap">{expense.approvalNotes}</p>
                                         </div>
                                       )}
                                     </section>
                                   )}
-
-                                  {hasLinkedStatement && (
+                                  {(expense.dueDate || expense.scheduledPaymentDate || expense.paymentScheduleNotes || expense.contractReference || expense.contractUrl) && (
                                     <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-                                      <div className="flex flex-wrap items-center justify-between gap-3">
+                                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Scheduling & Contracts</h4>
+                                      <div className="grid md:grid-cols-2 gap-4 text-sm text-gray-700">
                                         <div>
-                                          <p className="text-sm font-semibold text-gray-800">Bank statement match</p>
-                                          <p className="text-xs text-gray-500">
-                                            {formatDateTime(linkedStatement.date || expense.linkedStatementDate, { dateStyle: 'medium' })} • {formatCurrency(parseFloat(linkedStatement.amount) || expense.linkedStatementAmount || 0)}
-                                          </p>
+                                          <span className="block text-xs uppercase text-gray-400">Due date</span>
+                                          <span>{expense.dueDate ? formatDateTime(expense.dueDate, { dateStyle: 'medium' }) : '—'}</span>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                          <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${statementMeta.classes}`}>
-                                            Statement
-                                          </span>
-                                          {statementConfidence !== null && (
-                                            <span className="px-2 inline-flex text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
-                                              {statementConfidence}% confidence
-                                            </span>
+                                        <div>
+                                          <span className="block text-xs uppercase text-gray-400">Scheduled payment</span>
+                                          <span>{expense.scheduledPaymentDate ? formatDateTime(expense.scheduledPaymentDate, { dateStyle: 'medium' }) : '—'}</span>
+                                        </div>
+                                        <div>
+                                          <span className="block text-xs uppercase text-gray-400">Contract reference</span>
+                                          <span>{expense.contractReference || '—'}</span>
+                                        </div>
+                                        <div>
+                                          <span className="block text-xs uppercase text-gray-400">Contract link</span>
+                                          {expense.contractUrl ? (
+                                            <a href={expense.contractUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 break-all">
+                                              {expense.contractUrl}
+                                            </a>
+                                          ) : (
+                                            <span>—</span>
                                           )}
-                                          <button
-                                            type="button"
-                                            onClick={() => handleEditExpense(linkedStatement)}
-                                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
-                                          >
-                                            Review entry
-                                          </button>
                                         </div>
                                       </div>
-                                      <div className="grid md:grid-cols-4 gap-4 text-sm text-gray-700 mt-3">
-                                        <div>
-                                          <p className="text-xs uppercase text-gray-400">Account</p>
-                                          <p>{linkedStatement.bankAccount || expense.bankAccount || '-'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs uppercase text-gray-400">Payment method</p>
-                                          <p>{linkedStatement.paymentMethodDetails || linkedStatement.paymentMethod || '-'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs uppercase text-gray-400">Match recorded</p>
-                                          <p>{formatDateTime(expense.linkedStatementMatchedAt, { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs uppercase text-gray-400">Attachments</p>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleViewAttachments(linkedStatement)}
-                                            className="inline-flex items-center text-blue-600 hover:text-blue-900"
-                                          >
-                                            <FaPaperclip className="w-4 h-4 mr-1" />
-                                            <span>{linkedStatement.attachments?.length || 0}</span>
-                                          </button>
-                                        </div>
-                                      </div>
-                                      {linkedStatement.description && (
-                                        <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3 mt-3">
-                                          <p className="text-xs uppercase text-gray-400 mb-1">Statement description</p>
-                                          <p className="whitespace-pre-wrap">{linkedStatement.description}</p>
+                                      {expense.paymentScheduleNotes && (
+                                        <div className="mt-3 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3">
+                                          <span className="block text-xs uppercase text-gray-400 mb-1">Payment notes</span>
+                                          <p className="whitespace-pre-wrap">{expense.paymentScheduleNotes}</p>
                                         </div>
                                       )}
                                     </section>
@@ -4796,50 +6198,105 @@ const paymentStatusStyles = {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <p className="text-sm font-semibold text-green-900">
-                      Found {importedData.length} expenses to import
-                    </p>
-                    <p className="text-xs text-green-800 mt-1">
-                      Review the data below and click "Import All" to add them to your expense tracker.
-                    </p>
+                  <div className="rounded-lg p-4 border flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          Found {importDiagnostics.total} expenses to import
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          Ready: {importDiagnostics.ready} • Duplicates: {importDiagnostics.duplicates} • Issues: {importDiagnostics.errors}
+                        </p>
+                      </div>
+                      {importDiagnostics.errors > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => downloadImportErrors(importDiagnostics.errorRows)}
+                          className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-300 rounded-md hover:bg-blue-50"
+                        >
+                          Download error report
+                        </button>
+                      )}
+                    </div>
+                    {importDiagnostics.errors > 0 && (
+                      <p className="text-xs text-red-600">
+                        Fix highlighted rows before importing. Rows missing a date, vendor, or amount will be skipped.
+                      </p>
+                    )}
                   </div>
 
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto max-h-[50vh]">
                     <table className="w-full text-sm border-collapse">
                       <thead>
-                        <tr className="bg-gray-50 border-b">
-                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Date</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Category</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Vendor</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Description</th>
-                          <th className="px-3 py-2 text-right font-semibold text-gray-700">Amount</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Payment</th>
+                        <tr className="bg-gray-50 border-b text-left text-xs font-semibold text-gray-600 uppercase">
+                          <th className="px-3 py-2 w-20">Row</th>
+                          <th className="px-3 py-2 w-32">Date</th>
+                          <th className="px-3 py-2 w-24">Category</th>
+                          <th className="px-3 py-2 w-48">Vendor</th>
+                          <th className="px-3 py-2 min-w-[220px]">Description</th>
+                          <th className="px-3 py-2 w-32 text-right">Amount</th>
+                          <th className="px-3 py-2 w-48">Issues</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {importedData.slice(0, 20).map((expense, idx) => (
-                          <tr key={idx} className="border-b hover:bg-gray-50">
-                            <td className="px-3 py-2">{expense.date || '-'}</td>
-                            <td className="px-3 py-2">{expense.category || '-'}</td>
-                            <td className="px-3 py-2">{expense.vendor || '-'}</td>
-                            <td className="px-3 py-2">{expense.description || '-'}</td>
-                            <td className="px-3 py-2 text-right">€{expense.amount || '0.00'}</td>
-                            <td className="px-3 py-2">
-                              {expense.paymentMethod || '-'}
-                              {expense.paymentMethodDetails && (
-                                <span className="text-xs text-gray-500 ml-1">
-                                  ({expense.paymentMethodDetails})
+                        {importedData.slice(0, 200).map((expense, idx) => {
+                          const hasErrors = expense.validationErrors?.length > 0;
+                          const isDuplicate = expense.isDuplicate && !hasErrors;
+                          const rowIssues = hasErrors ? expense.validationErrors : (isDuplicate ? ['Duplicate detected (skipped).'] : []);
+                          return (
+                            <tr
+                              key={idx}
+                              className={`border-b ${
+                                hasErrors
+                                  ? 'bg-red-50/70 hover:bg-red-100/80'
+                                  : isDuplicate
+                                    ? 'bg-yellow-50/70 hover:bg-yellow-100/80'
+                                    : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <td className="px-3 py-2 text-xs text-gray-500 font-medium">
+                                {expense.rowIndex || idx + 1}
+                              </td>
+                              <td className="px-3 py-2 text-sm text-gray-800">
+                                {expense.date || expense.invoiceDate || '-'}
+                              </td>
+                              <td className="px-3 py-2 text-sm text-gray-800">
+                                {expense.category || '-'}
+                              </td>
+                              <td className="px-3 py-2 text-sm text-gray-800">
+                                <span className="block truncate max-w-[180px]" title={expense.vendor || '-'}>
+                                  {expense.vendor || '-'}
                                 </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="px-3 py-2 text-sm text-gray-700">
+                                <span className="block break-words whitespace-pre-wrap max-w-xl">
+                                  {expense.description || '-'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right text-sm text-gray-800">
+                                {Number.isFinite(expense.parsedAmount)
+                                  ? formatCurrency(expense.parsedAmount)
+                                  : '—'}
+                              </td>
+                              <td className="px-3 py-2">
+                                {rowIssues.length > 0 ? (
+                                  <ul className="space-y-1 text-xs text-red-600 list-disc list-inside">
+                                    {rowIssues.map((issue, issueIdx) => (
+                                      <li key={issueIdx}>{issue}</li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <span className="text-xs text-green-600">Ready</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
-                    {importedData.length > 20 && (
+                    {importedData.length > 200 && (
                       <p className="text-xs text-gray-500 mt-2">
-                        Showing first 20 of {importedData.length} expenses
+                        Showing first 200 of {importedData.length} rows. Use the error report for the full list.
                       </p>
                     )}
                   </div>

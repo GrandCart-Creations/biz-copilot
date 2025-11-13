@@ -171,7 +171,7 @@ const ModuleDashboard = () => {
                 <img src={headerLogo} alt={headerAlt} className="h-10 w-auto" />
               </div>
             </div>
-            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4">
               <CompanySelector />
               <UserProfile />
             </div>
