@@ -16,6 +16,7 @@ import FinancialAccounts from './FinancialAccounts';
 import FundingAndInvestors from './FundingAndInvestors';
 import CompanyBranding from './CompanyBranding';
 import CompanyOnboarding from './CompanyOnboarding';
+import Contracts from './Contracts';
 import {
   FaCog,
   FaBuilding,
@@ -27,7 +28,8 @@ import {
   FaSeedling,
   FaPaintBrush,
   FaRocket,
-  FaStream
+  FaStream,
+  FaFileContract
 } from 'react-icons/fa';
 import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
 
@@ -35,7 +37,7 @@ const SettingsDashboard = () => {
   const navigate = useNavigate();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
   const [loading] = useState(false);
-  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'people' | 'accounts' | 'funding' | 'branding' | 'onboarding'
+  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'people' | 'accounts' | 'funding' | 'branding' | 'onboarding' | 'contracts'
 
   if (loading) {
     return (
@@ -69,6 +71,7 @@ const SettingsDashboard = () => {
     { id: 'team', label: 'Team Management', icon: FaUsers },
     { id: 'people', label: 'People Workspace', icon: FaUserTie },
     { id: 'accounts', label: 'Financial Accounts', icon: FaUniversity, roles: ['owner'] },
+    { id: 'contracts', label: 'Contracts', icon: FaFileContract, roles: ['owner', 'manager'] },
     { id: 'funding', label: 'Funding & Investors', icon: FaSeedling, roles: ['owner', 'manager'] },
     { id: 'branding', label: 'Branding', icon: FaPaintBrush, roles: ['owner'] },
     { id: 'onboarding', label: 'Onboarding', icon: FaRocket, roles: ['owner'] }
@@ -181,6 +184,7 @@ const SettingsDashboard = () => {
           {activeTab === 'team' && <TeamManagement />}
           {activeTab === 'people' && <PeopleWorkspace />}
           {activeTab === 'accounts' && <FinancialAccounts />}
+          {activeTab === 'contracts' && <Contracts />}
           {activeTab === 'funding' && <FundingAndInvestors />}
           {activeTab === 'branding' && <CompanyBranding />}
           {activeTab === 'onboarding' && <CompanyOnboarding />}

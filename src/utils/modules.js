@@ -30,6 +30,17 @@ export const MODULES = {
     requiredTier: 'lite',
     status: 'active'
   },
+  invoices: {
+    id: 'invoices',
+    name: 'Invoices',
+    description: 'Manage quotes, invoices, and subscriptions (Accounts Receivable)',
+    icon: 'FaFileInvoiceDollar',
+    color: 'purple',
+    route: '/modules/invoices',
+    requiredPermission: 'invoices:read',
+    requiredTier: 'lite',
+    status: 'active'
+  },
   financialDashboard: {
     id: 'financialDashboard',
     name: 'Financial Dashboard',
@@ -55,13 +66,13 @@ export const MODULES = {
   marketing: {
     id: 'marketing',
     name: 'Marketing',
-    description: 'Marketing campaigns and performance',
+    description: 'Marketing campaigns, social media, and collaboration',
     icon: 'FaBullhorn',
     color: 'orange',
     route: '/modules/marketing',
     requiredPermission: 'marketing:read',
     requiredTier: 'business',
-    status: 'coming-soon'
+    status: 'active'
   },
   forecasting: {
     id: 'forecasting',

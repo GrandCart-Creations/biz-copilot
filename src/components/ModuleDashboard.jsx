@@ -21,7 +21,8 @@ import {
   FaCog,
   FaUsers,
   FaShieldAlt,
-  FaLock
+  FaLock,
+  FaFileInvoiceDollar
 } from 'react-icons/fa';
 
 const ModuleDashboard = () => {
@@ -38,7 +39,8 @@ const ModuleDashboard = () => {
       FaChartArea,
       FaCog,
       FaUsers,
-      FaShieldAlt
+      FaShieldAlt,
+      FaFileInvoiceDollar
     };
     return icons[iconName] || FaChartLine;
   };

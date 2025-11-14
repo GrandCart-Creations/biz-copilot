@@ -34,7 +34,8 @@ import {
   FaClipboardCheck,
   FaClock,
   FaCalendarCheck,
-  FaTimesCircle
+  FaTimesCircle,
+  FaBell
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
 import CompanySelector from './CompanySelector';
@@ -51,7 +52,9 @@ import {
   getUserProfile,
   subscribeToCompanyVendors,
   upsertCompanyVendorProfile,
-  getCompanyFinancialAccounts
+  getCompanyFinancialAccounts,
+  getCompanyContracts,
+  getCompanyMembers
 } from '../firebase';
 import { trackEvent } from '../utils/analytics';
 
@@ -95,7 +98,7 @@ const EU_COUNTRY_OPTIONS = [
 ];
 
 const CURRENCY_OPTIONS = ['EUR', 'USD', 'GBP', 'CHF', 'SEK'];
-const ADD_DOCUMENT_ONBOARDING_KEY = 'expense_tracker_add_document_onboarding_seen';
+const ADD_DOCUMENT_ONBOARDING_KEY = 'expense_tracker_add_document_onboarding_v1';
 const ADD_EXPENSE_FORM_ID = 'add-expense-form';
 
 const getFileSignature = (file) => `${file.name}-${file.size}-${file.lastModified}`;
@@ -674,6 +677,30 @@ const vendorAddressNeedsAssistance = (value = '') => {
   return false;
 };
 
+const buildContractSnapshot = (contract) => {
+  if (!contract) return null;
+  const numericValue = parseFloat(contract.value);
+  return {
+    id: contract.id || '',
+    name: contract.name || '',
+    reference: contract.reference || '',
+    vendorId: contract.vendorId || '',
+    vendorName: contract.vendorName || '',
+    status: contract.status || '',
+    startDate: contract.startDate || '',
+    endDate: contract.endDate || '',
+    currency: contract.currency || '',
+    value: Number.isFinite(numericValue) ? numericValue : null,
+    url: contract.url || ''
+  };
+};
+
+const getPrettifiedCurrency = (value) => {
+  if (!value) return '';
+  const numericValue = parseFloat(value);
+  if (!Number.isFinite(numericValue)) return '';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(numericValue);
+};
 
 const ExpenseTracker = () => {
   const navigate = useNavigate();
@@ -748,6 +775,11 @@ const approvalStatusStyles = {
   const [financialAccountsLoading, setFinancialAccountsLoading] = useState(false);
   const [financialAccountsError, setFinancialAccountsError] = useState('');
   const [formError, setFormError] = useState('');
+  const [contracts, setContracts] = useState([]);
+  const [contractsLoading, setContractsLoading] = useState(false);
+  const [contractsError, setContractsError] = useState('');
+  const [companyMembers, setCompanyMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(false);
 
   const [currentAccountId] = useState(1);
 
@@ -1729,6 +1761,13 @@ const approvalStatusStyles = {
       approvalNotes: '',
       approvalRequestedAt: '',
       approvedAt: '',
+      approvalAssigneeId: '',
+      approvalChecklist: [{ title: 'Verify invoice', status: 'pending', completedAt: null }],
+      lastApprovalReminderAt: '',
+      contractId: '',
+      contractName: '',
+      contractVendorId: '',
+      contractSnapshot: null,
       contractReference: '',
       contractUrl: '',
       paymentScheduleNotes: '',
@@ -1816,6 +1855,79 @@ const approvalStatusStyles = {
     };
 
     fetchAccounts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentCompanyId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!currentCompanyId) {
+      setContracts([]);
+      setContractsError('');
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const fetchContracts = async () => {
+      try {
+        setContractsLoading(true);
+        setContractsError('');
+        const list = await getCompanyContracts(currentCompanyId);
+        if (isMounted) {
+          setContracts(Array.isArray(list) ? list : []);
+        }
+      } catch (error) {
+        console.error('Failed to load contracts:', error);
+        if (isMounted) {
+          setContractsError('Unable to load contracts.');
+          setContracts([]);
+        }
+      } finally {
+        if (isMounted) {
+          setContractsLoading(false);
+        }
+      }
+    };
+
+    fetchContracts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentCompanyId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!currentCompanyId) {
+      setCompanyMembers([]);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const fetchMembers = async () => {
+      try {
+        setMembersLoading(true);
+        const members = await getCompanyMembers(currentCompanyId);
+        if (isMounted) {
+          setCompanyMembers(Array.isArray(members) ? members : []);
+        }
+      } catch (error) {
+        console.error('Failed to load company members:', error);
+        if (isMounted) {
+          setCompanyMembers([]);
+        }
+      } finally {
+        if (isMounted) {
+          setMembersLoading(false);
+        }
+      }
+    };
+
+    fetchMembers();
 
     return () => {
       isMounted = false;
@@ -2206,8 +2318,8 @@ const approvalStatusStyles = {
     amount: '',
     btw: 21,
     reverseCharge: false,
-    bankAccount: 'Business Checking', // Keep for backward compatibility
-    financialAccountId: '', // Link to financial accounts
+    bankAccount: 'Business Checking',
+    financialAccountId: '',
     paymentMethod: 'Debit Card',
     paymentMethodDetails: '',
     documentType: 'invoice',
@@ -2216,6 +2328,13 @@ const approvalStatusStyles = {
     approvalNotes: '',
     approvalRequestedAt: '',
     approvedAt: '',
+    approvalAssigneeId: '',
+    approvalChecklist: [{ title: 'Verify invoice', status: 'pending', completedAt: null }],
+    lastApprovalReminderAt: '',
+    contractId: '',
+    contractName: '',
+    contractVendorId: '',
+    contractSnapshot: null,
     contractReference: '',
     contractUrl: '',
     paymentScheduleNotes: '',
@@ -2263,6 +2382,9 @@ const approvalStatusStyles = {
         }
         if (currentStatus === 'awaiting' && !prev.approvalRequestedAt) {
           updates.approvalRequestedAt = new Date().toISOString();
+        }
+        if (!Array.isArray(prev.approvalChecklist) || prev.approvalChecklist.length === 0) {
+          updates.approvalChecklist = [{ title: 'Verify invoice', status: 'pending', completedAt: null }];
         }
         return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
       });
@@ -2886,7 +3008,14 @@ const approvalStatusStyles = {
         financialAccountId: payload.financialAccountId || '',
         paymentMethod: payload.paymentMethod || '',
         paymentMethodDetails: isMarkedAsPaid ? payload.paymentMethodDetails : '',
-        paidDate: isMarkedAsPaid ? (payload.paidDate || todayIso) : ''
+        paidDate: isMarkedAsPaid ? (payload.paidDate || todayIso) : '',
+        contractId: payload.contractId || '',
+        contractName: payload.contractName || '',
+        contractVendorId: payload.contractVendorId || '',
+        contractSnapshot: payload.contractSnapshot ? { ...payload.contractSnapshot } : null,
+        approvalAssigneeId: payload.approvalAssigneeId || '',
+        approvalChecklist: Array.isArray(payload.approvalChecklist) ? payload.approvalChecklist : [],
+        lastApprovalReminderAt: payload.lastApprovalReminderAt || ''
       };
 
       if (expensePayload.approvalStatus === 'approved' && !expensePayload.approvedAt) {
@@ -3088,6 +3217,24 @@ const approvalStatusStyles = {
           next.financialAccountId = templateExpense.financialAccountId;
           next.bankAccount = 'Financial Account';
         }
+        if (templateExpense.contractId) {
+          next.contractId = templateExpense.contractId;
+        }
+        if (templateExpense.contractName) {
+          next.contractName = templateExpense.contractName;
+        }
+        if (templateExpense.contractVendorId) {
+          next.contractVendorId = templateExpense.contractVendorId;
+        }
+        if (templateExpense.contractSnapshot) {
+          next.contractSnapshot = templateExpense.contractSnapshot;
+        }
+        if (templateExpense.contractReference && !next.contractReference) {
+          next.contractReference = templateExpense.contractReference;
+        }
+        if (templateExpense.contractUrl && !next.contractUrl) {
+          next.contractUrl = templateExpense.contractUrl;
+        }
  
         if (normalizedDocType === 'receipt') {
           if (templateExpense.amount) {
@@ -3172,6 +3319,13 @@ const approvalStatusStyles = {
       approvalNotes: expense.approvalNotes || '',
       approvalRequestedAt: expense.approvalRequestedAt || '',
       approvedAt: expense.approvedAt || '',
+      approvalAssigneeId: expense.approvalAssigneeId || '',
+      approvalChecklist: expense.approvalChecklist || [{ title: 'Verify invoice', status: 'pending', completedAt: null }],
+      lastApprovalReminderAt: expense.lastApprovalReminderAt || '',
+      contractId: expense.contractId || '',
+      contractName: expense.contractName || '',
+      contractVendorId: expense.contractVendorId || '',
+      contractSnapshot: expense.contractSnapshot || null,
       contractReference: expense.contractReference || '',
       contractUrl: expense.contractUrl || '',
       paymentScheduleNotes: expense.paymentScheduleNotes || '',
@@ -3670,6 +3824,10 @@ const approvalStatusStyles = {
             approvalNotes: expenseData.approvalNotes || '',
             approvalRequestedAt: expenseData.approvalRequestedAt || new Date().toISOString(),
             approvedAt: expenseData.approvedAt || '',
+            contractId: expenseData.contractId || '',
+            contractName: expenseData.contractName || '',
+            contractVendorId: expenseData.contractVendorId || '',
+            contractSnapshot: expenseData.contractSnapshot || null,
             contractReference: expenseData.contractReference || '',
             contractUrl: expenseData.contractUrl || '',
             paymentScheduleNotes: expenseData.paymentScheduleNotes || '',
@@ -4319,6 +4477,97 @@ const approvalStatusStyles = {
     return eligible[0]?.id || '';
   }, [financialAccounts, expenseEligibleAccounts]);
 
+  const contractSelectOptions = useMemo(() => {
+    if (!Array.isArray(contracts)) return [];
+    return contracts.map((contract) => {
+      const vendor = contract.vendorName || contract.vendor || '';
+      const status = contract.status || 'active';
+      const labelParts = [contract.name || contract.reference || 'Unnamed contract'];
+      if (vendor) {
+        labelParts.push(`• ${vendor}`);
+      }
+      labelParts.push(`(${status})`);
+      return {
+        value: contract.id,
+        label: labelParts.join(' '),
+        raw: contract
+      };
+    });
+  }, [contracts]);
+
+  const selectedContract = useMemo(() => {
+    if (!formData.contractId) return null;
+    return contracts.find((contract) => contract.id === formData.contractId) || null;
+  }, [contracts, formData.contractId]);
+
+  const contractDetails = useMemo(() => {
+    if (formData.contractSnapshot) {
+      return formData.contractSnapshot;
+    }
+    if (selectedContract) {
+      return buildContractSnapshot(selectedContract);
+    }
+    return null;
+  }, [formData.contractSnapshot, selectedContract]);
+
+  const handleContractSelection = useCallback((contractId) => {
+    if (!contractId) {
+      setFormData((prev) => ({
+        ...prev,
+        contractId: '',
+        contractName: '',
+        contractVendorId: '',
+        contractSnapshot: null
+      }));
+      return;
+    }
+
+    const contract = contracts.find((item) => item.id === contractId);
+    const snapshot = buildContractSnapshot(contract);
+
+    setFormData((prev) => ({
+      ...prev,
+      contractId,
+      contractName: contract?.name || prev.contractName || '',
+      contractVendorId: contract?.vendorId || prev.contractVendorId || '',
+      contractSnapshot: snapshot,
+      contractReference: prev.contractReference || contract?.reference || contract?.name || '',
+      contractUrl: prev.contractUrl || contract?.url || ''
+    }));
+  }, [contracts]);
+
+  useEffect(() => {
+    if (!formData.contractId) {
+      return;
+    }
+
+    const contract = contracts.find((item) => item.id === formData.contractId);
+    if (!contract) {
+      return;
+    }
+
+    const latestSnapshot = buildContractSnapshot(contract);
+    setFormData((prev) => {
+      if (prev.contractId !== contract.id) {
+        return prev;
+      }
+
+      const prevSnapshot = prev.contractSnapshot || {};
+      const snapshotChanged = JSON.stringify(prevSnapshot) !== JSON.stringify(latestSnapshot || {});
+
+      if (!snapshotChanged && prev.contractName && prev.contractVendorId) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        contractName: prev.contractName || contract.name || '',
+        contractVendorId: prev.contractVendorId || contract.vendorId || '',
+        contractSnapshot: latestSnapshot
+      };
+    });
+  }, [contracts, formData.contractId]);
+
   // Show skeleton UI instead of blocking blank screen
   return (
     <div className="min-h-screen bg-gray-50 w-full">
@@ -4696,6 +4945,30 @@ const approvalStatusStyles = {
                       ))}
                     </select>
                   </div>
+                  {formData.approvalStatus === 'awaiting' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Requested From
+                      </label>
+                      <select
+                        name="approvalAssigneeId"
+                        value={formData.approvalAssigneeId || ''}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={membersLoading}
+                      >
+                        <option value="">Select team member</option>
+                        {companyMembers.map((member) => (
+                          <option key={member.userId} value={member.userId}>
+                            {member.displayName || member.email} {member.role ? `(${member.role})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {membersLoading && (
+                        <p className="text-xs text-gray-500 mt-1">Loading team members…</p>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Scheduled Payment Date
@@ -4710,7 +4983,71 @@ const approvalStatusStyles = {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Contract Reference
+                      Linked Contract
+                    </label>
+                    <select
+                      value={formData.contractId || ''}
+                      onChange={(e) => handleContractSelection(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={contractsLoading}
+                    >
+                      <option value="">No linked contract</option>
+                      {contractSelectOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                    {contractsLoading && (
+                      <p className="text-xs text-gray-500 mt-1">Loading contracts…</p>
+                    )}
+                    {contractsError && (
+                      <p className="text-xs text-red-600 mt-1">{contractsError}</p>
+                    )}
+                    {!contractsLoading && !contractsError && contractSelectOptions.length === 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        No contracts saved yet. You can keep this expense unlinked or add contracts from Settings → Contracts.
+                      </p>
+                    )}
+                    {formData.contractId && (
+                      <button
+                        type="button"
+                        onClick={() => handleContractSelection('')}
+                        className="mt-2 text-xs text-purple-700 hover:text-purple-900"
+                      >
+                        Clear selection
+                      </button>
+                    )}
+                    {contractDetails && (
+                      <div className="mt-2 rounded-lg border border-purple-200 bg-purple-50 p-3 text-xs text-purple-800 space-y-1">
+                        <p className="text-sm font-semibold text-purple-900">
+                          {contractDetails.name || contractDetails.reference || 'Linked contract'}
+                        </p>
+                        {contractDetails.reference && contractDetails.reference !== contractDetails.name && (
+                          <p>Reference: {contractDetails.reference}</p>
+                        )}
+                        {contractDetails.vendorName && (
+                          <p>Vendor: {contractDetails.vendorName}</p>
+                        )}
+                        {contractDetails.status && (
+                          <p>Status: {contractDetails.status}</p>
+                        )}
+                        {(contractDetails.startDate || contractDetails.endDate) && (
+                          <p>
+                            Term: {contractDetails.startDate || '—'} – {contractDetails.endDate || '—'}
+                          </p>
+                        )}
+                        {contractDetails.value !== null && (
+                          <p>
+                            Value: {contractDetails.value} {contractDetails.currency || ''}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Contract Reference (optional)
                     </label>
                     <input
                       type="text"
@@ -4721,8 +5058,6 @@ const approvalStatusStyles = {
                       placeholder="e.g., MSP Master Agreement"
                     />
                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Contract Link (optional)
@@ -4736,19 +5071,19 @@ const approvalStatusStyles = {
                       placeholder="https://"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Payment Notes (optional)
-                    </label>
-                    <textarea
-                      name="paymentScheduleNotes"
-                      value={formData.paymentScheduleNotes}
-                      onChange={handleInputChange}
-                      rows="2"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Add reminders or payment instructions"
-                    />
-                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Payment Notes (optional)
+                  </label>
+                  <textarea
+                    name="paymentScheduleNotes"
+                    value={formData.paymentScheduleNotes}
+                    onChange={handleInputChange}
+                    rows="2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Add reminders or payment instructions"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -4762,6 +5097,66 @@ const approvalStatusStyles = {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Add context for the approver or record decisions"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Approval Checklist
+                  </label>
+                  <div className="space-y-2">
+                    {Array.isArray(formData.approvalChecklist) && formData.approvalChecklist.map((item, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={item.status === 'completed'}
+                          onChange={(e) => {
+                            const updated = [...formData.approvalChecklist];
+                            updated[index] = {
+                              ...updated[index],
+                              status: e.target.checked ? 'completed' : 'pending',
+                              completedAt: e.target.checked ? new Date().toISOString() : null
+                            };
+                            setFormData(prev => ({ ...prev, approvalChecklist: updated }));
+                          }}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <input
+                          type="text"
+                          value={item.title || ''}
+                          onChange={(e) => {
+                            const updated = [...formData.approvalChecklist];
+                            updated[index] = { ...updated[index], title: e.target.value };
+                            setFormData(prev => ({ ...prev, approvalChecklist: updated }));
+                          }}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          placeholder="Checklist item"
+                        />
+                        {formData.approvalChecklist.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = formData.approvalChecklist.filter((_, i) => i !== index);
+                              setFormData(prev => ({ ...prev, approvalChecklist: updated }));
+                            }}
+                            className="p-1 text-red-600 hover:text-red-800"
+                            title="Remove item"
+                          >
+                            <FaTimes className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = [...(formData.approvalChecklist || []), { title: '', status: 'pending', completedAt: null }];
+                        setFormData(prev => ({ ...prev, approvalChecklist: updated }));
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    >
+                      <FaPlusCircle className="w-3 h-3" />
+                      Add checklist item
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -5621,6 +6016,20 @@ const approvalStatusStyles = {
                       const scheduledPaymentLabel = expense.scheduledPaymentDate
                         ? formatDateTime(expense.scheduledPaymentDate, { dateStyle: 'medium' })
                         : null;
+                      const contractDetailsForRow = expense.contractSnapshot
+                        || (expense.contractName || expense.contractReference || expense.contractUrl
+                          ? {
+                              name: expense.contractName || '',
+                              reference: expense.contractReference || '',
+                              vendorName: expense.contractVendorName || '',
+                              status: expense.contractStatus || '',
+                              startDate: expense.contractStartDate || '',
+                              endDate: expense.contractEndDate || '',
+                              currency: expense.contractCurrency || '',
+                              value: Number.isFinite(parseFloat(expense.contractValue)) ? parseFloat(expense.contractValue) : null,
+                              url: expense.contractUrl || ''
+                            }
+                          : null);
 
                       const timelineEvents = [];
                       if (expense.createdAt) {
@@ -5724,6 +6133,11 @@ const approvalStatusStyles = {
                                 {expense.invoiceDate ? ` • ${formatDateTime(expense.invoiceDate, { dateStyle: 'medium' })}` : ''}
                               </p>
                             )}
+                            {(expense.contractName || expense.contractReference) && (
+                              <p className="mt-1 text-xs text-purple-600 truncate">
+                                Contract: {expense.contractName || expense.contractReference}
+                              </p>
+                            )}
                           </div>
                         </td>
                             <td className="px-3 py-4 whitespace-nowrap text-sm">
@@ -5758,6 +6172,20 @@ const approvalStatusStyles = {
                                 <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${approvalMeta.classes}`}>
                                   {approvalMeta.label}
                                 </span>
+                                {expense.approvalAssigneeId && (() => {
+                                  const assignee = companyMembers.find(m => m.userId === expense.approvalAssigneeId);
+                                  const initials = assignee ? (assignee.displayName || assignee.email || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '?';
+                                  return (
+                                    <div className="flex items-center gap-1.5 mt-1">
+                                      <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-semibold flex-shrink-0">
+                                        {initials}
+                                      </div>
+                                      <span className="text-xs text-gray-600 truncate" title={assignee ? (assignee.displayName || assignee.email) : 'Unknown'}>
+                                        {assignee ? (assignee.displayName || assignee.email) : 'Unknown'}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
                                 {dueDateLabel && (
                                   <span className="text-xs text-gray-500">Due {dueDateLabel}</span>
                                 )}
@@ -5871,7 +6299,13 @@ const approvalStatusStyles = {
                                     paymentMethod: expense.paymentMethod,
                                     paymentMethodDetails: expense.paymentMethodDetails,
                                     financialAccountId: expense.financialAccountId,
-                                    bankAccount: expense.financialAccountId ? 'Financial Account' : expense.bankAccount
+                                    bankAccount: expense.financialAccountId ? 'Financial Account' : expense.bankAccount,
+                                    contractId: expense.contractId || '',
+                                    contractName: expense.contractName || '',
+                                    contractVendorId: expense.contractVendorId || '',
+                                    contractSnapshot: expense.contractSnapshot || null,
+                                    contractReference: expense.contractReference || '',
+                                    contractUrl: expense.contractUrl || ''
                                   })}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold shadow-sm hover:bg-blue-100 hover:border-blue-300 transition"
                                   title="Add receipt for this invoice"
@@ -5894,7 +6328,13 @@ const approvalStatusStyles = {
                                     paymentMethod: expense.paymentMethod,
                                     paymentMethodDetails: expense.paymentMethodDetails,
                                     financialAccountId: expense.financialAccountId,
-                                    bankAccount: expense.financialAccountId ? 'Financial Account' : expense.bankAccount
+                                    bankAccount: expense.financialAccountId ? 'Financial Account' : expense.bankAccount,
+                                    contractId: expense.contractId || '',
+                                    contractName: expense.contractName || '',
+                                    contractVendorId: expense.contractVendorId || '',
+                                    contractSnapshot: expense.contractSnapshot || null,
+                                    contractReference: expense.contractReference || '',
+                                    contractUrl: expense.contractUrl || ''
                                   })}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-teal-200 bg-teal-50 text-teal-700 text-xs font-semibold shadow-sm hover:bg-teal-100 hover:border-teal-300 transition"
                                   title="Add bank statement entry"
@@ -5957,9 +6397,35 @@ const approvalStatusStyles = {
                                       </div>
                                     </section>
                                   )}
-                                  {(expense.approvalStatus || expense.approvalNotes || expense.approvalRequestedAt || expense.approvedAt) && (
+                                  {(expense.approvalStatus || expense.approvalNotes || expense.approvalRequestedAt || expense.approvedAt || expense.approvalAssigneeId || expense.approvalChecklist) && (
                                     <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-                                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Approval Workflow</h4>
+                                      <div className="flex items-center justify-between mb-3">
+                                        <h4 className="text-sm font-semibold text-gray-800">Approval Workflow</h4>
+                                        {expense.approvalStatus === 'awaiting' && expense.approvalAssigneeId && (
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                await updateCompanyExpense(currentCompanyId, expense.id, {
+                                                  lastApprovalReminderAt: new Date().toISOString()
+                                                });
+                                                await loadExpenses();
+                                                trackEvent('approval_reminder_sent', {
+                                                  expenseId: expense.id,
+                                                  assigneeId: expense.approvalAssigneeId,
+                                                  companyId: currentCompanyId
+                                                });
+                                              } catch (error) {
+                                                console.error('Error sending reminder:', error);
+                                                alert('Failed to send reminder. Please try again.');
+                                              }
+                                            }}
+                                            className="px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 transition-colors flex items-center gap-1.5"
+                                          >
+                                            <FaBell className="w-3 h-3" />
+                                            Send Reminder
+                                          </button>
+                                        )}
+                                      </div>
                                       <div className="grid md:grid-cols-3 gap-4 text-sm text-gray-700">
                                         <div>
                                           <span className="block text-xs uppercase text-gray-400">Status</span>
@@ -5976,15 +6442,63 @@ const approvalStatusStyles = {
                                           <span>{expense.approvedAt ? formatDateTime(expense.approvedAt, { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</span>
                                         </div>
                                       </div>
+                                      {expense.approvalAssigneeId && (
+                                        <div className="mt-3">
+                                          <span className="block text-xs uppercase text-gray-400 mb-1">Assigned To</span>
+                                          <div className="flex items-center gap-2">
+                                            {(() => {
+                                              const assignee = companyMembers.find(m => m.userId === expense.approvalAssigneeId);
+                                              const initials = assignee ? (assignee.displayName || assignee.email || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '?';
+                                              return (
+                                                <>
+                                                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold">
+                                                    {initials}
+                                                  </div>
+                                                  <span className="text-sm text-gray-700">
+                                                    {assignee ? (assignee.displayName || assignee.email) : 'Unknown user'}
+                                                  </span>
+                                                </>
+                                              );
+                                            })()}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {Array.isArray(expense.approvalChecklist) && expense.approvalChecklist.length > 0 && (
+                                        <div className="mt-3">
+                                          <span className="block text-xs uppercase text-gray-400 mb-2">Checklist</span>
+                                          <div className="space-y-1.5">
+                                            {expense.approvalChecklist.map((item, idx) => (
+                                              <div key={idx} className="flex items-center gap-2 text-sm">
+                                                <span className={item.status === 'completed' ? 'text-green-600' : 'text-gray-400'}>
+                                                  {item.status === 'completed' ? '✓' : '○'}
+                                                </span>
+                                                <span className={item.status === 'completed' ? 'text-gray-500 line-through' : 'text-gray-700'}>
+                                                  {item.title || `Item ${idx + 1}`}
+                                                </span>
+                                                {item.completedAt && (
+                                                  <span className="text-xs text-gray-400 ml-auto">
+                                                    {formatDateTime(item.completedAt, { dateStyle: 'short', timeStyle: 'short' })}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
                                       {expense.approvalNotes && (
                                         <div className="mt-3 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3">
                                           <span className="block text-xs uppercase text-gray-400 mb-1">Notes</span>
                                           <p className="whitespace-pre-wrap">{expense.approvalNotes}</p>
                                         </div>
                                       )}
+                                      {expense.lastApprovalReminderAt && (
+                                        <div className="mt-2 text-xs text-gray-500">
+                                          Last reminder: {formatDateTime(expense.lastApprovalReminderAt, { dateStyle: 'medium', timeStyle: 'short' })}
+                                        </div>
+                                      )}
                                     </section>
                                   )}
-                                  {(expense.dueDate || expense.scheduledPaymentDate || expense.paymentScheduleNotes || expense.contractReference || expense.contractUrl) && (
+                                  {(expense.dueDate || expense.scheduledPaymentDate || expense.paymentScheduleNotes || expense.contractReference || expense.contractUrl || contractDetailsForRow) && (
                                     <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                                       <h4 className="text-sm font-semibold text-gray-800 mb-3">Scheduling & Contracts</h4>
                                       <div className="grid md:grid-cols-2 gap-4 text-sm text-gray-700">
@@ -5995,6 +6509,20 @@ const approvalStatusStyles = {
                                         <div>
                                           <span className="block text-xs uppercase text-gray-400">Scheduled payment</span>
                                           <span>{expense.scheduledPaymentDate ? formatDateTime(expense.scheduledPaymentDate, { dateStyle: 'medium' }) : '—'}</span>
+                                        </div>
+                                        <div>
+                                          <span className="block text-xs uppercase text-gray-400">Linked contract</span>
+                                          <span>{contractDetailsForRow?.name || contractDetailsForRow?.reference || '—'}</span>
+                                        </div>
+                                        <div>
+                                          <span className="block text-xs uppercase text-gray-400">Contract status</span>
+                                          <span>{contractDetailsForRow?.status || '—'}</span>
+                                        </div>
+                                        <div>
+                                          <span className="block text-xs uppercase text-gray-400">Contract term</span>
+                                          <span>
+                                            {contractDetailsForRow?.startDate || '—'} – {contractDetailsForRow?.endDate || '—'}
+                                          </span>
                                         </div>
                                         <div>
                                           <span className="block text-xs uppercase text-gray-400">Contract reference</span>
@@ -6010,6 +6538,12 @@ const approvalStatusStyles = {
                                             <span>—</span>
                                           )}
                                         </div>
+                                        {contractDetailsForRow?.value !== null && (
+                                          <div>
+                                            <span className="block text-xs uppercase text-gray-400">Contract value</span>
+                                            <span>{contractDetailsForRow.value} {contractDetailsForRow.currency || ''}</span>
+                                          </div>
+                                        )}
                                       </div>
                                       {expense.paymentScheduleNotes && (
                                         <div className="mt-3 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3">
@@ -6433,7 +6967,7 @@ const approvalStatusStyles = {
                   setShowAttachmentsModal(false);
                   setViewingExpense(null);
                 }}
-                className="w-full px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
               >
                 Close
               </button>

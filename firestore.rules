@@ -278,6 +278,43 @@ service cloud.firestore {
       }
       
       // ============================================
+      // CONTRACTS
+      // ============================================
+      
+      match /contracts/{contractId} {
+        // Read: Company members can read contracts (owners, managers, accountants)
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update/Delete: Only owners and managers
+        allow create, update, delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager'])) &&
+                        request.resource.data.createdBy == request.auth.uid;
+      }
+      
+      // ============================================
+      // VENDORS (Service Provider CRM)
+      // ============================================
+      
+      match /vendors/{vendorId} {
+        // Read: Company members can read vendor profiles (for expense matching)
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Any company member can create/update vendor profiles (auto-created from expenses)
+        // This allows the system to automatically build vendor CRM from expense data
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Delete: Only owners and managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      // ============================================
       // COMPANY EXPENSES (Direct Path)
       // ============================================
       
@@ -456,6 +493,187 @@ service cloud.firestore {
         allow update: if hasPermission(companyId, 'businessPlanning', 'write');
         allow delete: if hasPermission(companyId, 'businessPlanning', 'delete') && 
                          isOwner(companyId);
+      }
+      
+      // ============================================
+      // ACCOUNTS RECEIVABLE (AR) - CUSTOMERS
+      // ============================================
+      
+      match /customers/{customerId} {
+        // Read: Company members can read customers
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create: Company members can create customers
+        allow create: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid &&
+                        request.resource.data.keys().hasAll(['createdBy']) &&
+                        ('name' in request.resource.data || 'company' in request.resource.data) &&
+                        'email' in request.resource.data;
+        
+        // Update: Company members can update customers
+        allow update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Delete: Only owners and managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      // ============================================
+      // ACCOUNTS RECEIVABLE (AR) - INVOICES
+      // ============================================
+      
+      match /invoices/{invoiceId} {
+        // Read: Company members can read invoices
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update invoices
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners and managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      // ============================================
+      // ACCOUNTS RECEIVABLE (AR) - QUOTES
+      // ============================================
+      
+      match /quotes/{quoteId} {
+        // Read: Company members can read quotes
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update quotes
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners and managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      // ============================================
+      // ACCOUNTS RECEIVABLE (AR) - SUBSCRIPTIONS (SaaS)
+      // ============================================
+      
+      match /subscriptions/{subscriptionId} {
+        // Read: Company members can read subscriptions
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update subscriptions
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners and managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      // ============================================
+      // MARKETING MODULE
+      // ============================================
+      
+      match /campaigns/{campaignId} {
+        // Read: Company members can read campaigns
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update campaigns
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners, managers, and marketing managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager', 'marketingManager']));
+      }
+      
+      match /socialAccounts/{accountId} {
+        // Read: Company members can read social accounts
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update social accounts
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners, managers, and marketing managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager', 'marketingManager']));
+      }
+      
+      match /marketingTasks/{taskId} {
+        // Read: Company members can read marketing tasks
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update tasks
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners, managers, and marketing managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager', 'marketingManager']));
+      }
+      
+      match /marketingAssets/{assetId} {
+        // Read: Company members can read marketing assets
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create: Company members can create assets
+        allow create: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners, managers, and marketing managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager', 'marketingManager']));
+      }
+      
+      match /leads/{leadId} {
+        // Read: Company members can read leads
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update leads
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners, managers, and marketing managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager', 'marketingManager']));
       }
       
       // ============================================

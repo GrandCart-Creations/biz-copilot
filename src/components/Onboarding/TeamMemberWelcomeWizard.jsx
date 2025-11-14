@@ -26,7 +26,8 @@ import {
   FaFileContract,
   FaLock,
   FaEnvelope,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaBullhorn
 } from 'react-icons/fa';
 
 const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
@@ -178,6 +179,17 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
         { module: 'Reports', icon: <FaFileInvoice />, description: 'Generate financial reports' }
       ]
     },
+    marketingManager: {
+      title: 'Marketing Manager',
+      icon: <FaBullhorn className="w-8 h-8" />,
+      color: 'from-orange-500 to-orange-600',
+      access: [
+        { module: 'Marketing', icon: <FaBullhorn />, description: 'Full control of campaigns, social media, and tasks' },
+        { module: 'Expenses', icon: <FaChartLine />, description: 'View budget and spending' },
+        { module: 'Income', icon: <FaChartLine />, description: 'Track revenue impact' },
+        { module: 'Reports', icon: <FaFileInvoice />, description: 'Measure marketing effectiveness' }
+      ]
+    },
     employee: {
       title: 'Employee',
       icon: <FaUsers className="w-8 h-8" />,
@@ -190,9 +202,9 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
 
   const roleInfo = roleAccess[role] || roleAccess.employee;
 
-  // Get chain of command (managers and owners)
+  // Get chain of command (managers, owners, and marketing managers)
   const supervisors = teamMembers.filter(m => 
-    (m.role === 'owner' || m.role === 'manager') && m.role !== role
+    (m.role === 'owner' || m.role === 'manager' || m.role === 'marketingManager') && m.role !== role
   );
 
   const steps = [

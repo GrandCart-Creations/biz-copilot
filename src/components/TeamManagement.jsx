@@ -38,7 +38,8 @@ import {
   FaSpinner,
   FaSearch,
   FaExclamationTriangle,
-  FaInfoCircle
+  FaInfoCircle,
+  FaBullhorn
 } from 'react-icons/fa';
 
 const TeamManagement = () => {
@@ -428,6 +429,8 @@ const TeamManagement = () => {
         return <FaUserTie className="w-4 h-4" />;
       case 'accountant':
         return <FaUserGraduate className="w-4 h-4" />;
+      case 'marketingManager':
+        return <FaBullhorn className="w-4 h-4" />;
       default:
         return <FaUser className="w-4 h-4" />;
     }
@@ -441,6 +444,8 @@ const TeamManagement = () => {
         return 'bg-blue-100 text-blue-800';
       case 'accountant':
         return 'bg-green-100 text-green-800';
+      case 'marketingManager':
+        return 'bg-orange-100 text-orange-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -628,7 +633,7 @@ const TeamManagement = () => {
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${getRoleColor(member.role)}`}>
                             {getRoleIcon(member.role)}
-                            {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
+                            {member.role === 'marketingManager' ? 'Marketing Manager' : member.role.charAt(0).toUpperCase() + member.role.slice(1)}
                           </span>
                           {member.joinedAt && (
                             <span className="text-xs text-gray-500">
@@ -735,12 +740,14 @@ const TeamManagement = () => {
                 >
                   <option value="employee">Employee</option>
                   <option value="accountant">Accountant</option>
+                  <option value="marketingManager">Marketing Manager</option>
                   <option value="manager">Manager</option>
                   {userRole === 'owner' && <option value="owner">Owner</option>}
                 </select>
                 <p className="mt-2 text-xs text-gray-500">
                   {inviteRole === 'employee' && 'Can view and create own expenses'}
                   {inviteRole === 'accountant' && 'Can view expenses and income, export reports'}
+                  {inviteRole === 'marketingManager' && 'Full marketing control, can view financial data and reports'}
                   {inviteRole === 'manager' && 'Can manage expenses, income, and reports'}
                   {inviteRole === 'owner' && 'Full access to all features and settings'}
                 </p>
@@ -814,6 +821,7 @@ const TeamManagement = () => {
                 >
                   <option value="employee">Employee</option>
                   <option value="accountant">Accountant</option>
+                  <option value="marketingManager">Marketing Manager</option>
                   <option value="manager">Manager</option>
                   {userRole === 'owner' && <option value="owner">Owner</option>}
                 </select>
@@ -1003,6 +1011,7 @@ const TeamManagement = () => {
                 >
                   <option value="employee">Employee</option>
                   <option value="accountant">Accountant</option>
+                  <option value="marketingManager">Marketing Manager</option>
                   <option value="manager">Manager</option>
                   {userRole === 'owner' && <option value="owner">Owner</option>}
                 </select>

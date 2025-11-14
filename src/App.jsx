@@ -14,6 +14,8 @@ import ProtectedRoute from './components/Auth/ProtectedRoute';
 import { lazy, Suspense } from 'react';
 const ExpenseTracker = lazy(() => import('./components/ExpenseTracker'));
 const IncomeTracker = lazy(() => import('./components/IncomeTracker'));
+const InvoiceTracker = lazy(() => import('./components/InvoiceTracker'));
+const MarketingTracker = lazy(() => import('./components/MarketingTracker'));
 const FinancialDashboard = lazy(() => import('./components/FinancialDashboard'));
 const ReportsDashboard = lazy(() => import('./components/ReportsDashboard'));
 const SettingsDashboard = lazy(() => import('./components/SettingsDashboard'));
@@ -116,6 +118,44 @@ function App() {
                     </div>
                   }>
                     <IncomeTracker />
+                  </Suspense>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Invoices Module (Accounts Receivable) */}
+            <Route 
+              path="/modules/invoices" 
+              element={
+                <ProtectedRoute>
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00BFA6] mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Invoices...</p>
+                      </div>
+                    </div>
+                  }>
+                    <InvoiceTracker />
+                  </Suspense>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Marketing Module */}
+            <Route 
+              path="/modules/marketing" 
+              element={
+                <ProtectedRoute>
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Marketing...</p>
+                      </div>
+                    </div>
+                  }>
+                    <MarketingTracker />
                   </Suspense>
                 </ProtectedRoute>
               } 

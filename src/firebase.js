@@ -1293,7 +1293,7 @@ export const cancelInvitation = async (companyId, invitationId) => {
  * Update a user's role in a company
  * @param {string} companyId - Company ID
  * @param {string} userId - User ID
- * @param {string} newRole - New role (owner, manager, employee, accountant)
+ * @param {string} newRole - New role (owner, manager, employee, accountant, marketingManager)
  * @param {Array} accessModules - Optional: array of access modules
  */
 export const updateUserRole = async (companyId, userId, newRole, accessModules = null) => {
@@ -1312,7 +1312,8 @@ export const updateUserRole = async (companyId, userId, newRole, accessModules =
         owner: ['expenses', 'income', 'marketing', 'forecasting', 'reports', 'settings', 'team'],
         manager: ['expenses', 'income', 'marketing', 'forecasting', 'reports'],
         employee: ['expenses'],
-        accountant: ['expenses', 'income', 'reports']
+        accountant: ['expenses', 'income', 'reports'],
+        marketingManager: ['expenses', 'income', 'invoices', 'marketing', 'forecasting', 'reports', 'team']
       };
       updateData.accessModules = roleModules[newRole] || ['expenses'];
     }
@@ -1466,7 +1467,8 @@ export const acceptInvitation = async (companyId, invitationId, userId, userEmai
       owner: ['expenses', 'income', 'marketing', 'forecasting', 'reports', 'settings', 'team'],
       manager: ['expenses', 'income', 'marketing', 'forecasting', 'reports'],
       employee: ['expenses'],
-      accountant: ['expenses', 'income', 'reports']
+      accountant: ['expenses', 'income', 'reports'],
+      marketingManager: ['expenses', 'income', 'invoices', 'marketing', 'forecasting', 'reports', 'team']
     };
     
     batch.set(userRef, {
@@ -3767,6 +3769,1089 @@ export const validateVatNumber = async (countryCode, vatNumber) => {
     vatNumber
   });
   return response.data;
+};
+
+// ==================== CONTRACTS ====================
+
+export const getCompanyContracts = async (companyId) => {
+  if (!companyId) return [];
+
+  try {
+    const contractsRef = collection(db, 'companies', companyId, 'contracts');
+    const snapshot = await getDocs(contractsRef);
+
+    const contracts = [];
+    snapshot.forEach((docSnap) => {
+      contracts.push({
+        id: docSnap.id,
+        ...docSnap.data()
+      });
+    });
+
+    return contracts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  } catch (error) {
+    console.error('Error loading company contracts:', error);
+    throw error;
+  }
+};
+
+export const addCompanyContract = async (companyId, userId, contractData = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+
+  try {
+    const contractsRef = collection(db, 'companies', companyId, 'contracts');
+    const payload = {
+      name: contractData.name?.trim() || '',
+      reference: contractData.reference?.trim() || '',
+      vendorId: contractData.vendorId || '',
+      vendorName: contractData.vendorName?.trim() || '',
+      status: contractData.status || 'active',
+      currency: contractData.currency || '',
+      value: Number.isFinite(parseFloat(contractData.value)) ? parseFloat(contractData.value) : null,
+      url: contractData.url?.trim() || '',
+      startDate: contractData.startDate || '',
+      endDate: contractData.endDate || '',
+      notes: contractData.notes?.trim() || '',
+      createdBy: userId || '',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+
+    const docRef = await addDoc(contractsRef, payload);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding company contract:', error);
+    throw error;
+  }
+};
+
+export const updateCompanyContract = async (companyId, contractId, contractData = {}) => {
+  if (!companyId || !contractId) throw new Error('Company ID and contract ID are required');
+
+  try {
+    const contractRef = doc(db, 'companies', companyId, 'contracts', contractId);
+    const payload = {
+      ...contractData,
+      updatedAt: serverTimestamp()
+    };
+
+    Object.keys(payload).forEach((key) => {
+      if (payload[key] === undefined) {
+        delete payload[key];
+      }
+    });
+
+    await updateDoc(contractRef, payload);
+    return true;
+  } catch (error) {
+    console.error('Error updating company contract:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanyContract = async (companyId, contractId) => {
+  if (!companyId || !contractId) throw new Error('Company ID and contract ID are required');
+
+  try {
+    const contractRef = doc(db, 'companies', companyId, 'contracts', contractId);
+    await deleteDoc(contractRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting company contract:', error);
+    throw error;
+  }
+};
+
+// ==================== ACCOUNTS RECEIVABLE (AR) - CUSTOMERS ====================
+
+export const getCompanyCustomers = async (companyId) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const customersRef = collection(db, 'companies', companyId, 'customers');
+    const snapshot = await getDocs(query(customersRef, orderBy('name')));
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error fetching customers:', error);
+    throw error;
+  }
+};
+
+export const getCompanyCustomer = async (companyId, customerId) => {
+  if (!companyId || !customerId) throw new Error('Company ID and customer ID are required');
+  try {
+    const customerRef = doc(db, 'companies', companyId, 'customers', customerId);
+    const customerSnap = await getDoc(customerRef);
+    if (!customerSnap.exists()) return null;
+    return { id: customerSnap.id, ...customerSnap.data() };
+  } catch (error) {
+    console.error('Error fetching customer:', error);
+    throw error;
+  }
+};
+
+export const addCompanyCustomer = async (companyId, userId, customerData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const customersRef = collection(db, 'companies', companyId, 'customers');
+    const newCustomer = {
+      name: customerData.name || '',
+      email: customerData.email || '',
+      phone: customerData.phone || '',
+      company: customerData.company || '',
+      address: customerData.address || '',
+      city: customerData.city || '',
+      country: customerData.country || '',
+      postalCode: customerData.postalCode || '',
+      vatNumber: customerData.vatNumber || '',
+      taxId: customerData.taxId || '',
+      notes: customerData.notes || '',
+      tags: customerData.tags || [],
+      // SaaS-specific fields
+      accountType: customerData.accountType || 'one_time', // 'one_time', 'subscription', 'enterprise'
+      billingContact: customerData.billingContact || '',
+      technicalContact: customerData.technicalContact || '',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    const docRef = await addDoc(customersRef, newCustomer);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding customer:', error);
+    throw error;
+  }
+};
+
+export const updateCompanyCustomer = async (companyId, customerId, customerData = {}) => {
+  if (!companyId || !customerId) throw new Error('Company ID and customer ID are required');
+  try {
+    const customerRef = doc(db, 'companies', companyId, 'customers', customerId);
+    await updateDoc(customerRef, {
+      ...customerData,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating customer:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanyCustomer = async (companyId, customerId) => {
+  if (!companyId || !customerId) throw new Error('Company ID and customer ID are required');
+  try {
+    const customerRef = doc(db, 'companies', companyId, 'customers', customerId);
+    await deleteDoc(customerRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting customer:', error);
+    throw error;
+  }
+};
+
+// ==================== ACCOUNTS RECEIVABLE (AR) - INVOICES ====================
+
+export const getCompanyInvoices = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const invoicesRef = collection(db, 'companies', companyId, 'invoices');
+    let q = query(invoicesRef);
+    
+    if (options.status) {
+      q = query(q, where('status', '==', options.status));
+    }
+    if (options.customerId) {
+      q = query(q, where('customerId', '==', options.customerId));
+    }
+    
+    q = query(q, orderBy('invoiceDate', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error fetching invoices:', error);
+    throw error;
+  }
+};
+
+export const getCompanyInvoice = async (companyId, invoiceId) => {
+  if (!companyId || !invoiceId) throw new Error('Company ID and invoice ID are required');
+  try {
+    const invoiceRef = doc(db, 'companies', companyId, 'invoices', invoiceId);
+    const invoiceSnap = await getDoc(invoiceRef);
+    if (!invoiceSnap.exists()) return null;
+    return { id: invoiceSnap.id, ...invoiceSnap.data() };
+  } catch (error) {
+    console.error('Error fetching invoice:', error);
+    throw error;
+  }
+};
+
+export const addCompanyInvoice = async (companyId, userId, invoiceData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const invoicesRef = collection(db, 'companies', companyId, 'invoices');
+    
+    // Generate invoice number if not provided
+    let invoiceNumber = invoiceData.invoiceNumber;
+    if (!invoiceNumber) {
+      const year = new Date().getFullYear();
+      const existingInvoices = await getCompanyInvoices(companyId);
+      const yearInvoices = existingInvoices.filter(inv => {
+        const invDate = inv.invoiceDate?.toDate?.() || new Date(inv.invoiceDate);
+        return invDate.getFullYear() === year;
+      });
+      const nextNum = (yearInvoices.length + 1).toString().padStart(4, '0');
+      invoiceNumber = `INV-${year}-${nextNum}`;
+    }
+    
+    const newInvoice = {
+      invoiceNumber: invoiceNumber,
+      customerId: invoiceData.customerId || '',
+      customerName: invoiceData.customerName || '',
+      customerEmail: invoiceData.customerEmail || '',
+      customerAddress: invoiceData.customerAddress || '',
+      invoiceDate: invoiceData.invoiceDate ? Timestamp.fromDate(new Date(invoiceData.invoiceDate)) : serverTimestamp(),
+      dueDate: invoiceData.dueDate ? Timestamp.fromDate(new Date(invoiceData.dueDate)) : null,
+      status: invoiceData.status || 'draft', // 'draft', 'sent', 'paid', 'overdue', 'cancelled'
+      lineItems: invoiceData.lineItems || [],
+      subtotal: invoiceData.subtotal || 0,
+      taxRate: invoiceData.taxRate || 21,
+      taxAmount: invoiceData.taxAmount || 0,
+      total: invoiceData.total || 0,
+      currency: invoiceData.currency || 'EUR',
+      notes: invoiceData.notes || '',
+      terms: invoiceData.terms || '',
+      // SaaS-specific fields
+      subscriptionId: invoiceData.subscriptionId || null,
+      billingCycle: invoiceData.billingCycle || null, // 'monthly', 'quarterly', 'annual'
+      // Payment tracking
+      paidDate: invoiceData.paidDate ? Timestamp.fromDate(new Date(invoiceData.paidDate)) : null,
+      paidAmount: invoiceData.paidAmount || 0,
+      paymentMethod: invoiceData.paymentMethod || '',
+      financialAccountId: invoiceData.financialAccountId || '',
+      // Metadata
+      quoteId: invoiceData.quoteId || null,
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(invoicesRef, newInvoice);
+    
+    // Create ledger entry for invoice (if paid)
+    // Note: Ledger entry will be created when invoice status changes to 'paid'
+    // This avoids circular imports and ensures proper sequencing
+    
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding invoice:', error);
+    throw error;
+  }
+};
+
+export const updateCompanyInvoice = async (companyId, invoiceId, invoiceData = {}) => {
+  if (!companyId || !invoiceId) throw new Error('Company ID and invoice ID are required');
+  try {
+    const invoiceRef = doc(db, 'companies', companyId, 'invoices', invoiceId);
+    const invoiceSnap = await getDoc(invoiceRef);
+    if (!invoiceSnap.exists()) throw new Error('Invoice not found');
+    
+    const existingData = invoiceSnap.data();
+    const wasPaid = existingData.status === 'paid';
+    const willBePaid = invoiceData.status === 'paid';
+    
+    const updateData = {
+      ...invoiceData,
+      updatedAt: serverTimestamp()
+    };
+    
+    // Convert date strings to Timestamps
+    if (invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string') {
+      updateData.invoiceDate = Timestamp.fromDate(new Date(invoiceData.invoiceDate));
+    }
+    if (invoiceData.dueDate && typeof invoiceData.dueDate === 'string') {
+      updateData.dueDate = Timestamp.fromDate(new Date(invoiceData.dueDate));
+    }
+    if (invoiceData.paidDate && typeof invoiceData.paidDate === 'string') {
+      updateData.paidDate = Timestamp.fromDate(new Date(invoiceData.paidDate));
+    }
+    
+    await updateDoc(invoiceRef, updateData);
+    
+    // Create ledger entry and income record when invoice is marked as paid
+    if (!wasPaid && willBePaid && invoiceData.financialAccountId) {
+      try {
+        const mergedData = { ...existingData, ...invoiceData };
+        const paidDate = mergedData.paidDate || mergedData.invoiceDate;
+        const paidDateStr = paidDate?.toDate ? paidDate.toDate().toISOString().split('T')[0] : 
+                           (paidDate instanceof Date ? paidDate.toISOString().split('T')[0] : paidDate);
+        
+        // Create income record in the income collection
+        try {
+          const incomeRef = collection(db, 'companies', companyId, 'income');
+          const incomeData = {
+            date: paidDateStr || new Date().toISOString().split('T')[0],
+            source: 'Invoice Payment',
+            customer: mergedData.customerName || mergedData.customer || '',
+            description: `Invoice ${mergedData.invoiceNumber || invoiceId} - ${mergedData.lineItems?.[0]?.description || 'Service Revenue'}`,
+            amount: parseFloat(mergedData.total || 0),
+            currency: mergedData.currency || 'EUR',
+            btw: parseFloat(mergedData.taxRate || 21),
+            financialAccountId: invoiceData.financialAccountId,
+            invoiceId: invoiceId,
+            category: 'Service Revenue',
+            notes: `Payment received for invoice ${mergedData.invoiceNumber || invoiceId}`,
+            reconciled: true,
+            createdBy: invoiceData.updatedBy || existingData.createdBy || '',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          };
+          
+          const incomeDocRef = await addDoc(incomeRef, incomeData);
+          
+          // Create ledger entry (this will also update financial account balance)
+          const ledgerEntryId = await createIncomeLedgerEntry(
+            companyId,
+            incomeDocRef.id,
+            {
+              amount: mergedData.total || 0,
+              currency: mergedData.currency || 'EUR',
+              category: 'Service Revenue',
+              financialAccountId: invoiceData.financialAccountId,
+              description: `Invoice ${mergedData.invoiceNumber || invoiceId}`,
+              date: paidDateStr,
+              customer: mergedData.customerName || mergedData.customer || '',
+              invoiceId: invoiceId
+            },
+            invoiceData.updatedBy || existingData.createdBy || ''
+          );
+          
+          if (ledgerEntryId) {
+            await updateDoc(incomeDocRef, {
+              ledgerEntryId,
+              updatedAt: serverTimestamp()
+            });
+          }
+          
+          // Link income record to invoice
+          await updateDoc(invoiceRef, {
+            incomeId: incomeDocRef.id,
+            ledgerEntryId: ledgerEntryId || '',
+            updatedAt: serverTimestamp()
+          });
+        } catch (incomeError) {
+          console.error('Error creating income record for paid invoice:', incomeError);
+          // Continue with ledger entry even if income creation fails
+        }
+        
+        // Also create ledger entry directly linked to invoice (for backward compatibility)
+        try {
+          const invoiceLedgerEntryId = await createIncomeLedgerEntry(
+            companyId,
+            invoiceId,
+            {
+              amount: mergedData.total || 0,
+              currency: mergedData.currency || 'EUR',
+              category: 'Service Revenue',
+              financialAccountId: invoiceData.financialAccountId,
+              description: `Invoice ${mergedData.invoiceNumber || invoiceId}`,
+              date: paidDateStr,
+              customer: mergedData.customerName || mergedData.customer || '',
+              invoiceId: invoiceId
+            },
+            invoiceData.updatedBy || existingData.createdBy || ''
+          );
+          
+          if (invoiceLedgerEntryId) {
+            await updateDoc(invoiceRef, {
+              invoiceLedgerEntryId: invoiceLedgerEntryId,
+              updatedAt: serverTimestamp()
+            });
+          }
+        } catch (ledgerError) {
+          console.error('Error creating ledger entry for paid invoice:', ledgerError);
+        }
+      } catch (error) {
+        console.error('Error processing paid invoice:', error);
+        // Don't throw - invoice update succeeded, income/ledger creation is secondary
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating invoice:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanyInvoice = async (companyId, invoiceId) => {
+  if (!companyId || !invoiceId) throw new Error('Company ID and invoice ID are required');
+  try {
+    const invoiceRef = doc(db, 'companies', companyId, 'invoices', invoiceId);
+    await deleteDoc(invoiceRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting invoice:', error);
+    throw error;
+  }
+};
+
+// ==================== ACCOUNTS RECEIVABLE (AR) - QUOTES ====================
+
+export const getCompanyQuotes = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const quotesRef = collection(db, 'companies', companyId, 'quotes');
+    let q = query(quotesRef);
+    
+    if (options.status) {
+      q = query(q, where('status', '==', options.status));
+    }
+    if (options.customerId) {
+      q = query(q, where('customerId', '==', options.customerId));
+    }
+    
+    q = query(q, orderBy('quoteDate', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error fetching quotes:', error);
+    throw error;
+  }
+};
+
+export const addCompanyQuote = async (companyId, userId, quoteData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const quotesRef = collection(db, 'companies', companyId, 'quotes');
+    
+    // Generate quote number if not provided
+    let quoteNumber = quoteData.quoteNumber;
+    if (!quoteNumber) {
+      const year = new Date().getFullYear();
+      const existingQuotes = await getCompanyQuotes(companyId);
+      const yearQuotes = existingQuotes.filter(q => {
+        const qDate = q.quoteDate?.toDate?.() || new Date(q.quoteDate);
+        return qDate.getFullYear() === year;
+      });
+      const nextNum = (yearQuotes.length + 1).toString().padStart(4, '0');
+      quoteNumber = `QUO-${year}-${nextNum}`;
+    }
+    
+    const expiryDate = quoteData.expiryDate 
+      ? Timestamp.fromDate(new Date(quoteData.expiryDate))
+      : (() => {
+          const expiry = new Date();
+          expiry.setDate(expiry.getDate() + 30); // Default 30 days
+          return Timestamp.fromDate(expiry);
+        })();
+    
+    const newQuote = {
+      quoteNumber: quoteNumber,
+      customerId: quoteData.customerId || '',
+      customerName: quoteData.customerName || '',
+      customerEmail: quoteData.customerEmail || '',
+      customerAddress: quoteData.customerAddress || '',
+      quoteDate: quoteData.quoteDate ? Timestamp.fromDate(new Date(quoteData.quoteDate)) : serverTimestamp(),
+      expiryDate: expiryDate,
+      status: quoteData.status || 'draft', // 'draft', 'sent', 'accepted', 'rejected', 'expired'
+      lineItems: quoteData.lineItems || [],
+      subtotal: quoteData.subtotal || 0,
+      taxRate: quoteData.taxRate || 21,
+      taxAmount: quoteData.taxAmount || 0,
+      total: quoteData.total || 0,
+      currency: quoteData.currency || 'EUR',
+      notes: quoteData.notes || '',
+      terms: quoteData.terms || '',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(quotesRef, newQuote);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding quote:', error);
+    throw error;
+  }
+};
+
+export const updateCompanyQuote = async (companyId, quoteId, quoteData = {}) => {
+  if (!companyId || !quoteId) throw new Error('Company ID and quote ID are required');
+  try {
+    const quoteRef = doc(db, 'companies', companyId, 'quotes', quoteId);
+    const updateData = {
+      ...quoteData,
+      updatedAt: serverTimestamp()
+    };
+    
+    if (quoteData.quoteDate && typeof quoteData.quoteDate === 'string') {
+      updateData.quoteDate = Timestamp.fromDate(new Date(quoteData.quoteDate));
+    }
+    if (quoteData.expiryDate && typeof quoteData.expiryDate === 'string') {
+      updateData.expiryDate = Timestamp.fromDate(new Date(quoteData.expiryDate));
+    }
+    
+    await updateDoc(quoteRef, updateData);
+    return true;
+  } catch (error) {
+    console.error('Error updating quote:', error);
+    throw error;
+  }
+};
+
+export const convertQuoteToInvoice = async (companyId, quoteId, userId) => {
+  if (!companyId || !quoteId || !userId) throw new Error('Company ID, quote ID, and user ID are required');
+  try {
+    const quoteRef = doc(db, 'companies', companyId, 'quotes', quoteId);
+    const quoteSnap = await getDoc(quoteRef);
+    if (!quoteSnap.exists()) throw new Error('Quote not found');
+    
+    const quoteData = quoteSnap.data();
+    
+    // Create invoice from quote
+    const invoiceId = await addCompanyInvoice(companyId, userId, {
+      customerId: quoteData.customerId,
+      customerName: quoteData.customerName,
+      customerEmail: quoteData.customerEmail,
+      customerAddress: quoteData.customerAddress,
+      invoiceDate: new Date().toISOString().split('T')[0],
+      dueDate: quoteData.expiryDate ? quoteData.expiryDate.toDate().toISOString().split('T')[0] : null,
+      status: 'draft',
+      lineItems: quoteData.lineItems,
+      subtotal: quoteData.subtotal,
+      taxRate: quoteData.taxRate,
+      taxAmount: quoteData.taxAmount,
+      total: quoteData.total,
+      currency: quoteData.currency,
+      notes: quoteData.notes,
+      terms: quoteData.terms,
+      quoteId: quoteId
+    });
+    
+    // Update quote status
+    await updateCompanyQuote(companyId, quoteId, { status: 'accepted' });
+    
+    return invoiceId;
+  } catch (error) {
+    console.error('Error converting quote to invoice:', error);
+    throw error;
+  }
+};
+
+// ==================== ACCOUNTS RECEIVABLE (AR) - SUBSCRIPTIONS (SaaS) ====================
+
+export const getCompanySubscriptions = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const subscriptionsRef = collection(db, 'companies', companyId, 'subscriptions');
+    let q = query(subscriptionsRef);
+    
+    if (options.status) {
+      q = query(q, where('status', '==', options.status));
+    }
+    if (options.customerId) {
+      q = query(q, where('customerId', '==', options.customerId));
+    }
+    
+    q = query(q, orderBy('startDate', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error fetching subscriptions:', error);
+    throw error;
+  }
+};
+
+export const addCompanySubscription = async (companyId, userId, subscriptionData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const subscriptionsRef = collection(db, 'companies', companyId, 'subscriptions');
+    
+    const newSubscription = {
+      customerId: subscriptionData.customerId || '',
+      customerName: subscriptionData.customerName || '',
+      planName: subscriptionData.planName || '',
+      planType: subscriptionData.planType || 'monthly', // 'monthly', 'quarterly', 'annual'
+      billingCycle: subscriptionData.billingCycle || 'monthly', // 'monthly', 'quarterly', 'annual'
+      amount: subscriptionData.amount || 0,
+      currency: subscriptionData.currency || 'EUR',
+      taxRate: subscriptionData.taxRate || 21,
+      startDate: subscriptionData.startDate ? Timestamp.fromDate(new Date(subscriptionData.startDate)) : serverTimestamp(),
+      endDate: subscriptionData.endDate ? Timestamp.fromDate(new Date(subscriptionData.endDate)) : null,
+      status: subscriptionData.status || 'active', // 'active', 'paused', 'cancelled', 'expired'
+      autoRenew: subscriptionData.autoRenew !== false,
+      nextBillingDate: subscriptionData.nextBillingDate ? Timestamp.fromDate(new Date(subscriptionData.nextBillingDate)) : null,
+      seats: subscriptionData.seats || 1,
+      // SaaS-specific
+      mrr: subscriptionData.mrr || 0, // Monthly Recurring Revenue
+      arr: subscriptionData.arr || 0, // Annual Recurring Revenue
+      notes: subscriptionData.notes || '',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(subscriptionsRef, newSubscription);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding subscription:', error);
+    throw error;
+  }
+};
+
+export const updateCompanySubscription = async (companyId, subscriptionId, subscriptionData = {}) => {
+  if (!companyId || !subscriptionId) throw new Error('Company ID and subscription ID are required');
+  try {
+    const subscriptionRef = doc(db, 'companies', companyId, 'subscriptions', subscriptionId);
+    const updateData = {
+      ...subscriptionData,
+      updatedAt: serverTimestamp()
+    };
+    
+    if (subscriptionData.startDate && typeof subscriptionData.startDate === 'string') {
+      updateData.startDate = Timestamp.fromDate(new Date(subscriptionData.startDate));
+    }
+    if (subscriptionData.endDate && typeof subscriptionData.endDate === 'string') {
+      updateData.endDate = Timestamp.fromDate(new Date(subscriptionData.endDate));
+    }
+    if (subscriptionData.nextBillingDate && typeof subscriptionData.nextBillingDate === 'string') {
+      updateData.nextBillingDate = Timestamp.fromDate(new Date(subscriptionData.nextBillingDate));
+    }
+    
+    await updateDoc(subscriptionRef, updateData);
+    return true;
+  } catch (error) {
+    console.error('Error updating subscription:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanySubscription = async (companyId, subscriptionId) => {
+  if (!companyId || !subscriptionId) throw new Error('Company ID and subscription ID are required');
+  try {
+    const subscriptionRef = doc(db, 'companies', companyId, 'subscriptions', subscriptionId);
+    await deleteDoc(subscriptionRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting subscription:', error);
+    throw error;
+  }
+};
+
+// ==================== MARKETING MODULE ====================
+
+// ==================== MARKETING CAMPAIGNS ====================
+
+export const getCompanyCampaigns = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const campaignsRef = collection(db, 'companies', companyId, 'campaigns');
+    let q = query(campaignsRef);
+    
+    if (options.status) {
+      q = query(q, where('status', '==', options.status));
+    }
+    if (options.type) {
+      q = query(q, where('type', '==', options.type));
+    }
+    
+    q = query(q, orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error getting campaigns:', error);
+    throw error;
+  }
+};
+
+export const addCompanyCampaign = async (companyId, userId, campaignData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const campaignsRef = collection(db, 'companies', companyId, 'campaigns');
+    
+    const newCampaign = {
+      name: campaignData.name || '',
+      description: campaignData.description || '',
+      type: campaignData.type || 'social', // 'social', 'email', 'content', 'paid', 'event', 'other'
+      status: campaignData.status || 'draft', // 'draft', 'scheduled', 'active', 'paused', 'completed', 'cancelled'
+      startDate: campaignData.startDate ? Timestamp.fromDate(new Date(campaignData.startDate)) : null,
+      endDate: campaignData.endDate ? Timestamp.fromDate(new Date(campaignData.endDate)) : null,
+      budget: parseFloat(campaignData.budget || 0),
+      targetAudience: campaignData.targetAudience || '',
+      goals: campaignData.goals || [],
+      channels: campaignData.channels || [],
+      tags: campaignData.tags || [],
+      assignedTo: campaignData.assignedTo || '',
+      metrics: {
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        revenue: 0
+      },
+      notes: campaignData.notes || '',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(campaignsRef, newCampaign);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding campaign:', error);
+    throw error;
+  }
+};
+
+export const updateCompanyCampaign = async (companyId, campaignId, campaignData = {}) => {
+  if (!companyId || !campaignId) throw new Error('Company ID and campaign ID are required');
+  try {
+    const campaignRef = doc(db, 'companies', companyId, 'campaigns', campaignId);
+    const updateData = {
+      ...campaignData,
+      updatedAt: serverTimestamp()
+    };
+    
+    if (campaignData.startDate && typeof campaignData.startDate === 'string') {
+      updateData.startDate = Timestamp.fromDate(new Date(campaignData.startDate));
+    }
+    if (campaignData.endDate && typeof campaignData.endDate === 'string') {
+      updateData.endDate = Timestamp.fromDate(new Date(campaignData.endDate));
+    }
+    if (campaignData.budget !== undefined) {
+      updateData.budget = parseFloat(campaignData.budget || 0);
+    }
+    
+    await updateDoc(campaignRef, updateData);
+    return true;
+  } catch (error) {
+    console.error('Error updating campaign:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanyCampaign = async (companyId, campaignId) => {
+  if (!companyId || !campaignId) throw new Error('Company ID and campaign ID are required');
+  try {
+    const campaignRef = doc(db, 'companies', companyId, 'campaigns', campaignId);
+    await deleteDoc(campaignRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting campaign:', error);
+    throw error;
+  }
+};
+
+// ==================== SOCIAL MEDIA ACCOUNTS ====================
+
+export const getCompanySocialAccounts = async (companyId) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const accountsRef = collection(db, 'companies', companyId, 'socialAccounts');
+    const snapshot = await getDocs(query(accountsRef, orderBy('createdAt', 'desc')));
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error getting social accounts:', error);
+    throw error;
+  }
+};
+
+export const addCompanySocialAccount = async (companyId, userId, accountData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const accountsRef = collection(db, 'companies', companyId, 'socialAccounts');
+    
+    const newAccount = {
+      platform: accountData.platform || 'facebook',
+      accountName: accountData.accountName || '',
+      accountUrl: accountData.accountUrl || '',
+      accessToken: accountData.accessToken || '', // Encrypted in production
+      isActive: accountData.isActive !== false,
+      followers: accountData.followers || 0,
+      notes: accountData.notes || '',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(accountsRef, newAccount);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding social account:', error);
+    throw error;
+  }
+};
+
+export const updateCompanySocialAccount = async (companyId, accountId, accountData = {}) => {
+  if (!companyId || !accountId) throw new Error('Company ID and account ID are required');
+  try {
+    const accountRef = doc(db, 'companies', companyId, 'socialAccounts', accountId);
+    await updateDoc(accountRef, {
+      ...accountData,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating social account:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanySocialAccount = async (companyId, accountId) => {
+  if (!companyId || !accountId) throw new Error('Company ID and account ID are required');
+  try {
+    const accountRef = doc(db, 'companies', companyId, 'socialAccounts', accountId);
+    await deleteDoc(accountRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting social account:', error);
+    throw error;
+  }
+};
+
+// ==================== MARKETING TASKS ====================
+
+export const getCompanyMarketingTasks = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const tasksRef = collection(db, 'companies', companyId, 'marketingTasks');
+    let q = query(tasksRef);
+    
+    if (options.status) {
+      q = query(q, where('taskStatus', '==', options.status));
+    }
+    if (options.assignee) {
+      q = query(q, where('taskAssignee', '==', options.assignee));
+    }
+    
+    q = query(q, orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error getting marketing tasks:', error);
+    throw error;
+  }
+};
+
+export const addCompanyMarketingTask = async (companyId, userId, taskData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const tasksRef = collection(db, 'companies', companyId, 'marketingTasks');
+    
+    const newTask = {
+      title: taskData.title || '',
+      taskDescription: taskData.taskDescription || '',
+      priority: taskData.priority || 'medium', // 'low', 'medium', 'high', 'urgent'
+      dueDate: taskData.dueDate ? Timestamp.fromDate(new Date(taskData.dueDate)) : null,
+      taskStatus: taskData.taskStatus || 'todo', // 'todo', 'in-progress', 'review', 'done', 'blocked'
+      taskAssignee: taskData.taskAssignee || '',
+      campaignId: taskData.campaignId || '',
+      tags: taskData.tags || [],
+      comments: [],
+      attachments: [],
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(tasksRef, newTask);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding marketing task:', error);
+    throw error;
+  }
+};
+
+export const updateCompanyMarketingTask = async (companyId, taskId, taskData = {}) => {
+  if (!companyId || !taskId) throw new Error('Company ID and task ID are required');
+  try {
+    const taskRef = doc(db, 'companies', companyId, 'marketingTasks', taskId);
+    const updateData = {
+      ...taskData,
+      updatedAt: serverTimestamp()
+    };
+    
+    if (taskData.dueDate && typeof taskData.dueDate === 'string') {
+      updateData.dueDate = Timestamp.fromDate(new Date(taskData.dueDate));
+    }
+    
+    await updateDoc(taskRef, updateData);
+    return true;
+  } catch (error) {
+    console.error('Error updating marketing task:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanyMarketingTask = async (companyId, taskId) => {
+  if (!companyId || !taskId) throw new Error('Company ID and task ID are required');
+  try {
+    const taskRef = doc(db, 'companies', companyId, 'marketingTasks', taskId);
+    await deleteDoc(taskRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting marketing task:', error);
+    throw error;
+  }
+};
+
+// ==================== MARKETING ASSETS ====================
+
+export const getCompanyMarketingAssets = async (companyId) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const assetsRef = collection(db, 'companies', companyId, 'marketingAssets');
+    const snapshot = await getDocs(query(assetsRef, orderBy('createdAt', 'desc')));
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error getting marketing assets:', error);
+    throw error;
+  }
+};
+
+export const addCompanyMarketingAsset = async (companyId, userId, assetData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const assetsRef = collection(db, 'companies', companyId, 'marketingAssets');
+    
+    const newAsset = {
+      assetName: assetData.assetName || '',
+      assetType: assetData.assetType || 'image', // 'image', 'video', 'document', 'template', 'other'
+      assetUrl: assetData.assetUrl || '',
+      fileSize: assetData.fileSize || 0,
+      mimeType: assetData.mimeType || '',
+      tags: assetData.tags || [],
+      campaignId: assetData.campaignId || '',
+      notes: assetData.notes || '',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(assetsRef, newAsset);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding marketing asset:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanyMarketingAsset = async (companyId, assetId) => {
+  if (!companyId || !assetId) throw new Error('Company ID and asset ID are required');
+  try {
+    const assetRef = doc(db, 'companies', companyId, 'marketingAssets', assetId);
+    await deleteDoc(assetRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting marketing asset:', error);
+    throw error;
+  }
+};
+
+// ==================== MARKETING LEADS ====================
+
+export const getCompanyLeads = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const leadsRef = collection(db, 'companies', companyId, 'leads');
+    let q = query(leadsRef);
+    
+    if (options.status) {
+      q = query(q, where('leadStatus', '==', options.status));
+    }
+    if (options.source) {
+      q = query(q, where('leadSource', '==', options.source));
+    }
+    
+    q = query(q, orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+  } catch (error) {
+    console.error('Error getting leads:', error);
+    throw error;
+  }
+};
+
+export const addCompanyLead = async (companyId, userId, leadData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const leadsRef = collection(db, 'companies', companyId, 'leads');
+    
+    const newLead = {
+      leadName: leadData.leadName || '',
+      leadEmail: leadData.leadEmail || '',
+      leadPhone: leadData.leadPhone || '',
+      leadCompany: leadData.leadCompany || '',
+      leadSource: leadData.leadSource || '', // 'website', 'social', 'referral', 'event', 'other'
+      leadStatus: leadData.leadStatus || 'new', // 'new', 'contacted', 'qualified', 'converted', 'lost'
+      campaignId: leadData.campaignId || '',
+      notes: leadData.notes || '',
+      tags: leadData.tags || [],
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(leadsRef, newLead);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding lead:', error);
+    throw error;
+  }
+};
+
+export const updateCompanyLead = async (companyId, leadId, leadData = {}) => {
+  if (!companyId || !leadId) throw new Error('Company ID and lead ID are required');
+  try {
+    const leadRef = doc(db, 'companies', companyId, 'leads', leadId);
+    await updateDoc(leadRef, {
+      ...leadData,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating lead:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanyLead = async (companyId, leadId) => {
+  if (!companyId || !leadId) throw new Error('Company ID and lead ID are required');
+  try {
+    const leadRef = doc(db, 'companies', companyId, 'leads', leadId);
+    await deleteDoc(leadRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting lead:', error);
+    throw error;
+  }
 };
 
 // Export auth, db, and storage instances

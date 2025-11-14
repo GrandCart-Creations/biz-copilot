@@ -10,6 +10,7 @@ const ROLE_PERMISSIONS = {
   owner: {
     expenses: ['read', 'write', 'delete', 'export'],
     income: ['read', 'write', 'delete', 'export'],
+    invoices: ['read', 'write', 'delete', 'export'],
     marketing: ['read', 'write', 'delete'],
     forecasting: ['read', 'write', 'delete'],
     reports: ['read', 'write', 'export'],
@@ -19,6 +20,7 @@ const ROLE_PERMISSIONS = {
   manager: {
     expenses: ['read', 'write', 'delete'],
     income: ['read', 'write'],
+    invoices: ['read', 'write', 'delete'],
     marketing: ['read', 'write'],
     forecasting: ['read', 'write'], // Can create/edit forecasts
     reports: ['read', 'write', 'export'], // Can create and export reports
@@ -28,6 +30,7 @@ const ROLE_PERMISSIONS = {
   employee: {
     expenses: ['read', 'write'], // Own expenses only (enforced in Firestore rules)
     income: ['read'],
+    invoices: ['read'], // Can view invoices but not create/edit
     marketing: [],
     forecasting: [],
     reports: ['read'], // Own reports only
@@ -37,11 +40,22 @@ const ROLE_PERMISSIONS = {
   accountant: {
     expenses: ['read', 'export'],
     income: ['read', 'export'],
+    invoices: ['read', 'export'],
     marketing: [],
     forecasting: ['read'],
     reports: ['read', 'export'],
     settings: [],
     team: []
+  },
+  marketingManager: {
+    expenses: ['read'], // To understand budget and spending
+    income: ['read'], // To see revenue impact of campaigns
+    invoices: ['read'], // To see customer data and sales
+    marketing: ['read', 'write', 'delete', 'export'], // Full marketing control
+    forecasting: ['read'], // To see projections and plan campaigns
+    reports: ['read', 'export'], // To measure marketing effectiveness
+    settings: [], // No access to company settings
+    team: ['read'] // To see team members for task assignment
   }
 };
 
@@ -49,6 +63,7 @@ const ROLE_PERMISSIONS = {
 const MODULE_TIERS = {
   expenses: 'lite',
   income: 'lite',
+  invoices: 'lite',
   marketing: 'business',
   forecasting: 'business',
   reports: 'lite',
@@ -66,7 +81,7 @@ const TIER_LEVELS = {
 
 /**
  * Check if user has permission for a specific action
- * @param {string} role - User role (owner, manager, employee, accountant)
+ * @param {string} role - User role (owner, manager, employee, accountant, marketingManager)
  * @param {string} module - Module name (expenses, income, marketing, etc.)
  * @param {string} action - Action (read, write, delete, export)
  * @returns {boolean} - True if user has permission
