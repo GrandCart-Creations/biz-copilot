@@ -74,16 +74,27 @@ export const MODULES = {
     requiredTier: 'business',
     status: 'active'
   },
+  projects: {
+    id: 'projects',
+    name: 'Projects',
+    description: 'Manage projects and products - adaptable to any business type',
+    icon: 'FaProjectDiagram',
+    color: 'indigo',
+    route: '/modules/projects',
+    requiredPermission: 'projects:read',
+    requiredTier: 'business',
+    status: 'active'
+  },
   forecasting: {
     id: 'forecasting',
     name: 'Forecasting',
     description: 'Financial forecasting and projections',
-    icon: 'FaChartArea',
+    icon: 'FaChartLine',
     color: 'indigo',
     route: '/modules/forecasting',
     requiredPermission: 'forecasting:read',
     requiredTier: 'business',
-    status: 'coming-soon'
+    status: 'active'
   },
   settings: {
     id: 'settings',
@@ -105,7 +116,7 @@ export const MODULES = {
     route: '/modules/team',
     requiredPermission: 'team:read',
     requiredTier: 'business',
-    status: 'coming-soon'
+    status: 'active'
   },
   security: {
     id: 'security',
@@ -142,10 +153,28 @@ export function getVisibleModules(role, subscriptionTier) {
     }
     
     // For other modules, check permission and tier
-    const hasAccess = hasPermission(role, module.id, 'read');
+    // Parse requiredPermission (e.g., "expenses" or "income:read")
+    let permissionModule = module.id;
+    let permissionAction = 'read';
+    
+    if (module.requiredPermission && module.requiredPermission.includes(':')) {
+      const [mod, action] = module.requiredPermission.split(':');
+      permissionModule = mod;
+      permissionAction = action;
+    } else if (module.requiredPermission) {
+      permissionModule = module.requiredPermission;
+    }
+    
+    const hasAccess = hasPermission(role, permissionModule, permissionAction);
     const tierAccess = canAccessModule(role, subscriptionTier, module.id);
     
-    return hasAccess && tierAccess;
+    // Debug logging for development
+    if (process.env.NODE_ENV === 'development' && role === 'dataEntryClerk') {
+      console.log(`[getVisibleModules] Module "${module.id}" (${module.name}): hasAccess=${hasAccess} (checking ${permissionModule}:${permissionAction}), tierAccess=${tierAccess}, role=${role}, tier=${subscriptionTier}, result=${hasAccess && tierAccess}`);
+    }
+    
+    const result = hasAccess && tierAccess;
+    return result;
   });
 }
 

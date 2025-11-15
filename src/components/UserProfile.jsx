@@ -1,25 +1,54 @@
 // src/components/UserProfile.jsx - NEW COMPONENT
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { logoutUser, resendVerificationEmail, getCurrentUser } from '../firebase';
+import { logoutUser, resendVerificationEmail, checkEmailVerification, getCurrentUser } from '../firebase';
 
 export default function UserProfile() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingVerification, setCheckingVerification] = useState(false);
   const [showVerificationBanner, setShowVerificationBanner] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState('');
   const dropdownRef = useRef(null);
 
+  // Check verification status periodically and on mount
   useEffect(() => {
-    const currentUser = getCurrentUser();
-    setUser(currentUser);
+    const checkVerification = async () => {
+      try {
+        const verificationStatus = await checkEmailVerification();
+        const currentUser = getCurrentUser();
+        setUser(currentUser);
+        
+        if (currentUser && !verificationStatus.verified) {
+          setShowVerificationBanner(true);
+        } else if (verificationStatus.verified) {
+          setShowVerificationBanner(false);
+          setVerificationMessage('');
+        }
+      } catch (error) {
+        console.error('Error checking verification:', error);
+        // Still show banner if we can't check
+        const currentUser = getCurrentUser();
+        if (currentUser && !currentUser.emailVerified) {
+          setShowVerificationBanner(true);
+        }
+      }
+    };
+
+    checkVerification();
     
-    // Check if email is verified
-    if (currentUser && !currentUser.emailVerified) {
-      setShowVerificationBanner(true);
+    // Check every 30 seconds if banner is showing
+    let interval;
+    if (showVerificationBanner) {
+      interval = setInterval(checkVerification, 30000);
     }
-  }, []);
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [showVerificationBanner]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -48,13 +77,46 @@ export default function UserProfile() {
 
   const handleResendVerification = async () => {
     setLoading(true);
+    setVerificationMessage('');
     try {
-      await resendVerificationEmail();
-      alert('Verification email sent! Please check your inbox.');
+      const message = await resendVerificationEmail();
+      setVerificationMessage(message);
+      
+      // Check verification status after a short delay
+      setTimeout(async () => {
+        try {
+          await checkEmailVerification();
+          const currentUser = getCurrentUser();
+          setUser(currentUser);
+        } catch (error) {
+          console.error('Error checking verification after resend:', error);
+        }
+      }, 2000);
     } catch (error) {
-      alert(error.message);
+      setVerificationMessage(error.message || 'Failed to send verification email.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCheckVerification = async () => {
+    setCheckingVerification(true);
+    setVerificationMessage('');
+    try {
+      const status = await checkEmailVerification();
+      const currentUser = getCurrentUser();
+      setUser(currentUser);
+      
+      if (status.verified) {
+        setVerificationMessage('✓ Your email is now verified!');
+        setShowVerificationBanner(false);
+      } else {
+        setVerificationMessage('Email not yet verified. Please check your inbox and click the verification link.');
+      }
+    } catch (error) {
+      setVerificationMessage(error.message || 'Failed to check verification status.');
+    } finally {
+      setCheckingVerification(false);
     }
   };
 
@@ -87,22 +149,44 @@ export default function UserProfile() {
                 <strong>Email not verified.</strong> Please check your inbox and verify your email address.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={handleResendVerification}
-                disabled={loading}
+                onClick={handleCheckVerification}
+                disabled={checkingVerification || loading}
                 className="text-sm font-medium text-yellow-800 hover:text-yellow-900 underline disabled:opacity-50"
               >
-                Resend Email
+                {checkingVerification ? 'Checking...' : 'Check Status'}
               </button>
               <button
-                onClick={() => setShowVerificationBanner(false)}
+                onClick={handleResendVerification}
+                disabled={loading || checkingVerification}
+                className="text-sm font-medium text-yellow-800 hover:text-yellow-900 underline disabled:opacity-50"
+              >
+                {loading ? 'Sending...' : 'Resend Email'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowVerificationBanner(false);
+                  setVerificationMessage('');
+                }}
                 className="text-yellow-600 hover:text-yellow-800"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+            </div>
+            {verificationMessage && (
+              <div className={`mt-2 text-xs px-3 py-2 rounded ${
+                verificationMessage.includes('✓') || verificationMessage.includes('already verified')
+                  ? 'bg-green-50 text-green-800'
+                  : 'bg-blue-50 text-blue-800'
+              }`}>
+                {verificationMessage}
+              </div>
+            )}
+            <div className="mt-2 text-xs text-yellow-700 px-3">
+              <strong>Note:</strong> Verification links expire after 1 hour. If your link expired, click "Resend Email" to get a new one. Check your spam/junk folder if you don't see the email.
             </div>
           </div>
         </div>

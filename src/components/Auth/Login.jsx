@@ -221,9 +221,9 @@ export default function Login() {
                 <img
                   src={companyBranding?.branding?.logoUrl || '/branding/logo/logo-icon.svg'}
                   alt={companyBranding?.name || 'Biz-CoPilot'}
-                  className="h-12 w-auto object-contain bg-white/10 rounded-lg p-1.5 backdrop-blur-sm"
+                  className="h-24 w-auto object-contain bg-white/10 rounded-lg p-2 backdrop-blur-sm"
                 />
-                <h1 className="text-2xl font-bold text-white">
+                <h1 className="text-3xl font-bold text-white">
                   {companyBranding?.name || 'Biz-CoPilot'}
                 </h1>
               </div>
@@ -283,13 +283,13 @@ export default function Login() {
         <div className="flex-1 lg:flex-none lg:w-3/5 lg:flex-shrink-0 lg:flex-grow-0 flex flex-col items-center justify-center p-3 bg-white overflow-y-auto">
           <div className="w-full max-w-md">
             {/* Logo for mobile */}
-            <div className="lg:hidden flex items-center justify-center gap-3 mb-2">
+            <div className="lg:hidden flex items-center justify-center gap-3 mb-4">
               <img
                 src={companyBranding?.branding?.logoUrl || '/branding/logo/logo-icon.svg'}
                 alt={companyBranding?.name || 'Biz-CoPilot'}
-                className="h-12 w-auto object-contain"
+                className="h-20 w-auto object-contain"
               />
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-3xl font-bold text-gray-900">
                 {companyBranding?.name || 'Biz-CoPilot'}
               </h1>
             </div>

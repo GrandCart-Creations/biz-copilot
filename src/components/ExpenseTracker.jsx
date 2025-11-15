@@ -39,6 +39,8 @@ import {
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
 import CompanySelector from './CompanySelector';
+import NotificationCenter from './NotificationCenter';
+import ModuleNavigationButton from './ModuleNavigationButton';
 import FinancialAccountSelect from './FinancialAccountSelect';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
@@ -4576,14 +4578,8 @@ const approvalStatusStyles = {
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              {/* Back Button */}
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="mr-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Back to Dashboard"
-              >
-                <FaArrowLeft className="w-5 h-5" />
-              </button>
+              {/* Back Button with Module Navigation */}
+              <ModuleNavigationButton currentModuleId="expenses" />
               
               {/* Expense Icon & Title */}
               <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -4595,6 +4591,7 @@ const approvalStatusStyles = {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <NotificationCenter />
               <CompanySelector />
               <UserProfile />
             </div>
@@ -5530,180 +5527,212 @@ const approvalStatusStyles = {
           )}
         </div>
 
-        {/* Filters and Add Button */}
-        <div className="bg-white rounded-lg shadow p-4">
+        {/* Filters and Actions Section */}
+        <div className="bg-white rounded-lg shadow">
           {loading ? (
             // Skeleton for filters
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex flex-wrap gap-4 flex-1">
-                <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
-                <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
-                <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
+            <div className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap gap-4 flex-1">
+                  <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
+                  <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
+                  <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
+                </div>
                 <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
               </div>
-              <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex flex-wrap gap-4">
-              {/* Period Filter */}
-              <select
-                value={filters.periodType}
-                onChange={(e) => {
-                  const newPeriodType = e.target.value;
-                  if (newPeriodType === 'custom') {
-                    setFilters({...filters, periodType: 'custom'});
-                  } else {
-                    setFilters({...filters, periodType: newPeriodType});
-                  }
-                }}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="all">All Time</option>
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-                <option value="year">This Year</option>
-                <option value="custom">Custom Range</option>
-              </select>
+            <>
+              {/* Filters Section */}
+              <div className="p-4 border-b border-gray-200">
+                <div className="space-y-3">
+                  {/* Row 1: Time, Category, Financial Account, Payment Method, Vendor */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 uppercase mb-1">Time Period</label>
+                      <select
+                        value={filters.periodType}
+                        onChange={(e) => {
+                          const newPeriodType = e.target.value;
+                          if (newPeriodType === 'custom') {
+                            setFilters({...filters, periodType: 'custom'});
+                          } else {
+                            setFilters({...filters, periodType: newPeriodType});
+                          }
+                        }}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                      >
+                        <option value="all">All Time</option>
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                        <option value="year">This Year</option>
+                        <option value="custom">Custom Range</option>
+                      </select>
+                    </div>
 
-              {/* Custom Date Range (shown when custom is selected) */}
-              {filters.periodType === 'custom' && (
-                <>
-                  <input
-                    type="date"
-                    value={filters.startDate}
-                    onChange={(e) => setFilters({...filters, startDate: e.target.value})}
-                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    placeholder="Start Date"
-                  />
-                  <span className="self-center text-gray-500">to</span>
-                  <input
-                    type="date"
-                    value={filters.endDate}
-                    onChange={(e) => setFilters({...filters, endDate: e.target.value})}
-                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    placeholder="End Date"
-                  />
-                </>
-              )}
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 uppercase mb-1">Category</label>
+                      <select
+                        value={filters.category}
+                        onChange={(e) => setFilters({...filters, category: e.target.value})}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                      >
+                        <option value="all">All Categories</option>
+                        {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </select>
+                    </div>
 
-              <select
-                value={filters.category}
-                onChange={(e) => setFilters({...filters, category: e.target.value})}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="all">All Categories</option>
-                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-              </select>
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 uppercase mb-1">Financial Account</label>
+                      <select
+                        value={filters.financialAccountId}
+                        onChange={(e) => setFilters({...filters, financialAccountId: e.target.value})}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                        disabled={financialAccountsLoading}
+                      >
+                        <option value="all">All Financial Accounts</option>
+                        {financialAccountFilterOptionsWithLegacy.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-              <div className="flex flex-col">
-                <label className="text-xs font-medium text-gray-500 uppercase">Financial Account</label>
-                <select
-                  value={filters.financialAccountId}
-                  onChange={(e) => setFilters({...filters, financialAccountId: e.target.value})}
-                  className="mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  disabled={financialAccountsLoading}
-                >
-                  <option value="all">All Financial Accounts</option>
-                  {financialAccountFilterOptionsWithLegacy.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 uppercase mb-1">Payment Method</label>
+                      <select
+                        value={filters.paymentMethod}
+                        onChange={(e) => setFilters({...filters, paymentMethod: e.target.value})}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                      >
+                        <option value="all">All Payment Methods</option>
+                        {paymentMethods.map(method => <option key={method} value={method}>{method}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 uppercase mb-1">Vendor</label>
+                      <select
+                        value={filters.vendor}
+                        onChange={(e) => setFilters({...filters, vendor: e.target.value})}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                      >
+                        <option value="all">All Vendors</option>
+                        {vendorOptions.map((vendorName) => (
+                          <option key={vendorName} value={vendorName}>
+                            {vendorName}
+                          </option>
+                        ))}
+                        {vendorHasMissing && (
+                          <option value="__missing__">Missing Vendor</option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Custom Date Range (shown when custom is selected) - Full width row */}
+                  {filters.periodType === 'custom' && (
+                    <div className="grid grid-cols-4 gap-3 items-end">
+                      <div className="flex flex-col">
+                        <label className="text-xs font-medium text-gray-500 uppercase mb-1">Start Date</label>
+                        <input
+                          type="date"
+                          value={filters.startDate}
+                          onChange={(e) => setFilters({...filters, startDate: e.target.value})}
+                          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                        />
+                      </div>
+                      <span className="self-end mb-2 text-gray-500 text-center">to</span>
+                      <div className="flex flex-col">
+                        <label className="text-xs font-medium text-gray-500 uppercase mb-1">End Date</label>
+                        <input
+                          type="date"
+                          value={filters.endDate}
+                          onChange={(e) => setFilters({...filters, endDate: e.target.value})}
+                          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                        />
+                      </div>
+                      <div></div>
+                    </div>
+                  )}
+
+                  {/* Row 2: Document Type, Payment Status, Approval Status, Clear Filters */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 uppercase mb-1">Document Type</label>
+                      <select
+                        value={filters.documentType}
+                        onChange={(e) => setFilters({...filters, documentType: e.target.value})}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                      >
+                        {documentTypeOptions.map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 uppercase mb-1">Payment Status</label>
+                      <select
+                        value={filters.paymentStatus}
+                        onChange={(e) => setFilters({...filters, paymentStatus: e.target.value})}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                      >
+                        {paymentStatusOptions.map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 uppercase mb-1">Approval Status</label>
+                      <select
+                        value={filters.approvalStatus}
+                        onChange={(e) => setFilters({...filters, approvalStatus: e.target.value})}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white text-gray-900"
+                      >
+                        {approvalFilterOptions.map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {(filters.category !== 'all' || filters.financialAccountId !== 'all' || filters.paymentMethod !== 'all' || filters.vendor !== 'all' || filters.periodType !== 'all' || filters.documentType !== 'all' || filters.paymentStatus !== 'all' || filters.approvalStatus !== 'all') && (
+                      <div className="flex items-end">
+                        <button
+                          onClick={() => setFilters({
+                            category: 'all',
+                            financialAccountId: 'all',
+                            paymentMethod: 'all',
+                            vendor: 'all',
+                            documentType: 'all',
+                            paymentStatus: 'all',
+                            approvalStatus: 'all',
+                            periodType: 'all',
+                            startDate: '',
+                            endDate: ''
+                          })}
+                          className="w-full px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium hover:bg-blue-50 rounded-md transition-colors border border-blue-200"
+                        >
+                          Clear All Filters
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <select
-                value={filters.paymentMethod}
-                onChange={(e) => setFilters({...filters, paymentMethod: e.target.value})}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="all">All Payment Methods</option>
-                {paymentMethods.map(method => <option key={method} value={method}>{method}</option>)}
-              </select>
-
-              <select
-                value={filters.vendor}
-                onChange={(e) => setFilters({...filters, vendor: e.target.value})}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm min-w-[180px]"
-              >
-                <option value="all">All Vendors</option>
-                {vendorOptions.map((vendorName) => (
-                  <option key={vendorName} value={vendorName}>
-                    {vendorName}
-                  </option>
-                ))}
-                {vendorHasMissing && (
-                  <option value="__missing__">Missing Vendor</option>
-                )}
-              </select>
-
-              <div className="flex flex-col">
-                <label className="text-xs font-medium text-gray-500 uppercase">Document Type</label>
-                <select
-                  value={filters.documentType}
-                  onChange={(e) => setFilters({...filters, documentType: e.target.value})}
-                  className="mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  {documentTypeOptions.map(option => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col">
-                <label className="text-xs font-medium text-gray-500 uppercase">Payment Status</label>
-                <select
-                  value={filters.paymentStatus}
-                  onChange={(e) => setFilters({...filters, paymentStatus: e.target.value})}
-                  className="mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  {paymentStatusOptions.map(option => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col">
-                <label className="text-xs font-medium text-gray-500 uppercase">Approval Status</label>
-                <select
-                  value={filters.approvalStatus}
-                  onChange={(e) => setFilters({...filters, approvalStatus: e.target.value})}
-                  className="mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  {approvalFilterOptions.map(option => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {(filters.category !== 'all' || filters.financialAccountId !== 'all' || filters.paymentMethod !== 'all' || filters.vendor !== 'all' || filters.periodType !== 'all' || filters.documentType !== 'all' || filters.paymentStatus !== 'all' || filters.approvalStatus !== 'all') && (
-                <button
-                  onClick={() => setFilters({
-                    category: 'all',
-                    financialAccountId: 'all',
-                    paymentMethod: 'all',
-                    vendor: 'all',
-                    documentType: 'all',
-                    paymentStatus: 'all',
-                    approvalStatus: 'all',
-                    periodType: 'all',
-                    startDate: '',
-                    endDate: ''
-                  })}
-                  className="px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  Clear Filters
-                </button>
-              )}
-            </div>
-            
+              {/* Action Buttons Section */}
+              <div className="p-4 bg-gray-50 flex flex-wrap items-center gap-3">
             <div className="relative" ref={addDocumentMenuRef}>
               <div className="inline-flex rounded-lg shadow-sm overflow-hidden">
             <button
                   type="button"
                   onClick={() => handleAddDocument('invoice', 'primary')}
                   disabled={!currentCompanyId}
-                  className="px-4 py-2 bg-blue-600 text-white flex items-center gap-2 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-blue-600 text-white flex items-center gap-2 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                   title={!currentCompanyId ? 'Please select a company first' : 'Add a new invoice'}
                 >
                   <FaPlusCircle />
@@ -5757,56 +5786,56 @@ const approvalStatusStyles = {
               )}
             </div>
             
-            <button
-              onClick={() => {
-                setShowImportModal(true);
-                setImportType('excel');
-                setImportedData([]);
-                setImportFile(null);
-              }}
-              disabled={!currentCompanyId}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              title={!currentCompanyId ? 'Please select a company first' : ''}
-            >
-              <FaFileExcel />
-              Import Excel
-            </button>
-            
-            <button
-              onClick={() => {
-                setShowImportModal(true);
-                setImportType('ocr');
-                setImportedData([]);
-                setImportFile(null);
-              }}
-              disabled={!currentCompanyId}
-              className="px-4 py-2 bg-[#00BFA6] text-white rounded-lg hover:bg-[#019884] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              title={!currentCompanyId ? 'Please select a company first' : ''}
-            >
-              <FaFilePdf />
-              OCR Bank Statement
-            </button>
-            {expensesRequiringConversion.length > 0 && (
-              <button
-                onClick={() => {
-                  setNormalizeStatus({
-                    state: 'idle',
-                    total: expensesRequiringConversion.length,
-                    processed: 0,
-                    skipped: 0,
-                    errors: []
-                  });
-                  setShowNormalizeModal(true);
-                }}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
-              >
-                <FaSyncAlt />
-                Normalize to EUR
-              </button>
-            )}
-            </div>
+                <button
+                  onClick={() => {
+                    setShowImportModal(true);
+                    setImportType('excel');
+                    setImportedData([]);
+                    setImportFile(null);
+                  }}
+                  disabled={!currentCompanyId}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                  title={!currentCompanyId ? 'Please select a company first' : ''}
+                >
+                  <FaFileExcel />
+                  Import Excel
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setShowImportModal(true);
+                    setImportType('ocr');
+                    setImportedData([]);
+                    setImportFile(null);
+                  }}
+                  disabled={!currentCompanyId}
+                  className="px-4 py-2 bg-[#00BFA6] text-white rounded-lg hover:bg-[#019884] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                  title={!currentCompanyId ? 'Please select a company first' : ''}
+                >
+                  <FaFilePdf />
+                  OCR Bank Statement
+                </button>
+                {expensesRequiringConversion.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setNormalizeStatus({
+                        state: 'idle',
+                        total: expensesRequiringConversion.length,
+                        processed: 0,
+                        skipped: 0,
+                        errors: []
+                      });
+                      setShowNormalizeModal(true);
+                    }}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 shadow-sm"
+                  >
+                    <FaSyncAlt />
+                    Normalize to EUR
+                  </button>
+                )}
+              </div>
+            </>
           )}
-        </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -6975,6 +7004,7 @@ const approvalStatusStyles = {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

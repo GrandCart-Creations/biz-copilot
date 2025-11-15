@@ -107,8 +107,11 @@ const TeamInviteStep = ({ onNext, onPrevious }) => {
                     disabled={inviting}
                   >
                     <option value="employee">Employee</option>
-                    <option value="manager">Manager</option>
+                    <option value="dataEntryClerk">Data Entry Clerk</option>
                     <option value="accountant">Accountant</option>
+                    <option value="developer">Software Engineer</option>
+                    <option value="marketingManager">Marketing Manager</option>
+                    <option value="manager">Manager</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     You can change roles later in Team Management.

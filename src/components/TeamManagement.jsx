@@ -39,7 +39,9 @@ import {
   FaSearch,
   FaExclamationTriangle,
   FaInfoCircle,
-  FaBullhorn
+  FaBullhorn,
+  FaCode,
+  FaClipboardList
 } from 'react-icons/fa';
 
 const TeamManagement = () => {
@@ -431,6 +433,10 @@ const TeamManagement = () => {
         return <FaUserGraduate className="w-4 h-4" />;
       case 'marketingManager':
         return <FaBullhorn className="w-4 h-4" />;
+      case 'developer':
+        return <FaCode className="w-4 h-4" />;
+      case 'dataEntryClerk':
+        return <FaClipboardList className="w-4 h-4" />;
       default:
         return <FaUser className="w-4 h-4" />;
     }
@@ -446,8 +452,31 @@ const TeamManagement = () => {
         return 'bg-green-100 text-green-800';
       case 'marketingManager':
         return 'bg-orange-100 text-orange-800';
+      case 'developer':
+        return 'bg-purple-100 text-purple-800';
+      case 'dataEntryClerk':
+        return 'bg-cyan-100 text-cyan-800';
       default:
         return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
+  const getRoleDisplayName = (role) => {
+    switch (role) {
+      case 'owner':
+        return 'Owner';
+      case 'manager':
+        return 'Manager';
+      case 'accountant':
+        return 'Accountant';
+      case 'marketingManager':
+        return 'Marketing Manager';
+      case 'developer':
+        return 'Software Engineer';
+      case 'dataEntryClerk':
+        return 'Data Entry Clerk';
+      default:
+        return role.charAt(0).toUpperCase() + role.slice(1);
     }
   };
 
@@ -599,7 +628,10 @@ const TeamManagement = () => {
               const uniqueKey = `${member.userId}-${index}`;
               const isCurrentUser = member.userId === currentUser?.uid;
               const isOwner = member.role === 'owner';
-              const canEdit = (userRole === 'owner' && !isOwner) || (userRole === 'manager' && member.role === 'employee');
+              // Owners can edit anyone except other owners
+              // Managers can edit: employees, accountants, dataEntryClerk, developer, marketingManager (but not owners or other managers)
+              const canEdit = (userRole === 'owner' && !isOwner) || 
+                            (userRole === 'manager' && member.role !== 'owner' && member.role !== 'manager');
               const canRemove = userRole === 'owner' && !isOwner && !isCurrentUser;
 
               return (
@@ -633,7 +665,7 @@ const TeamManagement = () => {
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${getRoleColor(member.role)}`}>
                             {getRoleIcon(member.role)}
-                            {member.role === 'marketingManager' ? 'Marketing Manager' : member.role.charAt(0).toUpperCase() + member.role.slice(1)}
+                            {getRoleDisplayName(member.role)}
                           </span>
                           {member.joinedAt && (
                             <span className="text-xs text-gray-500">
@@ -655,10 +687,11 @@ const TeamManagement = () => {
                             setNewRole(member.role);
                             setShowRoleModal(true);
                           }}
-                          className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                          className="px-3 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200 flex items-center gap-2"
                           title="Change role"
                         >
                           <FaEdit className="w-4 h-4" />
+                          <span>Change Role</span>
                         </button>
                       )}
                       {canRemove && (
@@ -739,14 +772,18 @@ const TeamManagement = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="employee">Employee</option>
+                  <option value="dataEntryClerk">Data Entry Clerk</option>
                   <option value="accountant">Accountant</option>
+                  <option value="developer">Software Engineer</option>
                   <option value="marketingManager">Marketing Manager</option>
                   <option value="manager">Manager</option>
                   {userRole === 'owner' && <option value="owner">Owner</option>}
                 </select>
                 <p className="mt-2 text-xs text-gray-500">
                   {inviteRole === 'employee' && 'Can view and create own expenses'}
+                  {inviteRole === 'dataEntryClerk' && 'Track expenses/invoices, create daily reports, assist with marketing & customer support'}
                   {inviteRole === 'accountant' && 'Can view expenses and income, export reports'}
+                  {inviteRole === 'developer' && 'Full project control, product releases, handle testers & customer feedback, marketing collaboration'}
                   {inviteRole === 'marketingManager' && 'Full marketing control, can view financial data and reports'}
                   {inviteRole === 'manager' && 'Can manage expenses, income, and reports'}
                   {inviteRole === 'owner' && 'Full access to all features and settings'}
@@ -820,11 +857,22 @@ const TeamManagement = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="employee">Employee</option>
+                  <option value="dataEntryClerk">Data Entry Clerk</option>
                   <option value="accountant">Accountant</option>
+                  <option value="developer">Software Engineer</option>
                   <option value="marketingManager">Marketing Manager</option>
                   <option value="manager">Manager</option>
                   {userRole === 'owner' && <option value="owner">Owner</option>}
                 </select>
+                <p className="mt-2 text-xs text-gray-500">
+                  {newRole === 'employee' && 'Can view and create own expenses'}
+                  {newRole === 'dataEntryClerk' && 'Track expenses/invoices, create daily reports, assist with marketing & customer support'}
+                  {newRole === 'accountant' && 'Can view expenses and income, export reports'}
+                  {newRole === 'developer' && 'Full project control, product releases, handle testers & customer feedback, marketing collaboration'}
+                  {newRole === 'marketingManager' && 'Full marketing control, can view financial data and reports'}
+                  {newRole === 'manager' && 'Can manage expenses, income, and reports'}
+                  {newRole === 'owner' && 'Full access to all features and settings'}
+                </p>
               </div>
               <div className="flex gap-3 justify-end">
                 <button
@@ -1010,7 +1058,9 @@ const TeamManagement = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="employee">Employee</option>
+                  <option value="dataEntryClerk">Data Entry Clerk</option>
                   <option value="accountant">Accountant</option>
+                  <option value="developer">Software Engineer</option>
                   <option value="marketingManager">Marketing Manager</option>
                   <option value="manager">Manager</option>
                   {userRole === 'owner' && <option value="owner">Owner</option>}

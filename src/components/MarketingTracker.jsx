@@ -60,6 +60,8 @@ import {
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
 import CompanySelector from './CompanySelector';
+import NotificationCenter from './NotificationCenter';
+import ModuleNavigationButton from './ModuleNavigationButton';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
 import {
@@ -377,13 +379,7 @@ const MarketingTracker = () => {
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="mr-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Back to Dashboard"
-              >
-                <FaArrowLeft className="w-5 h-5" />
-              </button>
+              <ModuleNavigationButton currentModuleId="marketing" />
               
               <div
                 className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
@@ -397,6 +393,7 @@ const MarketingTracker = () => {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <NotificationCenter />
               <CompanySelector />
               <UserProfile />
             </div>

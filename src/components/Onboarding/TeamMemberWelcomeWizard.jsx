@@ -9,7 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCompany } from '../../contexts/CompanyContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { getCompanyOnboarding, completeCompanyOnboarding, getCompanyMembers, storeLegalAcceptance, sendEmailVerificationToUser } from '../../firebase';
+import { getCompanyOnboarding, completeCompanyOnboarding, getCompanyMembers, storeLegalAcceptance, sendEmailVerificationToUser, checkEmailVerification } from '../../firebase';
 import { 
   FaCheckCircle, 
   FaArrowRight, 
@@ -27,7 +27,10 @@ import {
   FaLock,
   FaEnvelope,
   FaExclamationTriangle,
-  FaBullhorn
+  FaBullhorn,
+  FaCode,
+  FaClipboardList,
+  FaProjectDiagram
 } from 'react-icons/fa';
 
 const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
@@ -87,16 +90,22 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
     }
   };
 
-  const checkEmailVerification = async () => {
+  const checkEmailVerificationStatus = async () => {
     if (!currentUser) return;
     
-    // Reload user to get latest verification status
-    await currentUser.reload();
-    const verified = currentUser.emailVerified || false;
-    setEmailVerified(verified);
-    
-    if (verified) {
-      setEmailVerificationSent(false); // Reset sent flag if verified
+    try {
+      // Use the improved checkEmailVerification function
+      const status = await checkEmailVerification();
+      setEmailVerified(status.verified);
+      
+      if (status.verified) {
+        setEmailVerificationSent(false); // Reset sent flag if verified
+      }
+    } catch (error) {
+      console.error('Error checking email verification:', error);
+      // Fallback to reloading user directly
+      await currentUser.reload();
+      setEmailVerified(currentUser.emailVerified || false);
     }
   };
 
@@ -197,14 +206,37 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
       access: [
         { module: 'Expenses', icon: <FaChartLine />, description: 'Submit and track your expenses' }
       ]
+    },
+    developer: {
+      title: 'Software Engineer',
+      icon: <FaCode className="w-8 h-8" />,
+      color: 'from-purple-500 to-purple-600',
+      access: [
+        { module: 'Projects', icon: <FaProjectDiagram />, description: 'Full control: software creation, testing, releases, version control' },
+        { module: 'Marketing', icon: <FaBullhorn />, description: 'Collaborate on product launches and marketing' },
+        { module: 'Team', icon: <FaUsers />, description: 'Manage testers and customer feedback' },
+        { module: 'Reports', icon: <FaFileInvoice />, description: 'Track product metrics and customer feedback' }
+      ]
+    },
+    dataEntryClerk: {
+      title: 'Data Entry Clerk',
+      icon: <FaClipboardList className="w-8 h-8" />,
+      color: 'from-cyan-500 to-cyan-600',
+      access: [
+        { module: 'Expenses', icon: <FaChartLine />, description: 'Track and input all incoming expenses' },
+        { module: 'Invoices', icon: <FaFileInvoice />, description: 'Track and input invoices & receivables' },
+        { module: 'Marketing', icon: <FaBullhorn />, description: 'Assist and collaborate with marketing projects' },
+        { module: 'Projects', icon: <FaProjectDiagram />, description: 'Handle customer issues & feedback' },
+        { module: 'Reports', icon: <FaFileInvoice />, description: 'Create daily reports of important issues' }
+      ]
     }
   };
 
   const roleInfo = roleAccess[role] || roleAccess.employee;
 
-  // Get chain of command (managers, owners, and marketing managers)
+  // Get chain of command (managers, owners, marketing managers, and developers)
   const supervisors = teamMembers.filter(m => 
-    (m.role === 'owner' || m.role === 'manager' || m.role === 'marketingManager') && m.role !== role
+    (m.role === 'owner' || m.role === 'manager' || m.role === 'marketingManager' || m.role === 'developer') && m.role !== role
   );
 
   const steps = [
@@ -483,7 +515,7 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
                           </p>
                         </div>
                         <button
-                          onClick={checkEmailVerification}
+                          onClick={checkEmailVerificationStatus}
                           className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors text-sm"
                         >
                           ✓ I've Verified My Email

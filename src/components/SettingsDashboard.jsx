@@ -10,6 +10,8 @@ import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
 import CompanySelector from './CompanySelector';
 import UserProfile from './UserProfile';
+import NotificationCenter from './NotificationCenter';
+import ModuleNavigationButton from './ModuleNavigationButton';
 import TeamManagement from './TeamManagement';
 import PeopleWorkspace from './PeopleWorkspace';
 import FinancialAccounts from './FinancialAccounts';
@@ -87,7 +89,7 @@ const SettingsDashboard = () => {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
                 <div className="flex-shrink-0 flex items-center">
-                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-10 w-auto" />
+                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-[60px] w-auto" />
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -118,13 +120,7 @@ const SettingsDashboard = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               {/* Back Button */}
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="mr-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Back to Dashboard"
-              >
-                <FaArrowLeft className="w-5 h-5" />
-              </button>
+              <ModuleNavigationButton currentModuleId="settings" />
               
               {/* Settings Icon & Title */}
               <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: accentColor }}>
@@ -136,6 +132,7 @@ const SettingsDashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <NotificationCenter />
               <CompanySelector />
               <UserProfile />
             </div>

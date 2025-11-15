@@ -192,7 +192,7 @@ service cloud.firestore {
                         (isOwner(companyId) || hasRole(companyId, ['manager'])) &&
                         request.resource.data.invitedBy == request.auth.uid &&
                         request.resource.data.email is string &&
-                        request.resource.data.role in ['owner', 'manager', 'employee', 'accountant'];
+                        request.resource.data.role in ['owner', 'manager', 'employee', 'accountant', 'marketingManager', 'developer', 'dataEntryClerk'];
         
         // Update: Owners/managers can update, OR invitee can accept invitation
         // Invitee can only update if: status is pending, and updating to accepted
@@ -674,6 +674,106 @@ service cloud.firestore {
         // Delete: Only owners, managers, and marketing managers
         allow delete: if isAuthenticated() && 
                         (isOwner(companyId) || hasRole(companyId, ['manager', 'marketingManager']));
+      }
+      
+      // ============================================
+      // PROJECTS MODULE
+      // ============================================
+      
+      match /projects/{projectId} {
+        // Read: Company members can read projects
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update projects
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners, managers, and marketing managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager', 'marketingManager']));
+      }
+      
+      // Project Configuration
+      match /settings/projectConfig {
+        // Read: Company members can read project config
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Write: Only owners and managers
+        allow write: if isAuthenticated() && 
+                       (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      // ============================================
+      // FORECASTING & BUDGETING MODULE
+      // ============================================
+      
+      match /budgets/{budgetId} {
+        // Read: Company members can read budgets
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update budgets
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners, managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      match /forecasts/{forecastId} {
+        // Read: Company members can read forecasts
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update forecasts
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners, managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      // ============================================
+      // NOTIFICATIONS MODULE
+      // ============================================
+      
+      match /notifications/{notificationId} {
+        // Read: Company members can read their own notifications or company-wide notifications
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                      (resource.data.userId == null || resource.data.userId == request.auth.uid || request.auth.uid == resource.data.userId);
+        
+        // Create: System or company members can create notifications
+        allow create: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Update: Users can only update their own notifications (mark as read)
+        allow update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        (resource.data.userId == null || resource.data.userId == request.auth.uid);
+        
+        // Delete: Users can delete their own notifications
+        allow delete: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        (resource.data.userId == null || resource.data.userId == request.auth.uid);
       }
       
       // ============================================

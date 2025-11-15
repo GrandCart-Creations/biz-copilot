@@ -13,6 +13,7 @@ import {
   deleteDoc,
   query,
   where,
+  limit,
   serverTimestamp,
   writeBatch,
   collectionGroup
@@ -423,16 +424,52 @@ export const CompanyProvider = ({ children }) => {
         ...companyDoc.data()
       };
 
+      // Get owner's subscription tier to determine company tier
+      // The company's tier is effectively the owner's tier
+      let companyTier = 'business'; // Default
+      try {
+        const usersRef = collection(db, 'companies', companyId, 'users');
+        const usersSnapshot = await getDocs(query(usersRef, where('role', '==', 'owner'), limit(1)));
+        if (!usersSnapshot.empty) {
+          const ownerData = usersSnapshot.docs[0].data();
+          companyTier = ownerData.subscriptionTier || 'business';
+        }
+      } catch (error) {
+        console.warn('[CompanyContext] Could not fetch owner tier, defaulting to business:', error);
+      }
+
       // Get user's role in this company
       const userRef = doc(db, 'companies', companyId, 'users', currentUser.uid);
       const userDoc = await getDoc(userRef);
 
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        setUserRole(userData.role || 'employee');
-        companyData.userRole = userData.role;
+        const userRoleValue = userData.role || 'employee';
+        let userTierValue = userData.subscriptionTier || 'lite';
+        
+        // Inherit company's subscription tier (owner's tier) if user's tier is lower
+        // This ensures team members get the company's tier benefits
+        const tierLevels = { lite: 1, business: 2, enterprise: 3 };
+        const userTierLevel = tierLevels[userTierValue] || 0;
+        const companyTierLevel = tierLevels[companyTier] || 0;
+        
+        if (companyTierLevel > userTierLevel) {
+          // Upgrade user tier to match company tier
+          userTierValue = companyTier;
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[CompanyContext] Upgrading user tier from "${userData.subscriptionTier}" to "${companyTier}" to match company tier`);
+          }
+        }
+        
+        setUserRole(userRoleValue);
+        companyData.userRole = userRoleValue;
         companyData.accessModules = userData.accessModules || [];
-        companyData.subscriptionTier = userData.subscriptionTier || 'lite';
+        companyData.subscriptionTier = userTierValue;
+        
+        // Debug logging to help diagnose module access issues
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[CompanyContext] Loaded user role:', userRoleValue, 'tier:', userTierValue, 'for company:', companyId);
+        }
       } else {
         // If user not in new structure, they're owner by default (migration)
         setUserRole('owner');

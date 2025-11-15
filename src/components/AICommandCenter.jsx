@@ -3,6 +3,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
 import { authorizeAIScope, AI_SCOPES, getDefaultScopeForRole, canAccessScope } from '../utils/accessGateway';
 import { logAIEvent } from '../utils/auditLog';
+import { getCompanyNotifications } from '../firebase';
+import { runExpirationChecks } from '../utils/expirationMonitor';
+import { FaExclamationTriangle, FaClock, FaFileInvoice, FaCheckCircle } from 'react-icons/fa';
 
 const SUGGESTION_PRESETS = [
   {
@@ -30,6 +33,7 @@ const AICommandCenter = () => {
   const [scope, setScope] = useState(() => getDefaultScopeForRole(userRole, aiPolicies));
   const [accessCode, setAccessCode] = useState('');
   const [status, setStatus] = useState({ state: 'idle', message: '' });
+  const [urgentAlerts, setUrgentAlerts] = useState([]);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -58,8 +62,39 @@ const AICommandCenter = () => {
       setAccessCode('');
       setStatus({ state: 'idle', message: '' });
       setScope(getDefaultScopeForRole(userRole, aiPolicies));
+      
+      // Load urgent alerts when opening
+      if (currentCompanyId && currentUser && ['owner', 'manager'].includes(userRole)) {
+        loadUrgentAlerts();
+        // Run expiration checks when opening (if owner/manager)
+        runExpirationChecks(currentCompanyId, currentUser.uid).then(() => {
+          loadUrgentAlerts(); // Reload after checks
+        });
+      }
     }
-  }, [isOpen, userRole, aiPolicies]);
+  }, [isOpen, userRole, aiPolicies, currentCompanyId, currentUser]);
+
+  const loadUrgentAlerts = async () => {
+    if (!currentCompanyId || !currentUser) return;
+    try {
+      const notifications = await getCompanyNotifications(currentCompanyId, {
+        userId: currentUser.uid,
+        unreadOnly: true,
+        limit: 10
+      });
+      
+      // Filter for urgent/high priority notifications
+      const urgent = notifications.filter(n => 
+        !n.read && 
+        (n.priority === 'urgent' || n.priority === 'high' || 
+         ['contract_expiration', 'overdue_invoice', 'payment_due'].includes(n.type))
+      );
+      
+      setUrgentAlerts(urgent);
+    } catch (error) {
+      console.error('Error loading urgent alerts:', error);
+    }
+  };
 
   const scopeOptions = useMemo(() => {
     const requiresCodeSet = new Set(aiPolicies?.requireCodeFor || []);
@@ -220,6 +255,64 @@ const AICommandCenter = () => {
             </div>
           </div>
         </form>
+        
+        {/* Urgent Alerts Section */}
+        {urgentAlerts.length > 0 && ['owner', 'manager'].includes(userRole) && (
+          <div className="px-6 py-4 bg-red-50 border-y border-red-200">
+            <div className="flex items-center gap-2 mb-3">
+              <FaExclamationTriangle className="w-4 h-4 text-red-600" />
+              <h3 className="text-sm font-semibold text-red-900">Urgent Actions Required</h3>
+              <span className="ml-auto px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded-full">
+                {urgentAlerts.length}
+              </span>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {urgentAlerts.slice(0, 5).map((alert) => (
+                <div
+                  key={alert.id}
+                  className="bg-white border border-red-200 rounded-lg p-3 text-sm"
+                >
+                  <div className="flex items-start gap-2">
+                    {alert.type === 'contract_expiration' && <FaFileInvoice className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />}
+                    {alert.type === 'overdue_invoice' && <FaFileInvoice className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />}
+                    {alert.type === 'payment_due' && <FaClock className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900">{alert.title}</p>
+                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">{alert.message}</p>
+                      {alert.metadata?.daysUntilExpiry !== undefined && (
+                        <p className="text-xs text-red-600 mt-1 font-medium">
+                          {alert.metadata.daysUntilExpiry <= 0 
+                            ? `Expired ${Math.abs(alert.metadata.daysUntilExpiry)} day${Math.abs(alert.metadata.daysUntilExpiry) !== 1 ? 's' : ''} ago`
+                            : `${alert.metadata.daysUntilExpiry} day${alert.metadata.daysUntilExpiry !== 1 ? 's' : ''} remaining`}
+                        </p>
+                      )}
+                      {alert.metadata?.daysOverdue !== undefined && (
+                        <p className="text-xs text-red-600 mt-1 font-medium">
+                          {alert.metadata.daysOverdue} day{alert.metadata.daysOverdue !== 1 ? 's' : ''} overdue
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {alert.actionUrl && (
+                    <a
+                      href={alert.actionUrl}
+                      className="inline-block mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Take action →
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+            {urgentAlerts.length > 5 && (
+              <p className="text-xs text-red-700 mt-2 text-center">
+                +{urgentAlerts.length - 5} more urgent items. Check notifications →
+              </p>
+            )}
+          </div>
+        )}
+        
         <div className="p-6 grid gap-3 sm:grid-cols-3">
           {SUGGESTION_PRESETS.map((preset) => (
             <button

@@ -9,8 +9,10 @@ import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
 import { getVisibleModules, getModule, meetsTierRequirement } from '../utils/modules';
+import { ROLE_PERMISSIONS, hasPermission, canAccessModule } from '../utils/permissions';
 import CompanySelector from './CompanySelector';
 import UserProfile from './UserProfile';
+import NotificationCenter from './NotificationCenter';
 import { getHeaderBackground, getHeaderLogo } from '../utils/theme';
 import {
   FaChartLine,
@@ -22,7 +24,8 @@ import {
   FaUsers,
   FaShieldAlt,
   FaLock,
-  FaFileInvoiceDollar
+  FaFileInvoiceDollar,
+  FaProjectDiagram
 } from 'react-icons/fa';
 
 const ModuleDashboard = () => {
@@ -40,7 +43,8 @@ const ModuleDashboard = () => {
       FaCog,
       FaUsers,
       FaShieldAlt,
-      FaFileInvoiceDollar
+      FaFileInvoiceDollar,
+      FaProjectDiagram
     };
     return icons[iconName] || FaChartLine;
   };
@@ -133,10 +137,11 @@ const ModuleDashboard = () => {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
                 <div className="flex-shrink-0 flex items-center">
-                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-10 w-auto" />
+                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-[60px] w-auto" />
                 </div>
               </div>
               <div className="flex items-center gap-4">
+                <NotificationCenter />
                 <CompanySelector />
                 <UserProfile />
               </div>
@@ -160,7 +165,35 @@ const ModuleDashboard = () => {
   }
 
   // Get visible modules for current user (with subscription tier enforcement)
-  const visibleModules = getVisibleModules(userRole || 'owner', subscriptionTier || 'business');
+  // Debug: Log role and tier to help diagnose "No Modules Available" issue
+  const effectiveRole = userRole || 'employee';
+  const effectiveTier = subscriptionTier || 'lite';
+  
+  // Log for debugging (remove in production if needed)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[ModuleDashboard] User role:', effectiveRole, 'Subscription tier:', effectiveTier);
+  }
+  
+  const visibleModules = getVisibleModules(effectiveRole, effectiveTier);
+  
+  // Comprehensive debug logging
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[ModuleDashboard] getVisibleModules returned:', visibleModules.length, 'modules');
+    if (visibleModules.length > 0) {
+      console.log('[ModuleDashboard] Visible modules:', visibleModules.map(m => m.id));
+    }
+    if (visibleModules.length === 0) {
+      console.warn('[ModuleDashboard] No modules available for role:', effectiveRole, 'tier:', effectiveTier);
+      console.warn('[ModuleDashboard] Available roles in permissions:', Object.keys(ROLE_PERMISSIONS));
+      // Test individual module checks
+      console.log('[ModuleDashboard] Testing individual modules:');
+      ['expenses', 'income', 'invoices', 'reports'].forEach(moduleId => {
+        const testHasAccess = hasPermission(effectiveRole, moduleId, 'read');
+        const testTierAccess = canAccessModule(effectiveRole, effectiveTier, moduleId);
+        console.log(`  ${moduleId}: hasPermission=${testHasAccess}, canAccessModule=${testTierAccess}`);
+      });
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -170,10 +203,11 @@ const ModuleDashboard = () => {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <div className="flex-shrink-0 flex items-center">
-                <img src={headerLogo} alt={headerAlt} className="h-10 w-auto" />
+                <img src={headerLogo} alt={headerAlt} className="h-[60px] w-auto" />
               </div>
             </div>
               <div className="flex items-center gap-4">
+              <NotificationCenter />
               <CompanySelector />
               <UserProfile />
             </div>
@@ -255,7 +289,15 @@ const ModuleDashboard = () => {
             </div>
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No Modules Available</h3>
             <p className="text-gray-600">You don't have access to any modules yet.</p>
-            <p className="text-sm text-gray-500 mt-2">Contact your administrator for access.</p>
+            {/* Diagnostic information */}
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg text-left max-w-md mx-auto">
+              <p className="text-xs font-semibold text-gray-700 mb-2">Diagnostic Information:</p>
+              <p className="text-xs text-gray-600">Role: <span className="font-mono font-semibold">{effectiveRole}</span></p>
+              <p className="text-xs text-gray-600">Subscription Tier: <span className="font-mono font-semibold">{effectiveTier}</span></p>
+              <p className="text-xs text-gray-600">Company: <span className="font-mono font-semibold">{currentCompanyId || 'Not selected'}</span></p>
+            </div>
+            <p className="text-sm text-gray-500 mt-4">Contact your administrator for access.</p>
+            <p className="text-xs text-gray-400 mt-2">If you just accepted an invitation, try refreshing the page.</p>
           </div>
         )}
       </div>

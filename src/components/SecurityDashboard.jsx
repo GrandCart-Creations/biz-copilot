@@ -16,10 +16,14 @@ import { useNavigate } from 'react-router-dom';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useCompany } from '../contexts/CompanyContext';
+import CompanySelector from './CompanySelector';
+import UserProfile from './UserProfile';
+import NotificationCenter from './NotificationCenter';
+import ModuleNavigationButton from './ModuleNavigationButton';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Shield, AlertTriangle, CheckCircle, Activity } from 'lucide-react';
-import { FaArrowLeft, FaStream } from 'react-icons/fa';
+import { FaArrowLeft, FaStream, FaShieldAlt } from 'react-icons/fa';
 
 const SecurityDashboard = () => {
   const navigate = useNavigate();
@@ -130,39 +134,44 @@ const SecurityDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            {/* Back Button */}
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="mr-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Back to Dashboard"
-            >
-              <FaArrowLeft className="w-5 h-5" />
-            </button>
-            
-            <Shield className="w-8 h-8 text-blue-600" />
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Security Dashboard</h1>
-              <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
+    <div className="min-h-screen bg-gray-50 w-full">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40 w-full">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <ModuleNavigationButton currentModuleId="security" />
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                style={{ backgroundColor: '#DC2626' }}
+              >
+                <FaShieldAlt className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Security Dashboard</h1>
+                <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
+              </div>
             </div>
-            <div className="flex items-center gap-3 ml-auto">
+            <div className="flex items-center gap-4">
+              <NotificationCenter />
               <button
                 onClick={() => navigate('/owner/activity')}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
                 style={{ backgroundColor: '#005C70' }}
                 title="Open owner activity timeline"
               >
-                <FaStream className="w-3.5 h-3.5" />
+                <FaStream className="w-4 h-4" />
                 Owner Activity Timeline
               </button>
+              <CompanySelector />
+              <UserProfile />
             </div>
           </div>
-          <p className="text-gray-600">Monitor security events and system health</p>
         </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

@@ -23,6 +23,8 @@ import {
 import UserProfile from './UserProfile';
 import FileUpload from './FileUpload';
 import CompanySelector from './CompanySelector';
+import NotificationCenter from './NotificationCenter';
+import ModuleNavigationButton from './ModuleNavigationButton';
 import FinancialAccountSelect from './FinancialAccountSelect';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
@@ -318,7 +320,7 @@ const IncomeTracker = () => {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
                 <div className="flex-shrink-0 flex items-center">
-                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-10 w-auto" />
+                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-[60px] w-auto" />
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -347,13 +349,7 @@ const IncomeTracker = () => {
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="mr-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Back to Dashboard"
-              >
-                <FaArrowLeft className="w-5 h-5" />
-              </button>
+              <ModuleNavigationButton currentModuleId="income" />
               
               <div
                 className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
@@ -367,6 +363,7 @@ const IncomeTracker = () => {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <NotificationCenter />
               <CompanySelector />
               <UserProfile />
             </div>

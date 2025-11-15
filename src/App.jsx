@@ -16,9 +16,12 @@ const ExpenseTracker = lazy(() => import('./components/ExpenseTracker'));
 const IncomeTracker = lazy(() => import('./components/IncomeTracker'));
 const InvoiceTracker = lazy(() => import('./components/InvoiceTracker'));
 const MarketingTracker = lazy(() => import('./components/MarketingTracker'));
+const ProjectsTracker = lazy(() => import('./components/ProjectsTracker'));
+const ForecastingTracker = lazy(() => import('./components/ForecastingTracker'));
 const FinancialDashboard = lazy(() => import('./components/FinancialDashboard'));
 const ReportsDashboard = lazy(() => import('./components/ReportsDashboard'));
 const SettingsDashboard = lazy(() => import('./components/SettingsDashboard'));
+const TeamTracker = lazy(() => import('./components/TeamTracker'));
 const SecurityDashboard = lazy(() => import('./components/SecurityDashboard'));
 const MFASetup = lazy(() => import('./components/MFASetup'));
 const ProfilePage = lazy(() => import('./components/ProfilePage'));
@@ -30,6 +33,7 @@ import PrivacyPolicy from './components/PrivacyPolicy';
 import CookiePolicy from './components/CookiePolicy';
 import CookieConsent from './components/CookieConsent';
 import AcceptInvitation from './components/AcceptInvitation';
+import EmailVerificationError from './components/EmailVerificationError';
 import AICommandCenter from './components/AICommandCenter';
 
 function App() {
@@ -55,6 +59,10 @@ function App() {
             
             {/* Invitation Acceptance (Public - users need to see it before logging in) */}
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
+            
+            {/* Email Verification Error Handler (Public - handles verification link errors) */}
+            <Route path="/auth/action" element={<EmailVerificationError />} />
+            <Route path="/email-verification" element={<EmailVerificationError />} />
             
             {/* Protected Route - Main Dashboard (Module Selection) */}
             <Route 
@@ -161,6 +169,44 @@ function App() {
               } 
             />
             
+            {/* Protected Route - Projects Module */}
+            <Route 
+              path="/modules/projects" 
+              element={
+                <ProtectedRoute>
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Projects...</p>
+                      </div>
+                    </div>
+                  }>
+                    <ProjectsTracker />
+                  </Suspense>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Forecasting Module */}
+            <Route 
+              path="/modules/forecasting" 
+              element={
+                <ProtectedRoute>
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Forecasting...</p>
+                      </div>
+                    </div>
+                  }>
+                    <ForecastingTracker />
+                  </Suspense>
+                </ProtectedRoute>
+              } 
+            />
+            
             {/* Protected Route - Financial Dashboard */}
             <Route 
               path="/modules/financial-dashboard" 
@@ -213,6 +259,25 @@ function App() {
                     </div>
                   }>
                     <SettingsDashboard />
+                  </Suspense>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Protected Route - Team Module */}
+            <Route 
+              path="/modules/team" 
+              element={
+                <ProtectedRoute>
+                  <Suspense fallback={
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading Team Management...</p>
+                      </div>
+                    </div>
+                  }>
+                    <TeamTracker />
                   </Suspense>
                 </ProtectedRoute>
               } 

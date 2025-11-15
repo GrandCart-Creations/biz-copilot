@@ -201,21 +201,71 @@ export const resetPassword = async (email) => {
   }
 };
 
-// Resend email verification
+// Resend email verification with rate limiting and better error handling
+let lastVerificationSent = null;
+const VERIFICATION_COOLDOWN = 60000; // 60 seconds cooldown
+
 export const resendVerificationEmail = async () => {
   try {
     const user = auth.currentUser;
     if (!user) {
       throw new Error('No user is currently signed in.');
     }
+    
+    // Reload user to get latest verification status
+    await user.reload();
+    
     if (user.emailVerified) {
-      throw new Error('Your email is already verified.');
+      return 'Your email is already verified!';
     }
-    await sendEmailVerification(user);
-    return 'Verification email sent! Check your inbox.';
+    
+    // Rate limiting: prevent rapid resends
+    const now = Date.now();
+    if (lastVerificationSent && (now - lastVerificationSent) < VERIFICATION_COOLDOWN) {
+      const remainingSeconds = Math.ceil((VERIFICATION_COOLDOWN - (now - lastVerificationSent)) / 1000);
+      throw new Error(`Please wait ${remainingSeconds} seconds before requesting another verification email.`);
+    }
+    
+    // Use actionCodeSettings to provide better redirect handling
+    const actionCodeSettings = {
+      url: `${window.location.origin}/dashboard`,
+      handleCodeInApp: false, // Open link in browser, not app
+    };
+    
+    await sendEmailVerification(user, actionCodeSettings);
+    lastVerificationSent = now;
+    
+    return 'Verification email sent! Please check your inbox (and spam/junk folder). The link will expire in 1 hour.';
   } catch (error) {
     console.error('Error sending verification email:', error);
-    throw new Error(error.message);
+    
+    // Provide user-friendly error messages
+    if (error.code === 'auth/too-many-requests') {
+      throw new Error('Too many requests. Please wait a few minutes before trying again.');
+    }
+    
+    throw new Error(error.message || 'Failed to send verification email. Please try again.');
+  }
+};
+
+// Check if email is verified (reloads user first)
+export const checkEmailVerification = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('No user is currently signed in.');
+    }
+    
+    // Reload user to get latest verification status from Firebase
+    await user.reload();
+    
+    return {
+      verified: user.emailVerified || false,
+      email: user.email
+    };
+  } catch (error) {
+    console.error('Error checking email verification:', error);
+    throw new Error('Failed to check verification status. Please try again.');
   }
 };
 
@@ -225,15 +275,32 @@ export const sendEmailVerificationToUser = async (user) => {
     if (!user) {
       throw new Error('User is required.');
     }
+    
+    // Reload user to get latest verification status
+    await user.reload();
+    
     if (user.emailVerified) {
-      throw new Error('Your email is already verified.');
+      return 'Your email is already verified!';
     }
+    
+    // Use actionCodeSettings to provide better redirect handling
+    const actionCodeSettings = {
+      url: `${window.location.origin}/dashboard`,
+      handleCodeInApp: false, // Open link in browser, not app
+    };
+    
     // Use the imported sendEmailVerification from firebase/auth
-    await sendEmailVerification(user);
-    return 'Verification email sent! Check your inbox.';
+    await sendEmailVerification(user, actionCodeSettings);
+    return 'Verification email sent! Please check your inbox (and spam/junk folder). The link will expire in 1 hour.';
   } catch (error) {
     console.error('Error sending verification email:', error);
-    throw new Error(error.message);
+    
+    // Provide user-friendly error messages
+    if (error.code === 'auth/too-many-requests') {
+      throw new Error('Too many requests. Please wait a few minutes before trying again.');
+    }
+    
+    throw new Error(error.message || 'Failed to send verification email. Please try again.');
   }
 };
 
@@ -1461,21 +1528,30 @@ export const acceptInvitation = async (companyId, invitationId, userId, userEmai
       acceptedBy: userId
     });
     
+    // Get company document to inherit subscription tier
+    const companyRef = doc(db, 'companies', companyId);
+    const companyDoc = await getDoc(companyRef);
+    const companyTier = companyDoc.exists() 
+      ? (companyDoc.data().subscriptionTier || 'business') // Default to business if company exists
+      : (invitationData.subscriptionTier || 'business'); // Fallback to invitation or business
+    
     // Create user document in company
     const userRef = doc(db, 'companies', companyId, 'users', userId);
     const roleModules = {
-      owner: ['expenses', 'income', 'marketing', 'forecasting', 'reports', 'settings', 'team'],
-      manager: ['expenses', 'income', 'marketing', 'forecasting', 'reports'],
-      employee: ['expenses'],
+      owner: ['expenses', 'income', 'marketing', 'projects', 'forecasting', 'reports', 'settings', 'team'],
+      manager: ['expenses', 'income', 'marketing', 'projects', 'forecasting', 'reports', 'team'],
+      employee: ['expenses', 'projects'],
       accountant: ['expenses', 'income', 'reports'],
-      marketingManager: ['expenses', 'income', 'invoices', 'marketing', 'forecasting', 'reports', 'team']
+      marketingManager: ['expenses', 'income', 'invoices', 'marketing', 'projects', 'forecasting', 'reports', 'team'],
+      developer: ['expenses', 'income', 'invoices', 'marketing', 'projects', 'forecasting', 'reports', 'team'],
+      dataEntryClerk: ['expenses', 'income', 'invoices', 'marketing', 'projects', 'forecasting', 'reports', 'team']
     };
     
     batch.set(userRef, {
       email: userEmail,
       role: invitationData.role || 'employee',
       accessModules: roleModules[invitationData.role || 'employee'] || ['expenses'],
-      subscriptionTier: invitationData.subscriptionTier || 'lite',
+      subscriptionTier: companyTier, // Inherit from company, not invitation
       joinedAt: serverTimestamp(),
       invitedBy: invitationData.invitedBy
     });
@@ -4850,6 +4926,621 @@ export const deleteCompanyLead = async (companyId, leadId) => {
     return true;
   } catch (error) {
     console.error('Error deleting lead:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// PROJECTS MODULE
+// ============================================
+
+/**
+ * Get all projects for a company
+ */
+export const getCompanyProjects = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const projectsRef = collection(db, 'companies', companyId, 'projects');
+    let q = query(projectsRef);
+    
+    if (options.orderBy) {
+      q = query(q, orderBy(options.orderBy, options.orderDirection || 'desc'));
+    } else {
+      q = query(q, orderBy('createdAt', 'desc'));
+    }
+    
+    if (options.limit) {
+      q = query(q, limit(options.limit));
+    }
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting projects:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add a new project
+ */
+export const addCompanyProject = async (companyId, userId, projectData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const projectsRef = collection(db, 'companies', companyId, 'projects');
+    
+    // Convert date strings to Timestamps
+    const processedData = { ...projectData };
+    if (projectData.startDate && typeof projectData.startDate === 'string') {
+      processedData.startDate = Timestamp.fromDate(new Date(projectData.startDate));
+    }
+    if (projectData.endDate && typeof projectData.endDate === 'string') {
+      processedData.endDate = Timestamp.fromDate(new Date(projectData.endDate));
+    }
+    
+    const newProject = {
+      name: processedData.name || '',
+      description: processedData.description || '',
+      type: processedData.type || 'app',
+      status: processedData.status || 'planning',
+      phase: processedData.phase || '',
+      priority: processedData.priority || 'medium',
+      startDate: processedData.startDate || null,
+      endDate: processedData.endDate || null,
+      budget: parseFloat(processedData.budget) || 0,
+      actualCost: parseFloat(processedData.actualCost) || 0,
+      assignedTo: processedData.assignedTo || '',
+      parentProjectId: processedData.parentProjectId || null,
+      tags: processedData.tags || [],
+      customFields: processedData.customFields || {},
+      notes: processedData.notes || '',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp(),
+      updatedBy: userId
+    };
+    
+    const docRef = await addDoc(projectsRef, newProject);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding project:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update a project
+ */
+export const updateCompanyProject = async (companyId, projectId, projectData = {}) => {
+  if (!companyId || !projectId) throw new Error('Company ID and project ID are required');
+  try {
+    const projectRef = doc(db, 'companies', companyId, 'projects', projectId);
+    
+    // Convert date strings to Timestamps
+    const processedData = { ...projectData };
+    if (projectData.startDate && typeof projectData.startDate === 'string') {
+      processedData.startDate = Timestamp.fromDate(new Date(projectData.startDate));
+    }
+    if (projectData.endDate && typeof projectData.endDate === 'string') {
+      processedData.endDate = Timestamp.fromDate(new Date(projectData.endDate));
+    }
+    
+    // Convert budget and actualCost to numbers
+    if (projectData.budget !== undefined) {
+      processedData.budget = parseFloat(projectData.budget) || 0;
+    }
+    if (projectData.actualCost !== undefined) {
+      processedData.actualCost = parseFloat(projectData.actualCost) || 0;
+    }
+    
+    const updateData = {
+      ...processedData,
+      updatedAt: serverTimestamp()
+    };
+    
+    // Remove fields that shouldn't be updated
+    delete updateData.createdAt;
+    delete updateData.createdBy;
+    
+    await updateDoc(projectRef, updateData);
+    return true;
+  } catch (error) {
+    console.error('Error updating project:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a project (and optionally its children)
+ */
+export const deleteCompanyProject = async (companyId, projectId) => {
+  if (!companyId || !projectId) throw new Error('Company ID and project ID are required');
+  try {
+    const projectRef = doc(db, 'companies', companyId, 'projects', projectId);
+    
+    // Get all child projects
+    const projectsRef = collection(db, 'companies', companyId, 'projects');
+    const childQuery = query(projectsRef, where('parentProjectId', '==', projectId));
+    const childSnapshot = await getDocs(childQuery);
+    
+    // Delete all child projects first
+    const batch = writeBatch(db);
+    childSnapshot.docs.forEach(childDoc => {
+      batch.delete(childDoc.ref);
+    });
+    
+    // Delete the project itself
+    batch.delete(projectRef);
+    
+    await batch.commit();
+    return true;
+  } catch (error) {
+    console.error('Error deleting project:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get project configuration for a company
+ */
+export const getCompanyProjectConfig = async (companyId) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const configRef = doc(db, 'companies', companyId, 'settings', 'projectConfig');
+    const configDoc = await getDoc(configRef);
+    
+    if (configDoc.exists()) {
+      return configDoc.data();
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting project config:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update project configuration for a company
+ */
+export const updateCompanyProjectConfig = async (companyId, configData) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const configRef = doc(db, 'companies', companyId, 'settings', 'projectConfig');
+    await setDoc(configRef, {
+      ...configData,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    return true;
+  } catch (error) {
+    console.error('Error updating project config:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// FORECASTING & BUDGETING MODULE
+// ============================================
+
+/**
+ * Get all budgets for a company
+ */
+export const getCompanyBudgets = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const budgetsRef = collection(db, 'companies', companyId, 'budgets');
+    let q = query(budgetsRef);
+    
+    if (options.orderBy) {
+      q = query(q, orderBy(options.orderBy, options.orderDirection || 'desc'));
+    } else {
+      q = query(q, orderBy('createdAt', 'desc'));
+    }
+    
+    if (options.limit) {
+      q = query(q, limit(options.limit));
+    }
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting budgets:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add a new budget
+ */
+export const addCompanyBudget = async (companyId, userId, budgetData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const budgetsRef = collection(db, 'companies', companyId, 'budgets');
+    
+    // Convert date strings to Timestamps
+    const processedData = { ...budgetData };
+    if (budgetData.startDate && typeof budgetData.startDate === 'string') {
+      processedData.startDate = Timestamp.fromDate(new Date(budgetData.startDate));
+    }
+    if (budgetData.endDate && typeof budgetData.endDate === 'string') {
+      processedData.endDate = Timestamp.fromDate(new Date(budgetData.endDate));
+    }
+    
+    const newBudget = {
+      name: processedData.name || '',
+      type: 'budget',
+      category: processedData.category || '',
+      period: processedData.period || 'month',
+      startDate: processedData.startDate || null,
+      endDate: processedData.endDate || null,
+      amount: parseFloat(processedData.amount) || 0,
+      description: processedData.description || '',
+      notes: processedData.notes || '',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp(),
+      updatedBy: userId
+    };
+    
+    const docRef = await addDoc(budgetsRef, newBudget);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding budget:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update a budget
+ */
+export const updateCompanyBudget = async (companyId, budgetId, budgetData = {}) => {
+  if (!companyId || !budgetId) throw new Error('Company ID and budget ID are required');
+  try {
+    const budgetRef = doc(db, 'companies', companyId, 'budgets', budgetId);
+    
+    // Convert date strings to Timestamps
+    const processedData = { ...budgetData };
+    if (budgetData.startDate && typeof budgetData.startDate === 'string') {
+      processedData.startDate = Timestamp.fromDate(new Date(budgetData.startDate));
+    }
+    if (budgetData.endDate && typeof budgetData.endDate === 'string') {
+      processedData.endDate = Timestamp.fromDate(new Date(budgetData.endDate));
+    }
+    
+    // Convert amount to number
+    if (budgetData.amount !== undefined) {
+      processedData.amount = parseFloat(budgetData.amount) || 0;
+    }
+    
+    const updateData = {
+      ...processedData,
+      updatedAt: serverTimestamp()
+    };
+    
+    // Remove fields that shouldn't be updated
+    delete updateData.createdAt;
+    delete updateData.createdBy;
+    
+    await updateDoc(budgetRef, updateData);
+    return true;
+  } catch (error) {
+    console.error('Error updating budget:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a budget
+ */
+export const deleteCompanyBudget = async (companyId, budgetId) => {
+  if (!companyId || !budgetId) throw new Error('Company ID and budget ID are required');
+  try {
+    const budgetRef = doc(db, 'companies', companyId, 'budgets', budgetId);
+    await deleteDoc(budgetRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting budget:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all forecasts for a company
+ */
+export const getCompanyForecasts = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const forecastsRef = collection(db, 'companies', companyId, 'forecasts');
+    let q = query(forecastsRef);
+    
+    if (options.orderBy) {
+      q = query(q, orderBy(options.orderBy, options.orderDirection || 'desc'));
+    } else {
+      q = query(q, orderBy('createdAt', 'desc'));
+    }
+    
+    if (options.limit) {
+      q = query(q, limit(options.limit));
+    }
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting forecasts:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add a new forecast
+ */
+export const addCompanyForecast = async (companyId, userId, forecastData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const forecastsRef = collection(db, 'companies', companyId, 'forecasts');
+    
+    // Convert date strings to Timestamps
+    const processedData = { ...forecastData };
+    if (forecastData.startDate && typeof forecastData.startDate === 'string') {
+      processedData.startDate = Timestamp.fromDate(new Date(forecastData.startDate));
+    }
+    if (forecastData.endDate && typeof forecastData.endDate === 'string') {
+      processedData.endDate = Timestamp.fromDate(new Date(forecastData.endDate));
+    }
+    
+    const newForecast = {
+      name: processedData.name || '',
+      type: 'forecast',
+      category: processedData.category || '',
+      period: processedData.period || 'month',
+      startDate: processedData.startDate || null,
+      endDate: processedData.endDate || null,
+      amount: parseFloat(processedData.amount) || 0,
+      description: processedData.description || '',
+      status: processedData.status || 'active',
+      notes: processedData.notes || '',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp(),
+      updatedBy: userId
+    };
+    
+    const docRef = await addDoc(forecastsRef, newForecast);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding forecast:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update a forecast
+ */
+export const updateCompanyForecast = async (companyId, forecastId, forecastData = {}) => {
+  if (!companyId || !forecastId) throw new Error('Company ID and forecast ID are required');
+  try {
+    const forecastRef = doc(db, 'companies', companyId, 'forecasts', forecastId);
+    
+    // Convert date strings to Timestamps
+    const processedData = { ...forecastData };
+    if (forecastData.startDate && typeof forecastData.startDate === 'string') {
+      processedData.startDate = Timestamp.fromDate(new Date(forecastData.startDate));
+    }
+    if (forecastData.endDate && typeof forecastData.endDate === 'string') {
+      processedData.endDate = Timestamp.fromDate(new Date(forecastData.endDate));
+    }
+    
+    // Convert amount to number
+    if (forecastData.amount !== undefined) {
+      processedData.amount = parseFloat(forecastData.amount) || 0;
+    }
+    
+    const updateData = {
+      ...processedData,
+      updatedAt: serverTimestamp()
+    };
+    
+    // Remove fields that shouldn't be updated
+    delete updateData.createdAt;
+    delete updateData.createdBy;
+    
+    await updateDoc(forecastRef, updateData);
+    return true;
+  } catch (error) {
+    console.error('Error updating forecast:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a forecast
+ */
+export const deleteCompanyForecast = async (companyId, forecastId) => {
+  if (!companyId || !forecastId) throw new Error('Company ID and forecast ID are required');
+  try {
+    const forecastRef = doc(db, 'companies', companyId, 'forecasts', forecastId);
+    await deleteDoc(forecastRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting forecast:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// NOTIFICATIONS MODULE
+// ============================================
+
+/**
+ * Get notifications for a company/user
+ */
+export const getCompanyNotifications = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const notificationsRef = collection(db, 'companies', companyId, 'notifications');
+    let q = query(notificationsRef);
+    
+    // Filter by user if specified
+    if (options.userId) {
+      q = query(q, where('userId', '==', options.userId));
+    }
+    
+    // Filter unread only if specified
+    if (options.unreadOnly) {
+      q = query(q, where('read', '==', false));
+    }
+    
+    // Order by creation date
+    q = query(q, orderBy('createdAt', 'desc'));
+    
+    // Limit if specified
+    if (options.limit) {
+      q = query(q, limit(options.limit));
+    } else {
+      q = query(q, limit(50)); // Default limit
+    }
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting notifications:', error);
+    throw error;
+  }
+};
+
+/**
+ * Subscribe to notifications in real-time
+ */
+export const subscribeToCompanyNotifications = (companyId, userId, callback) => {
+  if (!companyId) return () => {};
+  
+  try {
+    const notificationsRef = collection(db, 'companies', companyId, 'notifications');
+    let q = query(notificationsRef);
+    
+    if (userId) {
+      q = query(q, where('userId', '==', userId));
+    }
+    
+    q = query(q, orderBy('createdAt', 'desc'), limit(50));
+    
+    return onSnapshot(q, (snapshot) => {
+      const notifications = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      callback(notifications);
+    });
+  } catch (error) {
+    console.error('Error subscribing to notifications:', error);
+    return () => {};
+  }
+};
+
+/**
+ * Create a notification
+ */
+export const createCompanyNotification = async (companyId, notificationData = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const notificationsRef = collection(db, 'companies', companyId, 'notifications');
+    
+    const newNotification = {
+      type: notificationData.type || 'system', // 'overdue_invoice', 'approval_request', 'budget_alert', 'payment_reminder', 'contract_expiration', 'domain_expiration', 'subscription_renewal', 'payment_due', 'system'
+      title: notificationData.title || '',
+      message: notificationData.message || '',
+      userId: notificationData.userId || null, // null = all users
+      read: false,
+      actionUrl: notificationData.actionUrl || null,
+      metadata: notificationData.metadata || {},
+      priority: notificationData.priority || 'normal', // 'low', 'normal', 'high', 'urgent'
+      expiresAt: notificationData.expiresAt || null, // When the notification becomes irrelevant
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(notificationsRef, newNotification);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    throw error;
+  }
+};
+
+/**
+ * Mark notification as read
+ */
+export const markNotificationAsRead = async (companyId, notificationId) => {
+  if (!companyId || !notificationId) throw new Error('Company ID and notification ID are required');
+  try {
+    const notificationRef = doc(db, 'companies', companyId, 'notifications', notificationId);
+    await updateDoc(notificationRef, {
+      read: true,
+      readAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    throw error;
+  }
+};
+
+/**
+ * Mark all notifications as read for a user
+ */
+export const markAllNotificationsAsRead = async (companyId, userId) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const notificationsRef = collection(db, 'companies', companyId, 'notifications');
+    const q = query(
+      notificationsRef,
+      where('userId', '==', userId),
+      where('read', '==', false)
+    );
+    
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    
+    snapshot.docs.forEach(doc => {
+      const notificationRef = doc(db, 'companies', companyId, 'notifications', doc.id);
+      batch.update(notificationRef, {
+        read: true,
+        readAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    });
+    
+    await batch.commit();
+    return true;
+  } catch (error) {
+    console.error('Error marking all notifications as read:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a notification
+ */
+export const deleteCompanyNotification = async (companyId, notificationId) => {
+  if (!companyId || !notificationId) throw new Error('Company ID and notification ID are required');
+  try {
+    const notificationRef = doc(db, 'companies', companyId, 'notifications', notificationId);
+    await deleteDoc(notificationRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting notification:', error);
     throw error;
   }
 };
