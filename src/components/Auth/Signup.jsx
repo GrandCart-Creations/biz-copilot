@@ -198,7 +198,7 @@ export default function Signup() {
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <img
-                  src={companyBranding?.branding?.logoUrl || '/branding/logo/logo-icon.svg'}
+                  src={companyBranding?.branding?.logoUrl || '/branding/favicon/safari-pinned-tab.svg'}
                   alt={companyBranding?.name || 'Biz-CoPilot'}
                   className="h-24 w-auto object-contain bg-white/10 rounded-lg p-2 backdrop-blur-sm"
                 />
@@ -265,7 +265,7 @@ export default function Signup() {
             {/* Logo for mobile */}
             <div className="lg:hidden flex items-center justify-center gap-3 mb-4">
               <img
-                src={companyBranding?.branding?.logoUrl || '/branding/logo/logo-icon.svg'}
+                src={companyBranding?.branding?.logoUrl || '/branding/favicon/safari-pinned-tab.svg'}
                 alt={companyBranding?.name || 'Biz-CoPilot'}
                 className="h-20 w-auto object-contain"
               />

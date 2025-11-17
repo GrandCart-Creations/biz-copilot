@@ -20,7 +20,8 @@ import {
   updateUserRole,
   removeUserFromCompany,
   acceptInvitation,
-  addUserDirectlyToCompany
+  addUserDirectlyToCompany,
+  resendInvitation
 } from '../firebase';
 import { cleanupDuplicateUsers, findAllDuplicateUsers } from '../utils/cleanupDuplicates';
 import { fixUserCompanyAccess } from '../utils/fixUserCompanyAccess';
@@ -79,6 +80,7 @@ const TeamManagement = () => {
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [duplicates, setDuplicates] = useState([]);
   const [cleaningUp, setCleaningUp] = useState(false);
+  const [resendingId, setResendingId] = useState(null);
 
   // Check if user can manage team (owner or manager)
   const canManageTeam = userRole === 'owner' || userRole === 'manager';
@@ -596,14 +598,52 @@ const TeamManagement = () => {
                   <div>
                     <p className="font-medium text-gray-900">{invitation.email}</p>
                     <p className="text-sm text-gray-500">Role: {invitation.role}</p>
+                    <div className="mt-1 text-xs">
+                      {invitation.emailError && (
+                        <span className="text-red-600">
+                          Failed: {invitation.emailError}
+                        </span>
+                      )}
+                      {!invitation.emailError && invitation.emailSent && invitation.emailSentAt && (
+                        <span className="text-green-700">
+                          Email delivered at {new Date(invitation.emailSentAt).toLocaleString()}
+                        </span>
+                      )}
+                      {!invitation.emailError && !invitation.emailSent && (
+                        <span className="text-gray-500">
+                          Email queued/sending…
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleCancelInvitation(invitation.id)}
-                  className="px-3 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                >
-                  Cancel
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleCancelInvitation(invitation.id)}
+                    className="px-3 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!currentCompanyId) return;
+                      setResendingId(invitation.id);
+                      try {
+                        await resendInvitation(currentCompanyId, invitation.id);
+                        await loadTeamData();
+                      } catch (e) {
+                        alert(`Failed to resend: ${e.message}`);
+                      } finally {
+                        setResendingId(null);
+                      }
+                    }}
+                    disabled={resendingId === invitation.id}
+                    className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors disabled:opacity-60"
+                    title="Resend invitation email"
+                  >
+                    {resendingId === invitation.id ? 'Resending…' : 'Resend'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

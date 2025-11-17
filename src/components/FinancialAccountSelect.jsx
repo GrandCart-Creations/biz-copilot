@@ -185,10 +185,11 @@ const FinancialAccountSelect = ({
           onChange={(e) => onChange && onChange(e)}
           required={required}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white text-gray-900"
+          style={{ color: value ? '#111827' : '#6B7280' }}
         >
-          <option value="" className="text-gray-900">Select an account...</option>
+          <option value="" style={{ color: '#6B7280' }}>Select an account...</option>
           {filteredAccounts.map((account) => (
-            <option key={account.id} value={account.id} className="text-gray-900">
+            <option key={account.id} value={account.id} style={{ color: '#111827' }}>
               {account.name} {showBalance && account.currentBalance !== undefined && `(${formatBalance(account.currentBalance, account.currency)})`}
             </option>
           ))}

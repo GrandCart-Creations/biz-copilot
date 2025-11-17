@@ -11,17 +11,262 @@ const { onCall } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
 const { getFirestore } = require('firebase-admin/firestore');
 const sgMail = require('@sendgrid/mail');
+const { jsPDF } = require('jspdf');
 
 // Initialize Firebase Admin
 initializeApp();
 const db = getFirestore();
+const adminAuth = getAuth();
 
 // Define secrets for Firebase Functions v2
 const SENDGRID_API_KEY = defineSecret('SENDGRID_API_KEY');
 const SENDGRID_FROM_EMAIL = defineSecret('SENDGRID_FROM_EMAIL');
 const APP_URL = defineSecret('APP_URL');
+
+/**
+ * Helper function to convert hex color to RGB
+ */
+const hexToRgb = (hex) => {
+  if (!hex) return [79, 70, 229]; // Default indigo
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? [
+    parseInt(result[1], 16),
+    parseInt(result[2], 16),
+    parseInt(result[3], 16)
+  ] : [79, 70, 229];
+};
+
+/**
+ * Generate Receipt PDF in Cloud Functions
+ */
+const generateReceiptPDF = (invoice, company, paymentDetails = {}) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  const contentWidth = pageWidth - (margin * 2);
+  let yPos = margin;
+
+  // Helper function to add text
+  const addText = (text, x, y, options = {}) => {
+    const {
+      fontSize = 10,
+      fontStyle = 'normal',
+      color = [0, 0, 0],
+      maxWidth = contentWidth,
+      align = 'left'
+    } = options;
+
+    doc.setFontSize(fontSize);
+    doc.setFont('helvetica', fontStyle);
+    doc.setTextColor(...color);
+    
+    const lines = doc.splitTextToSize(text, maxWidth);
+    doc.text(lines, x, y, { align });
+    return y + (lines.length * fontSize * 0.4);
+  };
+
+  // Get company branding
+  const branding = company?.branding || {};
+  const primaryColor = hexToRgb(branding.primaryColor || company?.primaryColor || '#4F46E5');
+  const companyName = company?.name || 'Biz-CoPilot';
+  
+  // Generate receipt number
+  const receiptNumber = `REC-${invoice.invoiceNumber || invoice.id || 'N/A'}`;
+  const paidDate = invoice.paidDate?.toDate?.() || new Date(invoice.paidDate || new Date());
+
+  // Header with company color (30px)
+  doc.setFillColor(...primaryColor);
+  doc.rect(0, 0, pageWidth, 30, 'F');
+  
+  addText(companyName, margin, 20, {
+    fontSize: 16,
+    fontStyle: 'bold',
+    color: [255, 255, 255]
+  });
+
+  // Receipt title and number
+  yPos = margin + 30;
+  addText('RECEIPT', pageWidth - margin, yPos, {
+    fontSize: 24,
+    fontStyle: 'bold',
+    align: 'right'
+  });
+  
+  yPos += 8;
+  addText(`Receipt #${receiptNumber}`, pageWidth - margin, yPos, {
+    fontSize: 12,
+    align: 'right',
+    color: [100, 100, 100]
+  });
+
+  // Company info (left side)
+  yPos = margin + 40;
+  addText(companyName, margin, yPos, {
+    fontSize: 12,
+    fontStyle: 'bold'
+  });
+
+  // Customer info (right side)
+  yPos = margin + 40;
+  const customerInfo = [
+    'Paid By:',
+    invoice.customerName || '',
+    invoice.customerAddress || ''
+  ].filter(Boolean);
+  
+  customerInfo.forEach((line, index) => {
+    yPos = addText(line, pageWidth / 2, yPos + (index === 0 ? 0 : 5), {
+      fontSize: index === 0 ? 12 : 10,
+      fontStyle: index === 0 ? 'bold' : 'normal',
+      align: 'left'
+    });
+  });
+
+  // Payment date
+  yPos += 10;
+  addText(`Payment Date: ${paidDate.toLocaleDateString()}`, margin, yPos, {
+    fontSize: 10
+  });
+
+  // Invoice reference
+  addText(`For Invoice: ${invoice.invoiceNumber || 'N/A'}`, pageWidth - margin, yPos, {
+    fontSize: 10,
+    align: 'right'
+  });
+
+  // Line items table
+  yPos += 20;
+  
+  // Table header
+  doc.setFillColor(240, 240, 240);
+  doc.rect(margin, yPos - 5, contentWidth, 8, 'F');
+  
+  addText('Description', margin + 2, yPos, { fontSize: 10, fontStyle: 'bold' });
+  addText('Qty', margin + 100, yPos, { fontSize: 10, fontStyle: 'bold', align: 'right' });
+  addText('Amount', pageWidth - margin - 2, yPos, { fontSize: 10, fontStyle: 'bold', align: 'right' });
+  
+  yPos += 8;
+
+  // Line items
+  const lineItems = invoice.lineItems || [];
+  lineItems.forEach((item) => {
+    if (yPos > pageHeight - 60) {
+      doc.addPage();
+      yPos = margin + 20;
+    }
+
+    addText(item.description || '', margin + 2, yPos, { fontSize: 10, maxWidth: 90 });
+    addText((item.quantity || 0).toString(), margin + 100, yPos, { fontSize: 10, align: 'right' });
+    addText(`€${(item.amount || 0).toFixed(2)}`, pageWidth - margin - 2, yPos, { fontSize: 10, align: 'right' });
+
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, yPos + 3, pageWidth - margin, yPos + 3);
+    
+    yPos += 8;
+  });
+
+  // Totals
+  yPos += 10;
+  const subtotal = parseFloat(invoice.subtotal || 0);
+  const taxAmount = parseFloat(invoice.taxAmount || 0);
+  const total = parseFloat(invoice.total || 0);
+
+  addText('Subtotal:', pageWidth - margin - 60, yPos, {
+    fontSize: 10,
+    align: 'right'
+  });
+  addText(`€${subtotal.toFixed(2)}`, pageWidth - margin - 2, yPos, {
+    fontSize: 10,
+    align: 'right'
+  });
+
+  if (invoice.taxRate > 0) {
+    yPos += 6;
+    addText(`VAT (${invoice.taxRate}%):`, pageWidth - margin - 60, yPos, {
+      fontSize: 10,
+      align: 'right'
+    });
+    addText(`€${taxAmount.toFixed(2)}`, pageWidth - margin - 2, yPos, {
+      fontSize: 10,
+      align: 'right'
+    });
+  }
+
+  // Total line immediately after VAT
+  yPos += 6;
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.5);
+  doc.line(pageWidth - margin - 80, yPos - 2, pageWidth - margin, yPos - 2);
+  
+  addText('Total Paid:', pageWidth - margin - 80, yPos, {
+    fontSize: 14,
+    fontStyle: 'bold',
+    align: 'right'
+  });
+  addText(`€${total.toFixed(2)}`, pageWidth - margin - 2, yPos, {
+    fontSize: 14,
+    fontStyle: 'bold',
+    align: 'right'
+  });
+
+  // Payment Information
+  yPos += 20;
+  if (yPos > pageHeight - 60) {
+    doc.addPage();
+    yPos = margin + 20;
+  }
+  
+  doc.setFillColor(...primaryColor);
+  doc.setDrawColor(...primaryColor);
+  const paymentBoxHeight = 25;
+  const paymentBoxY = yPos - 5;
+  doc.roundedRect(margin, paymentBoxY, contentWidth, paymentBoxHeight, 3, 3, 'FD');
+  
+  addText('Payment Confirmation', margin + 8, paymentBoxY + 6, {
+    fontSize: 11,
+    fontStyle: 'bold',
+    color: [255, 255, 255]
+  });
+  
+  yPos = paymentBoxY + 12;
+  if (paymentDetails.paymentMethod) {
+    addText(`Payment Method: ${paymentDetails.paymentMethod}`, margin + 8, yPos, {
+      fontSize: 9,
+      color: [255, 255, 255]
+    });
+    yPos += 5;
+  }
+  
+  if (paymentDetails.paymentReference) {
+    addText(`Reference: ${paymentDetails.paymentReference}`, margin + 8, yPos, {
+      fontSize: 9,
+      color: [255, 255, 255]
+    });
+    yPos += 5;
+  }
+  
+  addText(`Paid on: ${paidDate.toLocaleDateString()}`, margin + 8, yPos, {
+    fontSize: 9,
+    color: [255, 255, 255]
+  });
+
+  // Footer
+  yPos = pageHeight - 15;
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text(
+    `${companyName} • Receipt for Invoice ${invoice.invoiceNumber || 'N/A'} • ${new Date().toLocaleDateString()}`,
+    pageWidth / 2,
+    yPos,
+    { align: 'center' }
+  );
+
+  return doc;
+};
 
 /**
  * Send invitation email when a new invitation is created
@@ -240,15 +485,120 @@ If you didn't expect this invitation, you can safely ignore this email.
     } catch (error) {
       console.error('Error sending invitation email:', error);
       
+      // Extract detailed error message from SendGrid
+      let errorMessage = 'Failed to send';
+      if (error.response) {
+        const body = error.response.body || {};
+        if (body.errors && Array.isArray(body.errors) && body.errors.length > 0) {
+          errorMessage = body.errors.map(e => e.message || e).join('; ');
+        } else if (body.message) {
+          errorMessage = body.message;
+        } else {
+          errorMessage = error.response.statusCode === 401 ? 'Unauthorized: Check SendGrid API key and sender email' : 
+                        error.response.statusCode === 403 ? 'Forbidden: Sender email not verified or domain not authenticated' :
+                        `SendGrid error (${error.response.statusCode})`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       // Log error but don't fail the function
       // The invitation document was created successfully
       await db.doc(`companies/${companyId}/invitations/${invitationId}`).update({
-        emailError: error.message,
+        emailError: errorMessage,
         emailSent: false
       });
 
       throw error;
     }
+  }
+);
+
+// Rate limiting for verification emails (prevent multiple sends that invalidate previous codes)
+const verificationEmailCache = new Map(); // email -> { timestamp, count }
+const VERIFICATION_COOLDOWN = 60000; // 60 seconds minimum between sends
+const MAX_VERIFICATION_ATTEMPTS = 3; // Max 3 emails per hour
+
+/**
+ * Send Firebase Auth email verification via SendGrid from custom domain.
+ * Callable from client after sign-up / from onboarding.
+ * Includes rate limiting to prevent invalidating previous verification codes.
+ */
+exports.sendAuthVerificationEmail = onCall(
+  { 
+    secrets: [SENDGRID_API_KEY, SENDGRID_FROM_EMAIL, APP_URL],
+    region: 'europe-west1'
+  },
+  async (request) => {
+    const { email } = request.data || {};
+    if (!email) {
+      throw new Error('Email is required');
+    }
+    
+    // Rate limiting: prevent rapid resends that invalidate previous codes
+    const now = Date.now();
+    const cached = verificationEmailCache.get(email);
+    if (cached) {
+      const timeSinceLastSend = now - cached.timestamp;
+      if (timeSinceLastSend < VERIFICATION_COOLDOWN) {
+        const remainingSeconds = Math.ceil((VERIFICATION_COOLDOWN - timeSinceLastSend) / 1000);
+        throw new Error(`Please wait ${remainingSeconds} seconds before requesting another verification email. Rapid resends invalidate previous verification links.`);
+      }
+      
+      // Check if too many attempts in the last hour
+      if (cached.count >= MAX_VERIFICATION_ATTEMPTS && timeSinceLastSend < 3600000) {
+        throw new Error('Too many verification emails sent. Please wait 1 hour before requesting another. Check your spam/junk folder for previous emails.');
+      }
+    }
+    
+    const apiKey = (SENDGRID_API_KEY.value() || '').trim();
+    if (!apiKey) {
+      throw new Error('SendGrid API key is not configured');
+    }
+    const fromEmail = (SENDGRID_FROM_EMAIL.value() || 'noreply@biz-copilot.nl').trim();
+    const baseUrl = (APP_URL.value() || 'https://biz-copilot.nl').trim();
+    
+    // Generate a verification link via Firebase Admin (respects 1‑hour expiry)
+    // Note: Firebase Auth always uses firebaseapp.com for the action URL,
+    // but continueUrl redirects to our custom domain after verification
+    const link = await adminAuth.generateEmailVerificationLink(email, {
+      url: `${baseUrl}/email-verification`,
+      handleCodeInApp: false
+    });
+    
+    // Update rate limiting cache
+    verificationEmailCache.set(email, {
+      timestamp: now,
+      count: cached ? (cached.count + 1) : 1
+    });
+    
+    // Clean up old cache entries (older than 1 hour)
+    for (const [key, value] of verificationEmailCache.entries()) {
+      if (now - value.timestamp > 3600000) {
+        verificationEmailCache.delete(key);
+      }
+    }
+    
+    sgMail.setApiKey(apiKey);
+    const msg = {
+      to: email,
+      from: {
+        email: fromEmail,
+        name: 'Biz-CoPilot'
+      },
+      subject: 'Verify your email for Biz‑CoPilot',
+      text: `Hello,\n\nPlease verify your email by clicking this link:\n${link}\n\nThis link will expire in 1 hour. If you didn't request this, you can ignore this email.\n\nThanks,\nBiz‑CoPilot`,
+      html: `<p>Hello,</p>
+             <p>Please verify your email by clicking this link:</p>
+             <p><a href="${link}" style="display:inline-block;padding:10px 16px;background:#0ea5e9;color:#fff;text-decoration:none;border-radius:6px;">Verify Email</a></p>
+             <p>Or copy and paste this link into your browser:</p>
+             <p style="word-break:break-all;color:#666;font-size:12px;">${link}</p>
+             <p style="color:#666;font-size:12px;"><strong>Note:</strong> This link will expire in 1 hour. If you don't see this email in your inbox, check your spam/junk folder.</p>
+             <p>If you didn't request this, you can ignore this email.</p>
+             <p>Thanks,<br/>Biz‑CoPilot</p>`
+    };
+    await sgMail.send(msg);
+    return { ok: true, message: 'Verification email sent successfully' };
   }
 );
 
@@ -259,7 +609,7 @@ If you didn't expect this invitation, you can safely ignore this email.
 exports.sendInvoiceEmail = onCall(
   {
     secrets: [SENDGRID_API_KEY, SENDGRID_FROM_EMAIL, APP_URL],
-    region: 'us-central1'
+    region: 'europe-west1'
   },
   async (request) => {
     const { companyId, invoiceId, recipientEmail } = request.data;
@@ -372,7 +722,7 @@ exports.sendInvoiceEmail = onCall(
 exports.sendQuoteEmail = onCall(
   {
     secrets: [SENDGRID_API_KEY, SENDGRID_FROM_EMAIL, APP_URL],
-    region: 'us-central1'
+    region: 'europe-west1'
   },
   async (request) => {
     const { companyId, quoteId, recipientEmail } = request.data;
@@ -473,6 +823,129 @@ exports.sendQuoteEmail = onCall(
       return { success: true, message: 'Quote email sent successfully' };
     } catch (error) {
       console.error('Error sending quote email:', error);
+      throw error;
+    }
+  }
+);
+
+/**
+ * Send receipt email
+ * Callable function to send receipt via email
+ */
+exports.sendReceiptEmail = onCall(
+  {
+    secrets: [SENDGRID_API_KEY, SENDGRID_FROM_EMAIL, APP_URL],
+    region: 'europe-west1'
+  },
+  async (request) => {
+    const { companyId, invoiceId, recipientEmail, receiptNumber } = request.data;
+
+    if (!companyId || !invoiceId || !recipientEmail) {
+      throw new Error('Missing required parameters: companyId, invoiceId, recipientEmail');
+    }
+
+    const apiKey = (SENDGRID_API_KEY.value() || '').trim();
+    if (!apiKey) {
+      throw new Error('SendGrid API key not configured');
+    }
+
+    sgMail.setApiKey(apiKey);
+
+    try {
+      // Get invoice and company data
+      const invoiceDoc = await db.doc(`companies/${companyId}/invoices/${invoiceId}`).get();
+      if (!invoiceDoc.exists) {
+        throw new Error('Invoice not found');
+      }
+      const invoiceData = invoiceDoc.data();
+
+      const companyDoc = await db.doc(`companies/${companyId}`).get();
+      const companyData = companyDoc.data();
+
+      const paidDate = invoiceData.paidDate?.toDate?.() || new Date(invoiceData.paidDate || new Date());
+
+      const emailSubject = `Receipt ${receiptNumber || 'N/A'} - Payment Confirmation from ${companyData?.name || 'Biz-CoPilot'}`;
+      
+      const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Receipt - Biz-CoPilot</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+    <h1 style="color: white; margin: 0;">Payment Receipt</h1>
+  </div>
+  
+  <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px;">
+    <p>Dear ${invoiceData.customerName || 'Valued Customer'},</p>
+    
+    <p>Thank you for your payment! We have received payment for invoice <strong>${invoiceData.invoiceNumber}</strong>.</p>
+    
+    <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981;">
+      <p style="margin: 5px 0;"><strong>Receipt Number:</strong> ${receiptNumber || 'N/A'}</p>
+      <p style="margin: 5px 0;"><strong>Invoice Number:</strong> ${invoiceData.invoiceNumber}</p>
+      <p style="margin: 5px 0;"><strong>Payment Date:</strong> ${paidDate.toLocaleDateString()}</p>
+      <p style="margin: 5px 0;"><strong>Payment Method:</strong> ${invoiceData.paymentMethod || 'N/A'}</p>
+      <p style="margin: 5px 0;"><strong>Amount Paid:</strong> €${parseFloat(invoiceData.total || 0).toFixed(2)}</p>
+    </div>
+    
+    <p>Please find your receipt attached to this email. Keep this receipt for your records.</p>
+    
+    <p>If you have any questions about this payment, please don't hesitate to contact us.</p>
+    
+    <p>Best regards,<br>
+    ${companyData?.name || 'Biz-CoPilot'}</p>
+  </div>
+  
+  <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
+    <p>© ${new Date().getFullYear()} Biz-CoPilot. All rights reserved.</p>
+  </div>
+</body>
+</html>
+      `;
+
+      // Generate receipt PDF
+      const paymentDetails = invoiceData.paymentDetails || {};
+      const receiptPDF = generateReceiptPDF(invoiceData, companyData, paymentDetails);
+      const receiptFilename = `Receipt-${receiptNumber || invoiceData.invoiceNumber || 'N/A'}.pdf`;
+      
+      // Convert PDF to base64 for attachment
+      const pdfBase64 = receiptPDF.output('datauristring').split(',')[1];
+      
+      const fromEmail = (SENDGRID_FROM_EMAIL.value() || 'noreply@biz-copilot.nl').trim();
+      const msg = {
+        to: recipientEmail,
+        from: {
+          email: fromEmail,
+          name: companyData?.name || 'Biz-CoPilot'
+        },
+        subject: emailSubject,
+        html: emailHtml,
+        attachments: [
+          {
+            content: pdfBase64,
+            filename: receiptFilename,
+            type: 'application/pdf',
+            disposition: 'attachment'
+          }
+        ]
+      };
+
+      await sgMail.send(msg);
+      
+      // Update invoice to note receipt was sent
+      await db.doc(`companies/${companyId}/invoices/${invoiceId}`).update({
+        receiptSentAt: new Date().toISOString(),
+        receiptSentTo: recipientEmail,
+        receiptNumber: receiptNumber
+      });
+
+      return { success: true, message: 'Receipt email sent successfully' };
+    } catch (error) {
+      console.error('Error sending receipt email:', error);
       throw error;
     }
   }
@@ -714,4 +1187,143 @@ exports.validateVat = onCall({ region: 'europe-west1' }, async (request) => {
     throw new Error(error.message || 'Failed to validate VAT number');
   }
 });
+
+/**
+ * Callable: Resend an invitation email for a given company/invitation.
+ * Ensures a fresh email is sent without requiring a new invitation doc.
+ */
+exports.resendInvitationEmail = onCall(
+  { 
+    secrets: [SENDGRID_API_KEY, SENDGRID_FROM_EMAIL, APP_URL],
+    region: 'europe-west1'
+  },
+  async (request) => {
+    const { companyId, invitationId } = request.data || {};
+    if (!companyId || !invitationId) {
+      throw new Error('companyId and invitationId are required');
+    }
+
+    const apiKey = (SENDGRID_API_KEY.value() || '').trim();
+    if (!apiKey) {
+      throw new Error('SendGrid API key not configured');
+    }
+    sgMail.setApiKey(apiKey);
+
+    // Load invitation
+    const inviteRef = db.doc(`companies/${companyId}/invitations/${invitationId}`);
+    const inviteSnap = await inviteRef.get();
+    if (!inviteSnap.exists) {
+      throw new Error('Invitation not found');
+    }
+    const invitationData = inviteSnap.data();
+    if (invitationData.status !== 'pending') {
+      throw new Error('Only pending invitations can be resent');
+    }
+
+    // Build email content (mirror onCreate trigger)
+    // Company
+    const companyDoc = await db.doc(`companies/${companyId}`).get();
+    const companyData = companyDoc.data();
+    const companyName = companyData?.name || 'Biz-CoPilot';
+
+    // Inviter
+    let inviterName = 'A team member';
+    if (invitationData.invitedBy) {
+      try {
+        const inviterDoc = await db.doc(`users/${invitationData.invitedBy}`).get();
+        const inviterData = inviterDoc.data();
+        inviterName = inviterData?.displayName || inviterData?.email?.split('@')[0] || 'A team member';
+      } catch (e) {
+        console.warn('Could not fetch inviter details:', e);
+      }
+    }
+
+    const roleNames = {
+      owner: 'Owner',
+      manager: 'Manager',
+      employee: 'Employee',
+      accountant: 'Accountant',
+      marketingManager: 'Marketing Manager',
+      developer: 'Software Engineer',
+      dataEntryClerk: 'Data Entry Clerk',
+    };
+    const roleName = roleNames[invitationData.role] || invitationData.role || 'Member';
+
+    const baseUrl = (APP_URL.value() || 'http://localhost:5173').trim();
+    const acceptUrl = `${baseUrl}/accept-invitation?company=${companyId}&invitation=${invitationId}`;
+    const loginUrl = `${baseUrl}/login?company=${companyId}&email=${encodeURIComponent(invitationData.email)}`;
+    const signupUrl = `${baseUrl}/signup?company=${companyId}&email=${encodeURIComponent(invitationData.email)}`;
+
+    const emailSubject = `You've been invited to join ${companyName} on Biz-CoPilot`;
+    const emailHtml = `
+<html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <h2>You've Been Invited!</h2>
+  <p>Hello${invitationData.fullName ? ` ${invitationData.fullName}` : ''},</p>
+  <p><strong>${inviterName}</strong> has invited you to join <strong>${companyName}</strong> on Biz-CoPilot as a <strong>${roleName}</strong>.</p>
+  <p><a href="${acceptUrl}" style="display:inline-block;padding:10px 16px;background:#0ea5e9;color:#fff;text-decoration:none;border-radius:6px;">Accept Invitation</a></p>
+  <p>Or open this link:<br/>${acceptUrl}</p>
+  <p>Quick links: <a href="${loginUrl}">Sign in</a> · <a href="${signupUrl}">Sign up</a></p>
+  <p style="font-size:12px;color:#6b7280">This invitation will expire in 7 days.</p>
+</body></html>`;
+    const emailText = `Hello${invitationData.fullName ? ` ${invitationData.fullName}` : ''},
+
+${inviterName} has invited you to join ${companyName} on Biz-CoPilot as a ${roleName}.
+
+Accept this invitation by opening this link:
+${acceptUrl}
+
+Or sign in: ${loginUrl}
+Or sign up: ${signupUrl}
+
+This invitation will expire in 7 days.`;
+
+    const fromEmail = (SENDGRID_FROM_EMAIL.value() || 'noreply@biz-copilot.nl').trim();
+    const msg = {
+      to: invitationData.email,
+      from: { email: fromEmail, name: 'Biz-CoPilot' },
+      subject: emailSubject,
+      text: emailText,
+      html: emailHtml,
+    };
+
+    try {
+      await sgMail.send(msg);
+      await inviteRef.update({
+        emailSent: true,
+        emailError: null,
+        emailSentAt: new Date().toISOString(),
+      });
+      return { ok: true };
+    } catch (error) {
+      // Log full error details for debugging
+      console.error('Error resending invitation email - Full error:', JSON.stringify(error, null, 2));
+      console.error('Error response:', error.response ? JSON.stringify(error.response.body, null, 2) : 'No response');
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
+      
+      // Extract detailed error message from SendGrid
+      let errorMessage = 'Failed to send';
+      if (error.response) {
+        const body = error.response.body || {};
+        console.error('SendGrid response body:', JSON.stringify(body, null, 2));
+        if (body.errors && Array.isArray(body.errors) && body.errors.length > 0) {
+          errorMessage = body.errors.map(e => e.message || e).join('; ');
+        } else if (body.message) {
+          errorMessage = body.message;
+        } else {
+          errorMessage = error.response.statusCode === 401 ? 'Unauthorized: Check SendGrid API key and sender email' : 
+                        error.response.statusCode === 403 ? 'Forbidden: Sender email not verified or domain not authenticated' :
+                        `SendGrid error (${error.response.statusCode})`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      await inviteRef.update({
+        emailSent: false,
+        emailError: errorMessage,
+      });
+      throw new Error(`Failed to resend invitation: ${errorMessage}`);
+    }
+  }
+);
 

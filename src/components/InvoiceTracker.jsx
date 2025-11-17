@@ -63,7 +63,8 @@ import {
   addCompanySubscription,
   updateCompanySubscription,
   deleteCompanySubscription,
-  getCompanyFinancialAccounts
+  getCompanyFinancialAccounts,
+  generateInvoiceFromSubscription
 } from '../firebase';
 import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
 import { generateInvoicePDF, downloadPDF } from '../utils/pdfGenerator';
@@ -589,7 +590,7 @@ const InvoiceTracker = () => {
 
   const handleDownloadPDF = async (document, type = 'invoice') => {
     try {
-      const pdfDoc = generateInvoicePDF(document, currentCompany, type);
+      const pdfDoc = await generateInvoicePDF(document, currentCompany, type);
       const filename = type === 'invoice' 
         ? `Invoice-${document.invoiceNumber || document.id}.pdf`
         : `Quote-${document.quoteNumber || document.id}.pdf`;
@@ -833,7 +834,27 @@ const InvoiceTracker = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-4">
                             <div>
-                              <p className="font-semibold text-gray-900">{invoice.invoiceNumber}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-gray-900">{invoice.invoiceNumber}</p>
+                                {invoice.quoteId && (
+                                  <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded" title="From Quote">
+                                    <FaFileContract className="inline mr-1" />
+                                    Quote
+                                  </span>
+                                )}
+                                {invoice.subscriptionId && (
+                                  <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded" title="From Subscription">
+                                    <FaSyncAlt className="inline mr-1" />
+                                    Subscription
+                                  </span>
+                                )}
+                                {invoice.incomeId && (
+                                  <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded" title="Payment Recorded">
+                                    <FaDollarSign className="inline mr-1" />
+                                    Paid
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-sm text-gray-600">{invoice.customerName}</p>
                             </div>
                             <div className="text-sm text-gray-500">
@@ -1028,37 +1049,121 @@ const InvoiceTracker = () => {
                     <p>No subscriptions found</p>
                   </div>
                 ) : (
-                  subscriptions.map(sub => (
-                    <div
-                      key={sub.id}
-                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-gray-900">{sub.planName}</p>
-                          <p className="text-sm text-gray-600">{sub.customerName}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {sub.billingCycle} • {sub.seats} seat{sub.seats !== 1 ? 's' : ''}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-gray-900">€{parseFloat(sub.amount || 0).toFixed(2)}</p>
-                          <p className="text-xs text-gray-500">MRR: €{parseFloat(sub.mrr || 0).toFixed(2)}</p>
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${
-                              sub.status === 'active'
-                                ? 'bg-green-100 text-green-800'
-                                : sub.status === 'paused'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}
-                          >
-                            {sub.status}
-                          </span>
+                  subscriptions.map(sub => {
+                    const nextBillingDate = sub.nextBillingDate?.toDate 
+                      ? sub.nextBillingDate.toDate() 
+                      : sub.nextBillingDate 
+                      ? new Date(sub.nextBillingDate)
+                      : null;
+                    const isBillingDue = nextBillingDate && nextBillingDate <= new Date();
+                    
+                    return (
+                      <div
+                        key={sub.id}
+                        className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-gray-900">{sub.planName}</p>
+                              {sub.lastInvoiceId && (
+                                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                                  Invoice: {invoices.find(inv => inv.id === sub.lastInvoiceId)?.invoiceNumber || sub.lastInvoiceId}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-600">{sub.customerName}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {sub.billingCycle} • {sub.seats} seat{sub.seats !== 1 ? 's' : ''}
+                              {nextBillingDate && (
+                                <span className={`ml-2 ${isBillingDue ? 'text-red-600 font-semibold' : ''}`}>
+                                  • Next billing: {nextBillingDate.toLocaleDateString()}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className="font-bold text-gray-900">€{parseFloat(sub.amount || 0).toFixed(2)}</p>
+                              <p className="text-xs text-gray-500">MRR: €{parseFloat(sub.mrr || 0).toFixed(2)}</p>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${
+                                  sub.status === 'active'
+                                    ? 'bg-green-100 text-green-800'
+                                    : sub.status === 'paused'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}
+                              >
+                                {sub.status}
+                              </span>
+                            </div>
+                            {sub.status === 'active' && (
+                              <button
+                                onClick={async () => {
+                                  if (!confirm(`Generate invoice for ${sub.planName}?`)) return;
+                                  try {
+                                    const invoiceId = await generateInvoiceFromSubscription(
+                                      currentCompanyId,
+                                      sub.id,
+                                      currentUser.uid
+                                    );
+                                    await loadAllData();
+                                    // Find and show the new invoice
+                                    const updatedInvoices = await getCompanyInvoices(currentCompanyId);
+                                    const newInvoice = updatedInvoices.find(inv => inv.id === invoiceId);
+                                    if (newInvoice) {
+                                      setViewingItem(newInvoice);
+                                      setShowDetailDrawer(true);
+                                      setActiveTab('invoices');
+                                    }
+                                    alert('Invoice generated successfully!');
+                                  } catch (error) {
+                                    console.error('Error generating invoice:', error);
+                                    alert(`Error generating invoice: ${error.message}`);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700 flex items-center gap-1"
+                                style={{ backgroundColor: accentColor }}
+                                title="Generate Invoice"
+                              >
+                                <FaFileInvoiceDollar className="w-3 h-3" />
+                                Generate Invoice
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingItem(sub);
+                                setFormData({
+                                  ...sub,
+                                  startDate: sub.startDate?.toDate 
+                                    ? sub.startDate.toDate().toISOString().split('T')[0]
+                                    : sub.startDate 
+                                    ? new Date(sub.startDate).toISOString().split('T')[0]
+                                    : new Date().toISOString().split('T')[0],
+                                  endDate: sub.endDate?.toDate 
+                                    ? sub.endDate.toDate().toISOString().split('T')[0]
+                                    : sub.endDate 
+                                    ? new Date(sub.endDate).toISOString().split('T')[0]
+                                    : '',
+                                  nextBillingDate: nextBillingDate 
+                                    ? nextBillingDate.toISOString().split('T')[0]
+                                    : '',
+                                  type: 'subscription'
+                                });
+                                setShowAddModal(true);
+                              }}
+                              className="p-2 text-gray-600 hover:text-indigo-600"
+                              title="Edit"
+                            >
+                              <FaEdit />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
@@ -1928,42 +2033,26 @@ const InvoiceTracker = () => {
               </button>
             </div>
             <div className="p-6 space-y-6">
-              {/* Company Header with Branding */}
-              <div className="border-b border-gray-200 pb-4">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
+              {/* Company Header with Branding - Compact */}
+              <div className="border-b border-gray-200 pb-3">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center space-x-2">
                     {currentCompany?.branding?.logoUrl && (
                       <img 
                         src={currentCompany.branding.logoUrl} 
                         alt={currentCompany.name || 'Company Logo'}
-                        className="w-12 h-12 rounded-lg object-contain"
+                        className="w-8 h-8 rounded object-contain flex-shrink-0"
                       />
                     )}
                     <div>
-                      <p className="text-sm font-medium text-gray-700">From</p>
-                      <p className="text-lg font-bold text-gray-900" style={{ color: currentCompany?.branding?.primaryColor || accentColor }}>
+                      <p className="text-xs font-medium text-gray-500 mb-0.5">From</p>
+                      <p className="text-base font-bold text-gray-900" style={{ color: currentCompany?.branding?.primaryColor || accentColor }}>
                         {currentCompany?.name || 'Company'}
                       </p>
-                      {currentCompany?.address && (
-                        <p className="text-xs text-gray-600 mt-1">
-                          {[
-                            currentCompany.address,
-                            currentCompany.city,
-                            currentCompany.postalCode,
-                            currentCompany.country
-                          ].filter(Boolean).join(', ')}
-                        </p>
-                      )}
-                      {(currentCompany?.phone || currentCompany?.email) && (
-                        <div className="text-xs text-gray-600 mt-1 space-y-0.5">
-                          {currentCompany.phone && <p>📞 {currentCompany.phone}</p>}
-                          {currentCompany.email && <p>✉️ {currentCompany.email}</p>}
-                        </div>
-                      )}
                     </div>
                   </div>
                   <span
-                    className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                       viewingItem.status === 'paid'
                         ? 'bg-green-100 text-green-800'
                         : viewingItem.status === 'overdue'
@@ -1974,9 +2063,9 @@ const InvoiceTracker = () => {
                     {viewingItem.status || 'draft'}
                   </span>
                 </div>
-                <div className="mt-4">
-                  <p className="text-sm text-gray-600">Invoice Number</p>
-                  <p className="text-lg font-semibold text-gray-900">
+                <div className="mt-2">
+                  <p className="text-xs text-gray-500">Invoice Number</p>
+                  <p className="text-base font-semibold text-gray-900">
                     {viewingItem.invoiceNumber || viewingItem.id || 'N/A'}
                   </p>
                 </div>
@@ -1997,6 +2086,47 @@ const InvoiceTracker = () => {
                   )}
                 </div>
               </div>
+
+              {/* Connections */}
+              {(viewingItem.quoteId || viewingItem.subscriptionId || viewingItem.incomeId) && (
+                <div className="border-t border-gray-200 pt-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Connected To</p>
+                  <div className="space-y-2">
+                    {viewingItem.quoteId && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <FaFileContract className="text-blue-600" />
+                        <span className="text-gray-600">Quote:</span>
+                        <span className="font-semibold text-blue-600">
+                          {quotes.find(q => q.id === viewingItem.quoteId)?.quoteNumber || viewingItem.quoteId}
+                        </span>
+                      </div>
+                    )}
+                    {viewingItem.subscriptionId && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <FaSyncAlt className="text-green-600" />
+                        <span className="text-gray-600">Subscription:</span>
+                        <span className="font-semibold text-green-600">
+                          {subscriptions.find(s => s.id === viewingItem.subscriptionId)?.planName || viewingItem.subscriptionId}
+                        </span>
+                      </div>
+                    )}
+                    {viewingItem.incomeId && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <FaDollarSign className="text-green-600" />
+                        <span className="text-gray-600">Income Record:</span>
+                        <button
+                          onClick={() => {
+                            window.open(`/modules/income?income=${viewingItem.incomeId}`, '_blank');
+                          }}
+                          className="font-semibold text-green-600 hover:text-green-800 underline"
+                        >
+                          View Income Record
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Dates */}
               <div className="grid grid-cols-2 gap-4">
@@ -2052,43 +2182,42 @@ const InvoiceTracker = () => {
               )}
 
               {/* Totals */}
-              <div className="border-t border-gray-200 pt-4">
-                <div className="space-y-2">
+              <div className="border-t border-gray-200 pt-3">
+                <div className="space-y-1.5">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Subtotal</span>
                     <span className="text-gray-900">€{parseFloat(viewingItem.subtotal || 0).toFixed(2)}</span>
                   </div>
                   {viewingItem.taxRate > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Tax ({viewingItem.taxRate || 0}%)</span>
+                      <span className="text-gray-600">VAT ({viewingItem.taxRate || 0}%)</span>
                       <span className="text-gray-900">€{parseFloat(viewingItem.taxAmount || 0).toFixed(2)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-lg font-bold border-t border-gray-200 pt-2">
+                  <div className="flex justify-between text-base font-bold border-t border-gray-200 pt-1.5 mt-1.5">
                     <span className="text-gray-900">Total</span>
                     <span className="text-gray-900">€{parseFloat(viewingItem.total || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Payment Link (if not paid) */}
+              {/* Payment Information (if not paid) */}
               {viewingItem.status !== 'paid' && (
                 <div 
-                  className="border-2 rounded-lg p-4"
+                  className="rounded-lg p-3"
                   style={{ 
-                    borderColor: currentCompany?.branding?.primaryColor || accentColor,
-                    backgroundColor: `${currentCompany?.branding?.primaryColor || accentColor}10`
+                    backgroundColor: currentCompany?.branding?.primaryColor || accentColor,
+                    color: 'white'
                   }}
                 >
-                  <p className="text-sm font-medium mb-2" style={{ color: currentCompany?.branding?.primaryColor || accentColor }}>
-                    Payment Link
-                  </p>
+                  <p className="text-sm font-medium mb-2">Payment Information</p>
                   <div className="flex items-center space-x-2">
                     <input
                       type="text"
                       readOnly
                       value={viewingItem.paymentLink || `${window.location.origin}/pay/${viewingItem.id || viewingItem.invoiceNumber}`}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                      className="flex-1 px-3 py-2 border border-white/30 rounded-lg text-sm bg-white/10 text-white placeholder-white/70"
+                      style={{ color: 'white' }}
                     />
                     <button
                       onClick={() => {
@@ -2096,13 +2225,12 @@ const InvoiceTracker = () => {
                         navigator.clipboard.writeText(link);
                         alert('Payment link copied to clipboard!');
                       }}
-                      className="px-3 py-2 text-sm rounded-lg hover:bg-gray-100"
-                      style={{ backgroundColor: currentCompany?.branding?.primaryColor || accentColor, color: 'white' }}
+                      className="px-3 py-2 text-sm rounded-lg bg-white/20 hover:bg-white/30 text-white font-medium"
                     >
                       Copy
                     </button>
                   </div>
-                  <p className="text-xs text-gray-600 mt-2">Share this link with your customer to enable online payment</p>
+                  <p className="text-xs text-white/80 mt-2">Share this link with your customer to enable online payment</p>
                 </div>
               )}
 

@@ -94,18 +94,35 @@ const TeamMemberWelcomeWizard = ({ companyId, userRole, onComplete }) => {
     if (!currentUser) return;
     
     try {
+      // Reload user first to get latest verification status from Firebase
+      await currentUser.reload();
+      
       // Use the improved checkEmailVerification function
       const status = await checkEmailVerification();
-      setEmailVerified(status.verified);
+      const isVerified = status.verified || currentUser.emailVerified;
       
-      if (status.verified) {
+      setEmailVerified(isVerified);
+      
+      if (isVerified) {
         setEmailVerificationSent(false); // Reset sent flag if verified
+        // Show success message
+        alert('Email verified successfully! You can continue with onboarding.');
+      } else {
+        alert('Email not yet verified. Please check your inbox and click the verification link, then try again.');
       }
     } catch (error) {
       console.error('Error checking email verification:', error);
       // Fallback to reloading user directly
       await currentUser.reload();
-      setEmailVerified(currentUser.emailVerified || false);
+      const isVerified = currentUser.emailVerified || false;
+      setEmailVerified(isVerified);
+      
+      if (isVerified) {
+        setEmailVerificationSent(false);
+        alert('Email verified successfully!');
+      } else {
+        alert('Email not yet verified. Please check your inbox and click the verification link.');
+      }
     }
   };
 

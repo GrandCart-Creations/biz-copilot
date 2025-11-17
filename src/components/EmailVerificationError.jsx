@@ -135,6 +135,8 @@ export default function EmailVerificationError() {
                   <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
                     <li><code className="bg-gray-100 px-1 rounded">https://expense-tracker-prod-475813.firebaseapp.com/*</code></li>
                     <li><code className="bg-gray-100 px-1 rounded">https://expense-tracker-prod-475813.web.app/*</code></li>
+                    <li><code className="bg-gray-100 px-1 rounded">https://biz-copilot.nl/*</code></li>
+                    <li><code className="bg-gray-100 px-1 rounded">https://www.biz-copilot.nl/*</code></li>
                     <li><code className="bg-gray-100 px-1 rounded">http://localhost:5173/*</code> (for development)</li>
                     <li><code className="bg-gray-100 px-1 rounded">http://localhost:3000/*</code> (for development)</li>
                   </ul>

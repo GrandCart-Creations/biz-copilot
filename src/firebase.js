@@ -113,8 +113,9 @@ export const signUpWithEmail = async (email, password, displayName = null) => {
       await updateProfile(user, { displayName });
     }
     
-    // Send email verification
-    await sendEmailVerification(user);
+    // Do NOT auto-send verification here.
+    // We let the onboarding wizard explicitly trigger a fresh verification email,
+    // so users don't receive two emails (auto + manual).
     
     // Create user document in Firestore
     await setDoc(doc(db, 'users', user.uid), {
@@ -226,13 +227,9 @@ export const resendVerificationEmail = async () => {
       throw new Error(`Please wait ${remainingSeconds} seconds before requesting another verification email.`);
     }
     
-    // Use actionCodeSettings to provide better redirect handling
-    const actionCodeSettings = {
-      url: `${window.location.origin}/dashboard`,
-      handleCodeInApp: false, // Open link in browser, not app
-    };
-    
-    await sendEmailVerification(user, actionCodeSettings);
+    // Send via Cloud Function so the email comes from your custom domain (SendGrid)
+    const fn = httpsCallable(functions, 'sendAuthVerificationEmail');
+    await fn({ email: user.email });
     lastVerificationSent = now;
     
     return 'Verification email sent! Please check your inbox (and spam/junk folder). The link will expire in 1 hour.';
@@ -283,14 +280,9 @@ export const sendEmailVerificationToUser = async (user) => {
       return 'Your email is already verified!';
     }
     
-    // Use actionCodeSettings to provide better redirect handling
-    const actionCodeSettings = {
-      url: `${window.location.origin}/dashboard`,
-      handleCodeInApp: false, // Open link in browser, not app
-    };
-    
-    // Use the imported sendEmailVerification from firebase/auth
-    await sendEmailVerification(user, actionCodeSettings);
+    // Send via Cloud Function so the email comes from your custom domain (SendGrid)
+    const fn = httpsCallable(functions, 'sendAuthVerificationEmail');
+    await fn({ email: user.email });
     return 'Verification email sent! Please check your inbox (and spam/junk folder). The link will expire in 1 hour.';
   } catch (error) {
     console.error('Error sending verification email:', error);
@@ -1265,17 +1257,16 @@ export const inviteUserToCompany = async (companyId, email, role = 'employee', i
     const pendingInvites = existingSnapshot.docs.filter(doc => doc.data().status === 'pending');
     
     if (pendingInvites.length > 0) {
-      // Update existing pending invitation
-      const existingInvite = pendingInvites[0];
-      await updateDoc(doc(db, 'companies', companyId, 'invitations', existingInvite.id), {
-        fullName: fullName.trim() || '',
-        role,
-        status: 'pending',
-        invitedBy,
-        invitedAt: serverTimestamp(),
-        expiresAt: Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) // 7 days
+      // Cancel existing pending invitations to ensure a fresh onCreate trigger for email send
+      const batch = writeBatch(db);
+      pendingInvites.forEach(inviteDoc => {
+        batch.update(doc(db, 'companies', companyId, 'invitations', inviteDoc.id), {
+          status: 'cancelled',
+          cancelledAt: serverTimestamp(),
+          cancelledReason: 'Resent: creating a fresh invitation to trigger email'
+        });
       });
-      return existingInvite.id;
+      await batch.commit();
     }
     
     // Cancel any old (non-pending) invitations for this email to clean up
@@ -1337,6 +1328,20 @@ export const getCompanyInvitations = async (companyId) => {
     return invitations;
   } catch (error) {
     console.error('Error getting company invitations:', error);
+    throw error;
+  }
+};
+
+/**
+ * Resend an invitation email via Cloud Function
+ */
+export const resendInvitation = async (companyId, invitationId) => {
+  try {
+    const callable = httpsCallable(functions, 'resendInvitationEmail');
+    const res = await callable({ companyId, invitationId });
+    return res.data;
+  } catch (error) {
+    console.error('Error resending invitation email:', error);
     throw error;
   }
 };
@@ -4523,6 +4528,127 @@ export const deleteCompanySubscription = async (companyId, subscriptionId) => {
     return true;
   } catch (error) {
     console.error('Error deleting subscription:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate an invoice from a subscription (manual trigger)
+ * This creates an invoice for the current billing period
+ * @param {string} companyId - Company ID
+ * @param {string} subscriptionId - Subscription ID
+ * @param {string} userId - User ID
+ * @returns {Promise<string>} Invoice ID
+ */
+export const generateInvoiceFromSubscription = async (companyId, subscriptionId, userId) => {
+  if (!companyId || !subscriptionId || !userId) {
+    throw new Error('Company ID, subscription ID, and user ID are required');
+  }
+  
+  try {
+    // Get subscription data
+    const subscriptionRef = doc(db, 'companies', companyId, 'subscriptions', subscriptionId);
+    const subscriptionSnap = await getDoc(subscriptionRef);
+    
+    if (!subscriptionSnap.exists()) {
+      throw new Error('Subscription not found');
+    }
+    
+    const subscription = subscriptionSnap.data();
+    
+    // Check if subscription is active
+    if (subscription.status !== 'active') {
+      throw new Error('Can only generate invoices for active subscriptions');
+    }
+    
+    // Get customer data if customerId exists
+    let customerData = {
+      name: subscription.customerName || '',
+      email: subscription.customerEmail || '',
+      address: subscription.customerAddress || ''
+    };
+    
+    if (subscription.customerId) {
+      try {
+        const customerRef = doc(db, 'companies', companyId, 'customers', subscription.customerId);
+        const customerSnap = await getDoc(customerRef);
+        if (customerSnap.exists()) {
+          const customer = customerSnap.data();
+          customerData = {
+            name: customer.name || customer.company || subscription.customerName || '',
+            email: customer.email || subscription.customerEmail || '',
+            address: [
+              customer.address,
+              customer.city,
+              customer.postalCode,
+              customer.country
+            ].filter(Boolean).join(', ')
+          };
+        }
+      } catch (customerError) {
+        console.warn('Could not fetch customer data, using subscription data:', customerError);
+      }
+    }
+    
+    // Calculate invoice amounts
+    const amount = parseFloat(subscription.amount || 0);
+    const taxRate = parseFloat(subscription.taxRate || 21);
+    const subtotal = amount;
+    const taxAmount = subtotal * (taxRate / 100);
+    const total = subtotal + taxAmount;
+    
+    // Create invoice
+    const invoiceData = {
+      customerId: subscription.customerId || '',
+      customerName: customerData.name,
+      customerEmail: customerData.email,
+      customerAddress: customerData.address,
+      invoiceDate: new Date().toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from now
+      status: 'draft',
+      lineItems: [{
+        description: `${subscription.planName} - ${subscription.billingCycle} subscription`,
+        quantity: subscription.seats || 1,
+        unitPrice: amount,
+        amount: amount * (subscription.seats || 1)
+      }],
+      subtotal: subtotal * (subscription.seats || 1),
+      taxRate: taxRate,
+      taxAmount: taxAmount * (subscription.seats || 1),
+      total: total * (subscription.seats || 1),
+      currency: subscription.currency || 'EUR',
+      subscriptionId: subscriptionId,
+      billingCycle: subscription.billingCycle,
+      notes: `Auto-generated from subscription ${subscription.planName}`,
+      createdBy: userId
+    };
+    
+    const invoiceId = await addCompanyInvoice(companyId, userId, invoiceData);
+    
+    // Update subscription with next billing date
+    const nextBillingDate = subscription.nextBillingDate?.toDate 
+      ? subscription.nextBillingDate.toDate() 
+      : subscription.nextBillingDate 
+      ? new Date(subscription.nextBillingDate)
+      : new Date();
+    
+    if (subscription.billingCycle === 'monthly') {
+      nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+    } else if (subscription.billingCycle === 'quarterly') {
+      nextBillingDate.setMonth(nextBillingDate.getMonth() + 3);
+    } else if (subscription.billingCycle === 'annual') {
+      nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+    }
+    
+    await updateCompanySubscription(companyId, subscriptionId, {
+      nextBillingDate: nextBillingDate.toISOString().split('T')[0],
+      lastInvoiceGenerated: new Date().toISOString(),
+      lastInvoiceId: invoiceId
+    });
+    
+    return invoiceId;
+  } catch (error) {
+    console.error('Error generating invoice from subscription:', error);
     throw error;
   }
 };

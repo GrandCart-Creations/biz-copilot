@@ -18,7 +18,8 @@ import {
   FaDownload,
   FaFileAlt,
   FaSave,
-  FaDollarSign
+  FaDollarSign,
+  FaCheckCircle
 } from 'react-icons/fa';
 import UserProfile from './UserProfile';
 import FileUpload from './FileUpload';
@@ -32,8 +33,14 @@ import {
   getCompanyIncome,
   addCompanyIncome,
   updateCompanyIncome,
-  deleteCompanyIncome
+  deleteCompanyIncome,
+  getCompanyInvoices,
+  updateCompanyInvoice,
+  getCompanyFinancialAccounts
 } from '../firebase';
+import { generateReceiptPDF, generateInvoicePDF, downloadPDF } from '../utils/pdfGenerator';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '../firebase';
 import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
 
 const IncomeTracker = () => {
@@ -45,14 +52,29 @@ const IncomeTracker = () => {
   
   // Constants
   const incomeSources = ['Client Payment', 'Service Fee', 'Product Sales', 'Investment Return', 'Grant', 'Loan Disbursement', 'Other'];
-  const categories = ['Service Revenue', 'Product Sales', 'Investment', 'Grant', 'Loan', 'Other'];
+  const categories = ['Service Revenue', 'Product Sales', 'Investment', 'Grant', 'Loan', 'Open Invoices', 'Other'];
   const btw_rates = [0, 9, 21];
 
   // State Management
   const [income, setIncome] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [financialAccounts, setFinancialAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddIncome, setShowAddIncome] = useState(false);
   const [editingIncome, setEditingIncome] = useState(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentInvoice, setPaymentInvoice] = useState(null);
+  const [paymentFormData, setPaymentFormData] = useState({
+    financialAccountId: '',
+    paidDate: new Date().toISOString().split('T')[0],
+    paymentMethod: '',
+    paymentAccountNumber: '',
+    paymentCardNumber: '',
+    paymentCardExpiry: '',
+    paymentCardCVV: '',
+    paymentReference: '',
+    paymentNotes: ''
+  });
 
   // File upload state
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -116,11 +138,19 @@ const IncomeTracker = () => {
 
     try {
       setLoading(true);
-      const companyIncome = await getCompanyIncome(currentCompanyId);
+      const [companyIncome, companyInvoices, accounts] = await Promise.all([
+        getCompanyIncome(currentCompanyId),
+        getCompanyInvoices(currentCompanyId),
+        getCompanyFinancialAccounts(currentCompanyId)
+      ]);
       setIncome(companyIncome || []);
+      setInvoices(companyInvoices || []);
+      setFinancialAccounts(accounts || []);
     } catch (error) {
       console.error('Error loading income:', error);
       setIncome([]);
+      setInvoices([]);
+      setFinancialAccounts([]);
     } finally {
       setLoading(false);
     }
@@ -281,16 +311,88 @@ const IncomeTracker = () => {
     }
   }, [filters.periodType]);
 
-  // Filter income based on filters
+  // Filter income and include invoices when "Open Invoices" category is selected
   const filteredIncome = useMemo(() => {
-    return income.filter(inc => {
-      if (filters.category !== 'all' && inc.category !== filters.category) return false;
+    let items = [...income];
+    
+    // If "Open Invoices" category is selected, include invoices as income items
+    if (filters.category === 'Open Invoices') {
+      const invoiceItems = invoices
+        .filter(inv => {
+          // Filter by date range if set
+          if (filters.startDate) {
+            const invDate = inv.invoiceDate?.toDate 
+              ? inv.invoiceDate.toDate().toISOString().split('T')[0]
+              : inv.invoiceDate 
+              ? new Date(inv.invoiceDate).toISOString().split('T')[0]
+              : '';
+            if (invDate < filters.startDate) return false;
+          }
+          if (filters.endDate) {
+            const invDate = inv.invoiceDate?.toDate 
+              ? inv.invoiceDate.toDate().toISOString().split('T')[0]
+              : inv.invoiceDate 
+              ? new Date(inv.invoiceDate).toISOString().split('T')[0]
+              : '';
+            if (invDate > filters.endDate) return false;
+          }
+          return true;
+        })
+        .map(inv => {
+          const invoiceDate = inv.invoiceDate?.toDate 
+            ? inv.invoiceDate.toDate().toISOString().split('T')[0]
+            : inv.invoiceDate 
+            ? new Date(inv.invoiceDate).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0];
+          
+          // Determine status
+          let status = inv.status;
+          if (inv.status === 'sent') {
+            const dueDate = inv.dueDate?.toDate || new Date(inv.dueDate);
+            if (dueDate < new Date()) {
+              status = 'overdue';
+            }
+          }
+          
+          return {
+            id: `invoice_${inv.id}`,
+            date: invoiceDate,
+            source: 'Invoice Payment',
+            customer: inv.customerName || '',
+            description: `Invoice ${inv.invoiceNumber || inv.id}`,
+            amount: parseFloat(inv.total || 0),
+            currency: inv.currency || 'EUR',
+            btw: parseFloat(inv.taxRate || 21),
+            category: 'Open Invoices',
+            invoiceId: inv.id,
+            invoiceNumber: inv.invoiceNumber,
+            invoiceStatus: status,
+            invoiceDueDate: inv.dueDate?.toDate 
+              ? inv.dueDate.toDate().toISOString().split('T')[0]
+              : inv.dueDate 
+              ? new Date(inv.dueDate).toISOString().split('T')[0]
+              : null,
+            isInvoice: true,
+            invoiceData: inv,
+            reconciled: inv.status === 'paid',
+            notes: inv.notes || '',
+            createdAt: inv.createdAt,
+            createdBy: inv.createdBy
+          };
+        });
+      
+      items = [...items, ...invoiceItems];
+    }
+    
+    // Apply other filters
+    return items.filter(inc => {
+      if (filters.category !== 'all' && filters.category !== 'Open Invoices' && inc.category !== filters.category) return false;
       if (filters.source !== 'all' && inc.source !== filters.source) return false;
       if (filters.startDate && inc.date < filters.startDate) return false;
       if (filters.endDate && inc.date > filters.endDate) return false;
       return true;
     });
-  }, [income, filters]);
+  }, [income, invoices, filters]);
 
   // Calculate totals
   const totalIncome = useMemo(() => {
@@ -372,7 +474,7 @@ const IncomeTracker = () => {
       </header>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div className="bg-white rounded-lg shadow p-6">
@@ -523,56 +625,149 @@ const IncomeTracker = () => {
             </button>
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
+          <div className="bg-white rounded-lg shadow overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200" style={{ minWidth: '1200px' }}>
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">VAT</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Source</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Customer</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[200px]">Description</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Amount</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">VAT</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Category</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredIncome.map((incomeRecord) => (
                   <tr key={incomeRecord.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                       {new Date(incomeRecord.date).toLocaleDateString('nl-NL')}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                       {incomeRecord.source}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                       {incomeRecord.customer || 'N/A'}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      <div className="max-w-xs truncate" title={incomeRecord.description || ''}>
+                    <td className="px-4 py-4 text-sm text-gray-900">
+                      <div className="min-w-[200px]" title={incomeRecord.description || ''}>
                         {incomeRecord.description || 'N/A'}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm">
+                      {incomeRecord.isInvoice ? (
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            incomeRecord.invoiceStatus === 'paid'
+                              ? 'bg-green-100 text-green-800'
+                              : incomeRecord.invoiceStatus === 'overdue'
+                              ? 'bg-red-100 text-red-800'
+                              : incomeRecord.invoiceStatus === 'sent'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {incomeRecord.invoiceStatus || 'draft'}
+                          {incomeRecord.invoiceDueDate && incomeRecord.invoiceStatus !== 'paid' && (
+                            <span className="ml-1 text-xs">
+                              (Due: {new Date(incomeRecord.invoiceDueDate).toLocaleDateString()})
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gray-500">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
                       {formatCurrency(incomeRecord.amount, incomeRecord.currency)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {incomeRecord.btw}%
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {incomeRecord.category}
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex items-center gap-2">
+                        <span>{incomeRecord.category}</span>
+                        {incomeRecord.isInvoice && (
+                          <span 
+                            className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded"
+                            title="From Invoice"
+                          >
+                            Invoice
+                          </span>
+                        )}
+                        {incomeRecord.invoiceId && !incomeRecord.isInvoice && (
+                          <span 
+                            className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded cursor-pointer hover:bg-blue-100"
+                            title={`Linked to Invoice: ${invoices.find(inv => inv.id === incomeRecord.invoiceId)?.invoiceNumber || incomeRecord.invoiceId}`}
+                          >
+                            Linked
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleEditIncome(incomeRecord)}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="Edit"
-                        >
-                          <FaEdit className="w-4 h-4" />
-                        </button>
-                        {(userRole === 'owner' || incomeRecord.createdBy === currentUser?.uid) && (
+                        {incomeRecord.isInvoice && (
+                          <button
+                            onClick={() => {
+                              window.open(`/modules/invoices?invoice=${incomeRecord.invoiceId}`, '_blank');
+                            }}
+                            className="text-indigo-600 hover:text-indigo-900"
+                            title="View Invoice"
+                          >
+                            <FaFileAlt className="w-4 h-4" />
+                          </button>
+                        )}
+                        {incomeRecord.invoiceId && !incomeRecord.isInvoice && (
+                          <button
+                            onClick={() => {
+                              const invoice = invoices.find(inv => inv.id === incomeRecord.invoiceId);
+                              if (invoice) {
+                                window.open(`/modules/invoices?invoice=${invoice.id}`, '_blank');
+                              }
+                            }}
+                            className="text-indigo-600 hover:text-indigo-900"
+                            title="View Linked Invoice"
+                          >
+                            <FaFileAlt className="w-4 h-4" />
+                          </button>
+                        )}
+                        {incomeRecord.isInvoice && incomeRecord.invoiceStatus !== 'paid' && (
+                          <button
+                            onClick={() => {
+                              setPaymentInvoice(incomeRecord);
+                              setPaymentFormData({
+                                financialAccountId: '',
+                                paidDate: new Date().toISOString().split('T')[0],
+                                paymentMethod: '',
+                                paymentAccountNumber: '',
+                                paymentCardNumber: '',
+                                paymentCardExpiry: '',
+                                paymentCardCVV: '',
+                                paymentReference: '',
+                                paymentNotes: ''
+                              });
+                              setShowPaymentModal(true);
+                            }}
+                            className="text-green-600 hover:text-green-900"
+                            title="Mark as Paid"
+                          >
+                            <FaCheckCircle className="w-4 h-4" />
+                          </button>
+                        )}
+                        {!incomeRecord.isInvoice && (
+                          <button
+                            onClick={() => handleEditIncome(incomeRecord)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Edit"
+                          >
+                            <FaEdit className="w-4 h-4" />
+                          </button>
+                        )}
+                        {!incomeRecord.isInvoice && (userRole === 'owner' || incomeRecord.createdBy === currentUser?.uid) && (
                           <button
                             onClick={() => handleDeleteIncome(incomeRecord.id)}
                             className="text-red-600 hover:text-red-900"
@@ -761,16 +956,24 @@ const IncomeTracker = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Invoice ID (Optional)
+                      Invoice (Optional)
                     </label>
-                    <input
-                      type="text"
+                    <select
                       name="invoiceId"
                       value={formData.invoiceId}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                      placeholder="Invoice #"
-                    />
+                    >
+                      <option value="">No invoice linked</option>
+                      {invoices
+                        .filter(inv => inv.status === 'paid' || inv.status === 'sent')
+                        .map(invoice => (
+                          <option key={invoice.id} value={invoice.id}>
+                            {invoice.invoiceNumber} - {invoice.customerName} - €{parseFloat(invoice.total || 0).toFixed(2)}
+                          </option>
+                        ))}
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">Link this income to a paid invoice</p>
                   </div>
                 </div>
 
@@ -829,6 +1032,327 @@ const IncomeTracker = () => {
                         {editingIncome ? 'Update Income' : 'Add Income'}
                       </>
                     )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Payment Modal for Invoices */}
+        {showPaymentModal && paymentInvoice && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-900">
+                  Mark Invoice as Paid
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    setPaymentInvoice(null);
+                  }}
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded"
+                >
+                  <FaTimes className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form 
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!paymentFormData.financialAccountId) {
+                    alert('Please select a financial account');
+                    return;
+                  }
+                  
+                  try {
+                    // Get full invoice data for receipt generation
+                    const invoices = await getCompanyInvoices(currentCompanyId);
+                    const fullInvoice = invoices.find(inv => inv.id === paymentInvoice.invoiceId);
+                    
+                    if (!fullInvoice) {
+                      alert('Invoice not found');
+                      return;
+                    }
+                    
+                    // Prepare payment details
+                    const paymentDetails = {
+                      paymentMethod: paymentFormData.paymentMethod || 'Manual Entry',
+                      paymentAccountNumber: paymentFormData.paymentAccountNumber || '',
+                      paymentCardNumber: paymentFormData.paymentCardNumber || '',
+                      paymentCardExpiry: paymentFormData.paymentCardExpiry || '',
+                      paymentReference: paymentFormData.paymentReference || '',
+                      paymentNotes: paymentFormData.paymentNotes || ''
+                    };
+                    
+                    // Mark invoice as paid - this will automatically create income record
+                    await updateCompanyInvoice(
+                      currentCompanyId,
+                      paymentInvoice.invoiceId,
+                      {
+                        status: 'paid',
+                        paidDate: paymentFormData.paidDate,
+                        paidAmount: paymentInvoice.amount,
+                        financialAccountId: paymentFormData.financialAccountId,
+                        paymentMethod: paymentDetails.paymentMethod,
+                        paymentDetails: paymentDetails,
+                        updatedBy: currentUser.uid
+                      }
+                    );
+                    
+                    // Generate receipt PDF
+                    const receiptPDF = await generateReceiptPDF(fullInvoice, currentCompany, paymentDetails);
+                    const receiptNumber = `REC-${fullInvoice.invoiceNumber || fullInvoice.id}`;
+                    const receiptFilename = `Receipt-${receiptNumber}.pdf`;
+                    
+                    // Save receipt to local file structure
+                    try {
+                      // Create local file structure: GrandCart/Documents/Invoices/Year/Month/
+                      const now = new Date();
+                      const year = now.getFullYear();
+                      const month = String(now.getMonth() + 1).padStart(2, '0');
+                      const filePath = `GrandCart/Documents/Invoices/${year}/${month}/${receiptFilename}`;
+                      
+                      // Convert PDF to blob and save using File System Access API (if available)
+                      const pdfBlob = receiptPDF.output('blob');
+                      const url = URL.createObjectURL(pdfBlob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = receiptFilename;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      URL.revokeObjectURL(url);
+                      
+                      // Also save invoice PDF to same structure
+                      const invoicePDF = await generateInvoicePDF(fullInvoice, currentCompany, 'invoice');
+                      const invoiceFilename = `Invoice-${fullInvoice.invoiceNumber || fullInvoice.id}.pdf`;
+                      const invoiceBlob = invoicePDF.output('blob');
+                      const invoiceUrl = URL.createObjectURL(invoiceBlob);
+                      const invoiceLink = document.createElement('a');
+                      invoiceLink.href = invoiceUrl;
+                      invoiceLink.download = invoiceFilename;
+                      document.body.appendChild(invoiceLink);
+                      invoiceLink.click();
+                      document.body.removeChild(invoiceLink);
+                      URL.revokeObjectURL(invoiceUrl);
+                      
+                      console.log(`Files saved: ${filePath}`);
+                    } catch (fileError) {
+                      console.warn('Could not save to local file structure:', fileError);
+                      // Fallback: just download the receipt
+                      downloadPDF(receiptPDF, receiptFilename);
+                    }
+                    
+                    // Email receipt to customer
+                    if (fullInvoice.customerEmail) {
+                      try {
+                        const functions = getFunctions(app, 'europe-west1');
+                        const sendReceiptEmail = httpsCallable(functions, 'sendReceiptEmail');
+                        await sendReceiptEmail({
+                          companyId: currentCompanyId,
+                          invoiceId: paymentInvoice.invoiceId,
+                          recipientEmail: fullInvoice.customerEmail,
+                          receiptNumber: receiptNumber
+                        });
+                        alert('Invoice marked as paid, receipt generated, saved locally, and emailed to customer!');
+                      } catch (emailError) {
+                        console.error('Error sending receipt email:', emailError);
+                        alert('Invoice marked as paid and receipt generated, but email failed. Receipt saved locally.');
+                      }
+                    } else {
+                      alert('Invoice marked as paid and receipt generated! (No customer email to send receipt)');
+                    }
+                    
+                    // Reload data to show updated status
+                    await loadIncome();
+                    setShowPaymentModal(false);
+                    setPaymentInvoice(null);
+                  } catch (error) {
+                    console.error('Error marking invoice as paid:', error);
+                    alert(`Error: ${error.message || 'Please try again.'}`);
+                  }
+                }}
+                className="p-6 space-y-4"
+              >
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">Invoice</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {paymentInvoice.invoiceNumber} - {paymentInvoice.customer}
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Amount: {formatCurrency(paymentInvoice.amount, paymentInvoice.currency)}
+                  </p>
+                </div>
+
+                <div>
+                  <FinancialAccountSelect
+                    value={paymentFormData.financialAccountId}
+                    onChange={(e) => setPaymentFormData(prev => ({ ...prev, financialAccountId: e.target.value }))}
+                    filterBy={['income', 'bank', 'cash']}
+                    label="Financial Account"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Payment Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={paymentFormData.paidDate}
+                    onChange={(e) => setPaymentFormData(prev => ({ ...prev, paidDate: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Payment Method
+                  </label>
+                  <select
+                    value={paymentFormData.paymentMethod}
+                    onChange={(e) => setPaymentFormData(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 bg-white text-gray-900"
+                  >
+                    <option value="">Select method...</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Credit Card">Credit Card</option>
+                    <option value="Debit Card">Debit Card</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Check">Check</option>
+                    <option value="PayPal">PayPal</option>
+                    <option value="Stripe">Stripe</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                {/* Payment Method Details */}
+                {paymentFormData.paymentMethod && (
+                  <div className="space-y-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-xs font-medium text-gray-700">Payment Details</p>
+                    
+                    {(paymentFormData.paymentMethod === 'Bank Transfer' || paymentFormData.paymentMethod === 'Check') && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Account Number / Check Number
+                        </label>
+                        <input
+                          type="text"
+                          value={paymentFormData.paymentAccountNumber}
+                          onChange={(e) => setPaymentFormData(prev => ({ ...prev, paymentAccountNumber: e.target.value }))}
+                          placeholder="Enter account or check number"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                        />
+                      </div>
+                    )}
+                    
+                    {(paymentFormData.paymentMethod === 'Credit Card' || paymentFormData.paymentMethod === 'Debit Card') && (
+                      <>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Card Number (Last 4 digits)
+                          </label>
+                          <input
+                            type="text"
+                            value={paymentFormData.paymentCardNumber}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                              setPaymentFormData(prev => ({ ...prev, paymentCardNumber: value }));
+                            }}
+                            placeholder="1234"
+                            maxLength="4"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                              Expiry Date
+                            </label>
+                            <input
+                              type="text"
+                              value={paymentFormData.paymentCardExpiry}
+                              onChange={(e) => {
+                                let value = e.target.value.replace(/\D/g, '');
+                                if (value.length >= 2) {
+                                  value = value.slice(0, 2) + '/' + value.slice(2, 4);
+                                }
+                                setPaymentFormData(prev => ({ ...prev, paymentCardExpiry: value }));
+                              }}
+                              placeholder="MM/YY"
+                              maxLength="5"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                              CVV (Optional)
+                            </label>
+                            <input
+                              type="text"
+                              value={paymentFormData.paymentCardCVV}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                setPaymentFormData(prev => ({ ...prev, paymentCardCVV: value }));
+                              }}
+                              placeholder="123"
+                              maxLength="4"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Transaction Reference / Receipt Number
+                      </label>
+                      <input
+                        type="text"
+                        value={paymentFormData.paymentReference}
+                        onChange={(e) => setPaymentFormData(prev => ({ ...prev, paymentReference: e.target.value }))}
+                        placeholder="Bank reference, receipt #, etc."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Payment Notes (Optional)
+                      </label>
+                      <textarea
+                        value={paymentFormData.paymentNotes}
+                        onChange={(e) => setPaymentFormData(prev => ({ ...prev, paymentNotes: e.target.value }))}
+                        placeholder="Additional payment details..."
+                        rows="2"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPaymentModal(false);
+                      setPaymentInvoice(null);
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    <FaCheckCircle />
+                    Mark as Paid
                   </button>
                 </div>
               </form>

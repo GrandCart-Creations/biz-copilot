@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
+import { useOnboarding } from '../contexts/OnboardingContext';
 import { authorizeAIScope, AI_SCOPES, getDefaultScopeForRole, canAccessScope } from '../utils/accessGateway';
 import { logAIEvent } from '../utils/auditLog';
 import { getCompanyNotifications } from '../firebase';
@@ -26,8 +28,10 @@ const SUGGESTION_PRESETS = [
 ];
 
 const AICommandCenter = () => {
+  const location = useLocation();
   const { currentUser } = useAuth();
   const { userRole, currentCompanyId, aiPolicies } = useCompany();
+  const { shouldShowOnboarding } = useOnboarding();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState(() => getDefaultScopeForRole(userRole, aiPolicies));
@@ -154,6 +158,14 @@ const AICommandCenter = () => {
   };
 
   if (!currentUser) {
+    return null;
+  }
+
+  // Hide "Ask Biz-CoPilot" button during onboarding (both company creator and team member onboarding)
+  const isOnAcceptInvitationPage = location.pathname === '/accept-invitation';
+  const isInOnboarding = shouldShowOnboarding || isOnAcceptInvitationPage;
+  
+  if (isInOnboarding) {
     return null;
   }
 
