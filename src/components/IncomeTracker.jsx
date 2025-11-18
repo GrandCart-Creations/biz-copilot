@@ -52,7 +52,7 @@ const IncomeTracker = () => {
   
   // Constants
   const incomeSources = ['Client Payment', 'Service Fee', 'Product Sales', 'Investment Return', 'Grant', 'Loan Disbursement', 'Other'];
-  const categories = ['Service Revenue', 'Product Sales', 'Investment', 'Grant', 'Loan', 'Open Invoices', 'Other'];
+  const categories = ['Service Revenue', 'Product Sales', 'Subscription Revenue', 'Investment', 'Grant', 'Loan', 'Open Invoices', 'Other'];
   const btw_rates = [0, 9, 21];
 
   // State Management

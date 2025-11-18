@@ -12,7 +12,8 @@ import {
   uploadCompanyLogo, 
   deleteCompanyLogo 
 } from '../firebase';
-import { FaImage, FaTrash, FaSave, FaUpload, FaSpinner, FaCheckCircle, FaExclamationCircle } from 'react-icons/fa';
+import { DEFAULT_INVOICE_TEMPLATE } from '../utils/invoiceTemplate';
+import { FaImage, FaTrash, FaSave, FaUpload, FaSpinner, FaCheckCircle, FaExclamationCircle, FaFileInvoice, FaPalette } from 'react-icons/fa';
 
 const CompanyBranding = () => {
   const { currentCompanyId, userRole } = useCompany();
@@ -28,8 +29,11 @@ const CompanyBranding = () => {
     primaryColor: '#005C70', // Primary brand blue
     tagline: '',
     companyName: '',
-    aboutCompany: ''
+    aboutCompany: '',
+    invoiceTemplate: { ...DEFAULT_INVOICE_TEMPLATE }
   });
+  
+  const [showInvoiceTemplate, setShowInvoiceTemplate] = useState(false);
 
   // Load existing branding
   useEffect(() => {
@@ -52,7 +56,8 @@ const CompanyBranding = () => {
           primaryColor: companyData.branding.primaryColor || '#005C70',
           tagline: companyData.branding.tagline || '',
           companyName: companyData.name || '',
-          aboutCompany: companyData.branding.aboutCompany || ''
+          aboutCompany: companyData.branding.aboutCompany || '',
+          invoiceTemplate: companyData.branding.invoiceTemplate || { ...DEFAULT_INVOICE_TEMPLATE }
         });
       } else {
         // Initialize with company name if no branding exists
@@ -162,7 +167,8 @@ const CompanyBranding = () => {
         logoPath: branding.logoPath,
         primaryColor: branding.primaryColor,
         tagline: branding.tagline.trim(),
-        aboutCompany: branding.aboutCompany.trim()
+        aboutCompany: branding.aboutCompany.trim(),
+        invoiceTemplate: branding.invoiceTemplate || { ...DEFAULT_INVOICE_TEMPLATE }
       };
 
       console.log('Saving branding data:', brandingData);
@@ -379,6 +385,222 @@ const CompanyBranding = () => {
         <p className="text-xs text-gray-500 mt-1">
           {branding.aboutCompany.length}/500 characters
         </p>
+      </div>
+
+      {/* Invoice Template Customization Section */}
+      <div className="border border-gray-200 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <FaFileInvoice className="text-purple-600" />
+              Invoice & Receipt Template
+            </h3>
+            <p className="text-sm text-gray-600 mt-1">
+              Customize the appearance of your invoices and receipts. These settings apply to both PDF documents and on-screen views.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowInvoiceTemplate(!showInvoiceTemplate)}
+            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+          >
+            <FaPalette />
+            {showInvoiceTemplate ? 'Hide' : 'Customize'}
+          </button>
+        </div>
+
+        {showInvoiceTemplate && (
+          <div className="mt-6 space-y-6 border-t border-gray-200 pt-6">
+            {/* Header Style */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Header Style
+              </label>
+              <select
+                value={branding.invoiceTemplate?.headerStyle || 'minimal'}
+                onChange={(e) => setBranding(prev => ({
+                  ...prev,
+                  invoiceTemplate: {
+                    ...prev.invoiceTemplate,
+                    headerStyle: e.target.value
+                  }
+                }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                style={{ color: '#111827' }}
+              >
+                <option value="minimal" style={{ color: '#111827' }}>Minimal (Clean White - Default)</option>
+                <option value="colored" style={{ color: '#111827' }}>Colored Header</option>
+                <option value="none" style={{ color: '#111827' }}>No Header</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Minimal style uses a clean white background matching your screenshot design
+              </p>
+            </div>
+
+            {/* Black & White Mode */}
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Black & White Mode
+                </label>
+                <p className="text-xs text-gray-600">
+                  Convert all colors to grayscale for printing or professional documents
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={branding.invoiceTemplate?.blackAndWhite || false}
+                  onChange={(e) => setBranding(prev => ({
+                    ...prev,
+                    invoiceTemplate: {
+                      ...prev.invoiceTemplate,
+                      blackAndWhite: e.target.checked
+                    }
+                  }))}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            {/* Logo Settings */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Show Logo
+                </label>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={branding.invoiceTemplate?.showLogo !== false}
+                    onChange={(e) => setBranding(prev => ({
+                      ...prev,
+                      invoiceTemplate: {
+                        ...prev.invoiceTemplate,
+                        showLogo: e.target.checked
+                      }
+                    }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Logo Size (pixels)
+                </label>
+                <input
+                  type="number"
+                  min="20"
+                  max="100"
+                  value={branding.invoiceTemplate?.logoSize || 40}
+                  onChange={(e) => setBranding(prev => ({
+                    ...prev,
+                    invoiceTemplate: {
+                      ...prev.invoiceTemplate,
+                      logoSize: parseInt(e.target.value) || 40
+                    }
+                  }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                  style={{ color: '#111827' }}
+                />
+              </div>
+            </div>
+
+            {/* Section Visibility */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Show Sections
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { key: 'showCompanyDetails', label: 'Company Details' },
+                  { key: 'showCustomerDetails', label: 'Customer Details' },
+                  { key: 'showDates', label: 'Dates' },
+                  { key: 'showLineItems', label: 'Line Items' },
+                  { key: 'showTotals', label: 'Totals' },
+                  { key: 'showPaymentInfo', label: 'Payment Info' },
+                  { key: 'showNotes', label: 'Notes' },
+                  { key: 'showFooter', label: 'Footer' }
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={branding.invoiceTemplate?.[key] !== false}
+                      onChange={(e) => setBranding(prev => ({
+                        ...prev,
+                        invoiceTemplate: {
+                          ...prev.invoiceTemplate,
+                          [key]: e.target.checked
+                        }
+                      }))}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Color Customization (only if not B&W) */}
+            {!branding.invoiceTemplate?.blackAndWhite && (
+              <div className="border-t border-gray-200 pt-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Color Customization</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Primary Color (for accents)
+                    </label>
+                    <input
+                      type="color"
+                      value={branding.invoiceTemplate?.primaryColor || branding.primaryColor || '#4F46E5'}
+                      onChange={(e) => setBranding(prev => ({
+                        ...prev,
+                        invoiceTemplate: {
+                          ...prev.invoiceTemplate,
+                          primaryColor: e.target.value
+                        }
+                      }))}
+                      className="w-full h-10 border border-gray-300 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Text Color
+                    </label>
+                    <input
+                      type="color"
+                      value={branding.invoiceTemplate?.textColor || '#111827'}
+                      onChange={(e) => setBranding(prev => ({
+                        ...prev,
+                        invoiceTemplate: {
+                          ...prev.invoiceTemplate,
+                          textColor: e.target.value
+                        }
+                      }))}
+                      className="w-full h-10 border border-gray-300 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Reset to Default */}
+            <div className="border-t border-gray-200 pt-4">
+              <button
+                onClick={() => {
+                  setBranding(prev => ({
+                    ...prev,
+                    invoiceTemplate: { ...DEFAULT_INVOICE_TEMPLATE }
+                  }));
+                }}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Reset to Default Template
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Preview Section */}

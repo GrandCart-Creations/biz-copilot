@@ -2032,27 +2032,27 @@ const InvoiceTracker = () => {
                 <FaTimes />
               </button>
             </div>
-            <div className="p-6 space-y-6">
-              {/* Company Header with Branding - Compact */}
-              <div className="border-b border-gray-200 pb-3">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center space-x-2">
+            <div className="p-6 space-y-6 bg-white">
+              {/* Company Header with Branding - Clean White Design */}
+              <div className="border-b border-gray-200 pb-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center space-x-3">
                     {currentCompany?.branding?.logoUrl && (
                       <img 
                         src={currentCompany.branding.logoUrl} 
                         alt={currentCompany.name || 'Company Logo'}
-                        className="w-8 h-8 rounded object-contain flex-shrink-0"
+                        className="w-10 h-10 rounded object-contain flex-shrink-0"
                       />
                     )}
                     <div>
                       <p className="text-xs font-medium text-gray-500 mb-0.5">From</p>
-                      <p className="text-base font-bold text-gray-900" style={{ color: currentCompany?.branding?.primaryColor || accentColor }}>
+                      <p className="text-lg font-bold text-gray-900" style={{ color: currentCompany?.branding?.primaryColor || accentColor }}>
                         {currentCompany?.name || 'Company'}
                       </p>
                     </div>
                   </div>
                   <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                    className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                       viewingItem.status === 'paid'
                         ? 'bg-green-100 text-green-800'
                         : viewingItem.status === 'overdue'
@@ -2063,9 +2063,9 @@ const InvoiceTracker = () => {
                     {viewingItem.status || 'draft'}
                   </span>
                 </div>
-                <div className="mt-2">
-                  <p className="text-xs text-gray-500">Invoice Number</p>
-                  <p className="text-base font-semibold text-gray-900">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-1">Invoice Number</p>
+                  <p className="text-lg font-semibold text-gray-900">
                     {viewingItem.invoiceNumber || viewingItem.id || 'N/A'}
                   </p>
                 </div>
@@ -2238,16 +2238,18 @@ const InvoiceTracker = () => {
               {viewingItem.status === 'paid' && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <p className="text-sm font-medium text-green-800 mb-2">Payment Information</p>
-                  {viewingItem.paidDate && (
-                    <p className="text-sm text-green-700">
-                      Paid on: {viewingItem.paidDate?.toDate 
-                        ? viewingItem.paidDate.toDate().toLocaleDateString()
-                        : new Date(viewingItem.paidDate).toLocaleDateString()}
-                    </p>
-                  )}
-                  {viewingItem.paymentMethod && (
-                    <p className="text-sm text-green-700">Method: {viewingItem.paymentMethod}</p>
-                  )}
+                  <div className="space-y-1">
+                    {viewingItem.paidDate && (
+                      <p className="text-sm text-green-700">
+                        Paid on: {viewingItem.paidDate?.toDate 
+                          ? viewingItem.paidDate.toDate().toLocaleDateString()
+                          : new Date(viewingItem.paidDate).toLocaleDateString()}
+                      </p>
+                    )}
+                    {viewingItem.paymentMethod && (
+                      <p className="text-sm text-green-700">Method: {viewingItem.paymentMethod}</p>
+                    )}
+                  </div>
                 </div>
               )}
 

@@ -327,7 +327,7 @@ exports.sendInvitationEmail = onDocumentCreated(
       const roleName = roleNames[invitationData.role] || invitationData.role;
 
       // Create invitation acceptance URL with company branding (trim any whitespace)
-      const baseUrl = (APP_URL.value() || 'http://localhost:5173').trim();
+      const baseUrl = (APP_URL.value() || 'https://biz-copilot.nl').trim();
       // Include company ID in URL for branded login/signup pages
       const acceptUrl = `${baseUrl}/accept-invitation?company=${companyId}&invitation=${invitationId}`;
       const loginUrl = `${baseUrl}/login?company=${companyId}&email=${encodeURIComponent(invitationData.email)}`;
@@ -471,22 +471,45 @@ If you didn't expect this invitation, you can safely ignore this email.
         html: emailHtml
       };
 
-      await sgMail.send(msg);
+      // Send email via SendGrid
+      const response = await sgMail.send(msg);
       
-      console.log(`Invitation email sent successfully to ${invitationData.email} for company ${companyId}`);
+      // Log detailed response from SendGrid
+      console.log(`[sendInvitationEmail] SendGrid response for ${invitationData.email}:`, {
+        statusCode: response[0]?.statusCode,
+        headers: response[0]?.headers,
+        body: response[0]?.body
+      });
       
-      // Optionally update invitation document to mark email as sent
+      console.log(`[sendInvitationEmail] Invitation email accepted by SendGrid for ${invitationData.email} (company: ${companyId}, invitation: ${invitationId})`);
+      console.log(`[sendInvitationEmail] From: ${fromEmail}, To: ${invitationData.email}, Subject: ${emailSubject}`);
+      
+      // Update invitation document to mark email as accepted by SendGrid
+      // Note: This means SendGrid accepted it, not that it reached the inbox
       await db.doc(`companies/${companyId}/invitations/${invitationId}`).update({
         emailSent: true,
-        emailSentAt: new Date().toISOString()
+        emailSentAt: new Date().toISOString(),
+        emailSentVia: 'SendGrid',
+        emailStatus: 'accepted', // SendGrid accepted it for delivery
+        emailError: null // Clear any previous errors
       });
 
       return null;
     } catch (error) {
-      console.error('Error sending invitation email:', error);
+      console.error(`[sendInvitationEmail] ERROR sending invitation email to ${invitationData.email}:`, error);
+      console.error(`[sendInvitationEmail] Error details:`, {
+        message: error.message,
+        code: error.code,
+        response: error.response ? {
+          statusCode: error.response.statusCode,
+          body: error.response.body,
+          headers: error.response.headers
+        } : null,
+        stack: error.stack
+      });
       
       // Extract detailed error message from SendGrid
-      let errorMessage = 'Failed to send';
+      let errorMessage = 'Failed to send email';
       if (error.response) {
         const body = error.response.body || {};
         if (body.errors && Array.isArray(body.errors) && body.errors.length > 0) {
@@ -502,14 +525,18 @@ If you didn't expect this invitation, you can safely ignore this email.
         errorMessage = error.message;
       }
       
-      // Log error but don't fail the function
-      // The invitation document was created successfully
+      // Log error and update invitation document
       await db.doc(`companies/${companyId}/invitations/${invitationId}`).update({
         emailError: errorMessage,
-        emailSent: false
+        emailSent: false,
+        emailStatus: 'failed',
+        emailErrorAt: new Date().toISOString()
       });
 
-      throw error;
+      // Don't throw - allow invitation to be created even if email fails
+      // User can resend later
+      console.error(`[sendInvitationEmail] Email send failed but invitation created. Error: ${errorMessage}`);
+      return null;
     }
   }
 );
@@ -636,7 +663,7 @@ exports.sendInvoiceEmail = onCall(
       const companyDoc = await db.doc(`companies/${companyId}`).get();
       const companyData = companyDoc.data();
 
-      const baseUrl = (APP_URL.value() || 'http://localhost:5173').trim();
+      const baseUrl = (APP_URL.value() || 'https://biz-copilot.nl').trim();
       const invoiceUrl = `${baseUrl}/modules/invoices?invoice=${invoiceId}`;
 
       const invoiceDate = invoiceData.invoiceDate?.toDate?.() || new Date(invoiceData.invoiceDate);
@@ -749,7 +776,7 @@ exports.sendQuoteEmail = onCall(
       const companyDoc = await db.doc(`companies/${companyId}`).get();
       const companyData = companyDoc.data();
 
-      const baseUrl = (APP_URL.value() || 'http://localhost:5173').trim();
+      const baseUrl = (APP_URL.value() || 'https://biz-copilot.nl').trim();
       const quoteUrl = `${baseUrl}/modules/invoices?quote=${quoteId}`;
 
       const quoteDate = quoteData.quoteDate?.toDate?.() || new Date(quoteData.quoteDate);
@@ -1249,7 +1276,7 @@ exports.resendInvitationEmail = onCall(
     };
     const roleName = roleNames[invitationData.role] || invitationData.role || 'Member';
 
-    const baseUrl = (APP_URL.value() || 'http://localhost:5173').trim();
+    const baseUrl = (APP_URL.value() || 'https://biz-copilot.nl').trim();
     const acceptUrl = `${baseUrl}/accept-invitation?company=${companyId}&invitation=${invitationId}`;
     const loginUrl = `${baseUrl}/login?company=${companyId}&email=${encodeURIComponent(invitationData.email)}`;
     const signupUrl = `${baseUrl}/signup?company=${companyId}&email=${encodeURIComponent(invitationData.email)}`;

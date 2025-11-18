@@ -605,9 +605,12 @@ const TeamManagement = () => {
                         </span>
                       )}
                       {!invitation.emailError && invitation.emailSent && invitation.emailSentAt && (
-                        <span className="text-green-700">
-                          Email delivered at {new Date(invitation.emailSentAt).toLocaleString()}
-                        </span>
+                        <div className="text-green-700">
+                          <span className="font-medium">Email sent at {new Date(invitation.emailSentAt).toLocaleString()}</span>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            Check inbox and spam/junk folder. If email shows "Deferred" in SendGrid, domain authentication may be needed.
+                          </p>
+                        </div>
                       )}
                       {!invitation.emailError && !invitation.emailSent && (
                         <span className="text-gray-500">

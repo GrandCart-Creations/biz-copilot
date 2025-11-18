@@ -18,6 +18,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "firebase deploy --only hosting",
+    "deploy:all": "npm run build && firebase deploy",
     "security:audit": "npm audit",
     "security:audit:prod": "npm audit --production"
   },
