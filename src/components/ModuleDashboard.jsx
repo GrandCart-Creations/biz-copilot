@@ -1,119 +1,16 @@
 /**
  * MODULE DASHBOARD
  * 
- * Dynamic dashboard with module tiles based on user permissions and subscription tier
- * Shows available modules as clickable cards
+ * Simplified dashboard - navigation is handled by SidebarNavigation
+ * This page shows a welcome message and placeholder for future dashboard widgets
  */
 
-import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React from 'react';
 import { useCompany } from '../contexts/CompanyContext';
-import { getVisibleModules, getModule, meetsTierRequirement } from '../utils/modules';
-import { ROLE_PERMISSIONS, hasPermission, canAccessModule } from '../utils/permissions';
-import CompanySelector from './CompanySelector';
-import UserProfile from './UserProfile';
-import NotificationCenter from './NotificationCenter';
-import { getHeaderBackground, getHeaderLogo } from '../utils/theme';
-import {
-  FaChartLine,
-  FaDollarSign,
-  FaFileAlt,
-  FaBullhorn,
-  FaChartArea,
-  FaCog,
-  FaUsers,
-  FaShieldAlt,
-  FaLock,
-  FaFileInvoiceDollar,
-  FaProjectDiagram
-} from 'react-icons/fa';
+import { FaLock } from 'react-icons/fa';
 
 const ModuleDashboard = () => {
-  const navigate = useNavigate();
-  const { currentCompany, currentCompanyId, userRole, subscriptionTier, loading: companyLoading } = useCompany();
-
-  // Get icon component by name
-  const getIcon = (iconName) => {
-    const icons = {
-      FaChartLine,
-      FaDollarSign,
-      FaFileAlt,
-      FaBullhorn,
-      FaChartArea,
-      FaCog,
-      FaUsers,
-      FaShieldAlt,
-      FaFileInvoiceDollar,
-      FaProjectDiagram
-    };
-    return icons[iconName] || FaChartLine;
-  };
-
-  // Get color classes
-  const getColorClasses = (color) => {
-    const colors = {
-      blue: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100',
-      green: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100',
-      purple: 'bg-[#F0FBF8] border-[#B8E5DC] text-[#2F6F63] hover:bg-[#D4F5EF]',
-      orange: 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100',
-      indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100',
-      gray: 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100',
-      teal: 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100',
-      red: 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
-    };
-    return colors[color] || colors.blue;
-  };
-
-  // Get icon color classes
-  const getIconColorClasses = (color) => {
-    const colors = {
-      blue: 'bg-blue-100 text-blue-600',
-      green: 'bg-green-100 text-green-600',
-      purple: 'bg-[#D4F5EF] text-[#005C70]',
-      orange: 'bg-orange-100 text-orange-600',
-      indigo: 'bg-indigo-100 text-indigo-600',
-      gray: 'bg-gray-100 text-gray-600',
-      teal: 'bg-teal-100 text-teal-600',
-      red: 'bg-red-100 text-red-600'
-    };
-    return colors[color] || colors.blue;
-  };
-
-  // Handle module click
-  const handleModuleClick = (module) => {
-    if (module.status === 'coming-soon') {
-      return; // Don't navigate to coming-soon modules
-    }
-    
-    if (!currentCompanyId) {
-      alert('Please select a company to access this module.');
-      return;
-    }
-
-    // Check subscription tier requirement
-    const currentTier = subscriptionTier || 'business';
-    const requiredTier = module.requiredTier || 'lite';
-    
-    if (!meetsTierRequirement(currentTier, requiredTier)) {
-      // Redirect to subscription gate page
-      navigate(`/modules/${module.id}/upgrade?required=${requiredTier}&current=${currentTier}`);
-      return;
-    }
-
-    // Navigate to module route
-    console.log('Navigating to:', module.route, 'for module:', module.id);
-    if (module.route) {
-      navigate(module.route);
-    } else {
-      console.error('Module route is missing for:', module.id);
-    }
-  };
-
-  const headerBackground = useMemo(() => getHeaderBackground(currentCompany), [currentCompany]);
-  const headerLogo = useMemo(() => getHeaderLogo(currentCompany), [currentCompany]);
-  const headerAlt = currentCompany?.branding?.logoUrl
-    ? `${currentCompany?.name || 'Company'} logo`
-    : 'Biz-CoPilot';
+  const { currentCompany, currentCompanyId, loading: companyLoading } = useCompany();
 
   // Loading state
   if (companyLoading) {
@@ -130,180 +27,39 @@ const ModuleDashboard = () => {
   // No company selected
   if (!currentCompanyId) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <nav className="text-white shadow-lg" style={{ background: getHeaderBackground(null) }}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 flex items-center">
-                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-[60px] w-auto" />
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <NotificationCenter />
-                <CompanySelector />
-                <UserProfile />
-              </div>
-            </div>
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FaLock className="w-8 h-8 text-gray-400" />
           </div>
-        </nav>
-
-        {/* No Company Message */}
-        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FaLock className="w-8 h-8 text-gray-400" />
-            </div>
-            <h2 className="text-2xl font-semibold text-gray-800 mb-2">No Company Selected</h2>
-            <p className="text-gray-600 mb-6">Please select or create a company to access the dashboard modules.</p>
-            <p className="text-sm text-gray-500">Use the company selector in the header above.</p>
-          </div>
+          <h2 className="text-2xl font-semibold text-gray-800 mb-2">No Company Selected</h2>
+          <p className="text-gray-600 mb-6">Please select or create a company to access the dashboard modules.</p>
+          <p className="text-sm text-gray-500">Use the company selector in the header above.</p>
         </div>
       </div>
     );
   }
 
-  // Get visible modules for current user (with subscription tier enforcement)
-  // Debug: Log role and tier to help diagnose "No Modules Available" issue
-  const effectiveRole = userRole || 'employee';
-  const effectiveTier = subscriptionTier || 'lite';
-  
-  // Log for debugging (remove in production if needed)
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[ModuleDashboard] User role:', effectiveRole, 'Subscription tier:', effectiveTier);
-  }
-  
-  const visibleModules = getVisibleModules(effectiveRole, effectiveTier);
-  
-  // Comprehensive debug logging
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[ModuleDashboard] getVisibleModules returned:', visibleModules.length, 'modules');
-    if (visibleModules.length > 0) {
-      console.log('[ModuleDashboard] Visible modules:', visibleModules.map(m => m.id));
-    }
-    if (visibleModules.length === 0) {
-      console.warn('[ModuleDashboard] No modules available for role:', effectiveRole, 'tier:', effectiveTier);
-      console.warn('[ModuleDashboard] Available roles in permissions:', Object.keys(ROLE_PERMISSIONS));
-      // Test individual module checks
-      console.log('[ModuleDashboard] Testing individual modules:');
-      ['expenses', 'income', 'invoices', 'reports'].forEach(moduleId => {
-        const testHasAccess = hasPermission(effectiveRole, moduleId, 'read');
-        const testTierAccess = canAccessModule(effectiveRole, effectiveTier, moduleId);
-        console.log(`  ${moduleId}: hasPermission=${testHasAccess}, canAccessModule=${testTierAccess}`);
-      });
-    }
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <nav className="text-white shadow-lg w-full" style={{ background: headerBackground }}>
-        <div className="w-full px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 flex items-center">
-                <img src={headerLogo} alt={headerAlt} className="h-[60px] w-auto" />
-              </div>
-            </div>
-              <div className="flex items-center gap-4">
-              <NotificationCenter />
-              <CompanySelector />
-              <UserProfile />
-            </div>
-          </div>
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Welcome Section */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          Welcome to {currentCompany?.name || 'Your Company'}
+        </h1>
+        <p className="text-gray-600">Use the sidebar navigation to access modules</p>
+      </div>
+
+      {/* Quick Stats or Recent Activity - Future Enhancement */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* Placeholder for future dashboard widgets */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Dashboard Overview</h3>
+          <p className="text-sm text-gray-600">Quick stats and recent activity will appear here</p>
         </div>
-      </nav>
-
-      {/* Main Content */}
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome to {currentCompany?.name || 'Your Company'}
-          </h1>
-          <p className="text-gray-600">Select a module to get started</p>
-        </div>
-
-        {/* Module Tiles Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {visibleModules.map((module) => {
-            const IconComponent = getIcon(module.icon);
-            const colorClasses = getColorClasses(module.color);
-            const iconColorClasses = getIconColorClasses(module.color);
-            const isClickable = module.status === 'active';
-
-            return (
-              <div
-                key={module.id}
-                onClick={() => isClickable && handleModuleClick(module)}
-                className={`
-                  bg-white rounded-lg border-2 p-6 cursor-pointer transition-all duration-200
-                  ${isClickable ? colorClasses : 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'}
-                  ${isClickable ? 'hover:shadow-lg transform hover:-translate-y-1' : ''}
-                `}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${isClickable ? iconColorClasses : 'bg-gray-200 text-gray-400'}`}>
-                    <IconComponent className="w-6 h-6" />
-                  </div>
-                  {module.status === 'coming-soon' && (
-                    <span className="text-xs font-semibold px-2 py-1 bg-gray-200 text-gray-600 rounded">
-                      Coming Soon
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-xl font-semibold mb-2">{module.name}</h3>
-                <p className="text-sm opacity-75">{module.description}</p>
-                
-                {!isClickable && module.status === 'coming-soon' && (
-                  <div className="mt-4 flex items-center text-xs text-gray-500">
-                    <FaLock className="w-3 h-3 mr-1" />
-                    <span>
-                      {module.requiredTier === 'business' && subscriptionTier === 'lite' 
-                        ? 'Upgrade to Business tier' 
-                        : 'Coming soon'}
-                    </span>
-                  </div>
-                )}
-                
-                {/* Subscription Tier Gate Message */}
-                {isClickable && module.requiredTier && subscriptionTier === 'lite' && module.requiredTier === 'business' && (
-                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-center text-xs text-yellow-800">
-                      <FaLock className="w-3 h-3 mr-1" />
-                      <span>Business tier required</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Empty State */}
-        {visibleModules.length === 0 && (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FaChartLine className="w-8 h-8 text-gray-400" />
-            </div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">No Modules Available</h3>
-            <p className="text-gray-600">You don't have access to any modules yet.</p>
-            {/* Diagnostic information */}
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg text-left max-w-md mx-auto">
-              <p className="text-xs font-semibold text-gray-700 mb-2">Diagnostic Information:</p>
-              <p className="text-xs text-gray-600">Role: <span className="font-mono font-semibold">{effectiveRole}</span></p>
-              <p className="text-xs text-gray-600">Subscription Tier: <span className="font-mono font-semibold">{effectiveTier}</span></p>
-              <p className="text-xs text-gray-600">Company: <span className="font-mono font-semibold">{currentCompanyId || 'Not selected'}</span></p>
-            </div>
-            <p className="text-sm text-gray-500 mt-4">Contact your administrator for access.</p>
-            <p className="text-xs text-gray-400 mt-2">If you just accepted an invitation, try refreshing the page.</p>
-          </div>
-        )}
       </div>
     </div>
   );
 };
 
 export default ModuleDashboard;
-

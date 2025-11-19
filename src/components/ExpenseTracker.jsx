@@ -4572,32 +4572,7 @@ const approvalStatusStyles = {
 
   // Show skeleton UI instead of blocking blank screen
   return (
-    <div className="min-h-screen bg-gray-50 w-full">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b w-full">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              {/* Back Button with Module Navigation */}
-              <ModuleNavigationButton currentModuleId="expenses" />
-              
-              {/* Expense Icon & Title */}
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <FaChartLine className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Expense Tracker</h1>
-                <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <NotificationCenter />
-              <CompanySelector />
-              <UserProfile />
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="w-full">
 
       {/* Add/Edit Expense Modal - Available in all views */}
       {showAddExpense && (
@@ -5460,7 +5435,7 @@ const approvalStatusStyles = {
 
       {/* Main Content */}
       <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-12 py-8">
-      <div className="space-y-4 lg:space-y-6 lg:sticky lg:top-20 lg:z-30 lg:bg-gray-50/95 lg:backdrop-blur-sm lg:pb-4">
+      <div className="space-y-4 lg:space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {loading ? (

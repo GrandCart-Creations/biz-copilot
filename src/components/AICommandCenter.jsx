@@ -7,6 +7,7 @@ import { authorizeAIScope, AI_SCOPES, getDefaultScopeForRole, canAccessScope } f
 import { logAIEvent } from '../utils/auditLog';
 import { getCompanyNotifications } from '../firebase';
 import { runExpirationChecks } from '../utils/expirationMonitor';
+import { processAIQuery, formatAIResponse } from '../utils/aiEngine';
 import { FaExclamationTriangle, FaClock, FaFileInvoice, FaCheckCircle } from 'react-icons/fa';
 
 const SUGGESTION_PRESETS = [
@@ -36,7 +37,13 @@ const AICommandCenter = () => {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState(() => getDefaultScopeForRole(userRole, aiPolicies));
   const [accessCode, setAccessCode] = useState('');
-  const [status, setStatus] = useState({ state: 'idle', message: '' });
+  const [status, setStatus] = useState({ 
+    state: 'idle', 
+    message: '', 
+    data: null, 
+    insights: [], 
+    suggestions: [] 
+  });
   const [urgentAlerts, setUrgentAlerts] = useState([]);
   const inputRef = useRef(null);
 
@@ -137,18 +144,58 @@ const AICommandCenter = () => {
 
     setStatus({ state: 'loading', message: 'Thinking…' });
 
-    setTimeout(() => {
+    try {
+      // Process the query through AI Engine
+      const response = await processAIQuery(
+        query,
+        scope,
+        currentCompanyId,
+        currentUser.uid
+      );
+
+      // Format the response
+      const formattedResponse = formatAIResponse(response);
+
+      // Log the query
       logAIEvent('executed', {
         query: query.slice(0, 200),
         scope,
         companyId: currentCompanyId,
         elevated: authorization.elevated || false
       });
+
+      // Display the response with insights and suggestions
+      let responseMessage = formattedResponse.text || 'Query processed successfully.';
+      
+      // Add insights if available
+      if (formattedResponse.insights && formattedResponse.insights.length > 0) {
+        const insightsText = formattedResponse.insights
+          .map(insight => `\n\n💡 ${insight.message || insight}`)
+          .join('');
+        responseMessage += insightsText;
+      }
+      
+      // Store full response for display
       setStatus({
         state: 'success',
-        message: 'AI response placeholder — integration coming in Phase 7.0.'
+        message: responseMessage,
+        data: formattedResponse.data,
+        insights: formattedResponse.insights,
+        suggestions: formattedResponse.suggestions
       });
-    }, 500);
+    } catch (error) {
+      console.error('Error processing AI query:', error);
+      logAIEvent('error', {
+        query: query.slice(0, 200),
+        scope,
+        companyId: currentCompanyId,
+        error: error.message
+      });
+      setStatus({
+        state: 'error',
+        message: `Error: ${error.message || 'Failed to process query. Please try again.'}`
+      });
+    }
   };
 
   const handleSuggestion = (suggestion) => {
@@ -169,12 +216,35 @@ const AICommandCenter = () => {
     return null;
   }
 
+  // Check if sidebar is open (via data attribute set by MainLayout)
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  useEffect(() => {
+    const checkSidebar = () => {
+      setSidebarOpen(document.body.hasAttribute('data-sidebar-open'));
+    };
+    
+    // Check initially
+    checkSidebar();
+    
+    // Watch for changes
+    const observer = new MutationObserver(checkSidebar);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-sidebar-open']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
+
   if (!isOpen) {
     return (
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 px-4 py-2 rounded-full shadow-lg text-sm font-semibold text-white"
+        className={`fixed bottom-6 px-4 py-2 rounded-full shadow-lg text-sm font-semibold text-white transition-all duration-300 ${
+          sidebarOpen ? 'right-[280px]' : 'right-6'
+        }`}
         style={{ backgroundColor: '#005C70' }}
         title="Open AI Command Center (⌘K / Ctrl+K)"
       >
@@ -251,14 +321,12 @@ const AICommandCenter = () => {
               >
                 Close
               </button>
-              {status.state !== 'idle' && (
+              {status.state !== 'idle' && status.state !== 'success' && (
                 <span
                   className={`text-sm ${
-                    status.state === 'success'
-                      ? 'text-green-600'
-                      : status.state === 'loading'
-                        ? 'text-blue-600'
-                        : 'text-red-600'
+                    status.state === 'loading'
+                      ? 'text-blue-600'
+                      : 'text-red-600'
                   }`}
                 >
                   {status.message}
@@ -267,6 +335,105 @@ const AICommandCenter = () => {
             </div>
           </div>
         </form>
+        
+        {/* AI Response Section */}
+        {status.state === 'success' && status.message && (
+          <div className="p-6 border-b border-gray-200 bg-gray-50 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-4">
+              {/* Main Response */}
+              <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <div className="flex items-start gap-3">
+                  <FaCheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900 mb-2">Response:</p>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{status.message}</p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Insights */}
+              {status.insights && status.insights.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Insights:</p>
+                  {status.insights.map((insight, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-lg border ${
+                        insight.type === 'warning'
+                          ? 'bg-orange-50 border-orange-200 text-orange-800'
+                          : 'bg-blue-50 border-blue-200 text-blue-800'
+                      }`}
+                    >
+                      <p className="text-sm">{insight.message || insight}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Data Summary */}
+              {status.data && status.data.totals && (
+                <div className="bg-white rounded-lg p-4 border border-gray-200">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Data Summary:</p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    {status.data.totals.amount !== undefined && (
+                      <div>
+                        <span className="text-gray-600">Total:</span>
+                        <span className="ml-2 font-semibold text-gray-900">
+                          €{status.data.totals.amount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {status.data.totals.count !== undefined && (
+                      <div>
+                        <span className="text-gray-600">Count:</span>
+                        <span className="ml-2 font-semibold text-gray-900">
+                          {status.data.totals.count}
+                        </span>
+                      </div>
+                    )}
+                    {status.data.totals.vat !== undefined && (
+                      <div>
+                        <span className="text-gray-600">VAT:</span>
+                        <span className="ml-2 font-semibold text-gray-900">
+                          €{status.data.totals.vat.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {status.data.unpaidTotal !== undefined && (
+                      <div>
+                        <span className="text-gray-600">Unpaid:</span>
+                        <span className="ml-2 font-semibold text-orange-600">
+                          €{status.data.unpaidTotal.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Suggestions */}
+              {status.suggestions && status.suggestions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Try asking:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {status.suggestions.map((suggestion, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setQuery(suggestion);
+                          setTimeout(() => inputRef.current?.focus(), 0);
+                        }}
+                        className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         
         {/* Urgent Alerts Section */}
         {urgentAlerts.length > 0 && ['owner', 'manager'].includes(userRole) && (

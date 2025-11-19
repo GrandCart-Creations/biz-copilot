@@ -484,29 +484,7 @@ const ReportsDashboard = () => {
 
   if (!currentCompanyId) {
     return (
-      <div className="min-h-screen bg-gray-50 w-full">
-        <header className="bg-white shadow-sm border-b w-full">
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <ModuleNavigationButton currentModuleId="reports" />
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ backgroundColor: accentColor }}>
-                  <FaFileAlt className="w-6 h-6" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
-                  <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <NotificationCenter />
-                <CompanySelector />
-                <UserProfile />
-              </div>
-            </div>
-          </div>
-        </header>
-
+      <div className="w-full">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="bg-white rounded-lg shadow p-8 text-center">
             <FaFileAlt className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -519,30 +497,7 @@ const ReportsDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 w-full">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b w-full">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <ModuleNavigationButton currentModuleId="reports" />
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ backgroundColor: accentColor }}>
-                <FaFileAlt className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
-                <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <NotificationCenter />
-              <CompanySelector />
-              <UserProfile />
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <div className="w-full">
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Period Selector & Export Buttons */}

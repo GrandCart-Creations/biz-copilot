@@ -15,6 +15,7 @@ const { getAuth } = require('firebase-admin/auth');
 const { getFirestore } = require('firebase-admin/firestore');
 const sgMail = require('@sendgrid/mail');
 const { jsPDF } = require('jspdf');
+const OpenAI = require('openai');
 
 // Initialize Firebase Admin
 initializeApp();
@@ -25,6 +26,7 @@ const adminAuth = getAuth();
 const SENDGRID_API_KEY = defineSecret('SENDGRID_API_KEY');
 const SENDGRID_FROM_EMAIL = defineSecret('SENDGRID_FROM_EMAIL');
 const APP_URL = defineSecret('APP_URL');
+const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
 
 /**
  * Helper function to convert hex color to RGB
@@ -1353,4 +1355,299 @@ This invitation will expire in 7 days.`;
     }
   }
 );
+
+/**
+ * Process AI Query - Main AI Engine Function
+ * Handles natural language queries and returns intelligent responses
+ */
+exports.processAIQuery = onCall(
+  {
+    secrets: [OPENAI_API_KEY],
+    region: 'europe-west1'
+  },
+  async (request) => {
+    const { query, scope, companyId, userId } = request.data;
+
+    // Validate input
+    if (!query || !companyId || !userId) {
+      throw new Error('Missing required parameters: query, companyId, userId');
+    }
+
+    try {
+      // Initialize OpenAI
+      const openai = new OpenAI({
+        apiKey: OPENAI_API_KEY.value()
+      });
+
+      // Get company data for context
+      const companyDoc = await db.collection('companies').doc(companyId).get();
+      if (!companyDoc.exists) {
+        throw new Error('Company not found');
+      }
+      const company = companyDoc.data();
+
+      // Build system prompt based on scope
+      const systemPrompts = {
+        global: 'You are a helpful business assistant for Biz-CoPilot. Help users understand their business data and provide insights.',
+        financial: 'You are a financial assistant. Help users understand their financial data, expenses, income, and invoices.',
+        hr: 'You are an HR assistant. Help users manage their team, people, and HR-related tasks.',
+        owner: 'You are a strategic business advisor. Provide high-level insights and recommendations for business owners.'
+      };
+
+      const systemPrompt = systemPrompts[scope] || systemPrompts.global;
+
+      // Get relevant data based on scope with intelligent querying
+      let contextData = '';
+      let queryData = null;
+      
+      if (scope === 'financial') {
+        // Detect query intent
+        const lowerQuery = query.toLowerCase();
+        const isExpenseQuery = lowerQuery.includes('expense') || lowerQuery.includes('spending') || lowerQuery.includes('cost');
+        const isIncomeQuery = lowerQuery.includes('income') || lowerQuery.includes('revenue') || lowerQuery.includes('earning');
+        const isInvoiceQuery = lowerQuery.includes('invoice') || lowerQuery.includes('receivable');
+        
+        // Get date range
+        let dateFilter = null;
+        if (lowerQuery.includes('this month') || lowerQuery.includes('current month')) {
+          const now = new Date();
+          dateFilter = {
+            start: new Date(now.getFullYear(), now.getMonth(), 1),
+            end: new Date()
+          };
+        } else if (lowerQuery.includes('last month')) {
+          const now = new Date();
+          dateFilter = {
+            start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+            end: new Date(now.getFullYear(), now.getMonth(), 0)
+          };
+        } else if (lowerQuery.includes('this year')) {
+          const now = new Date();
+          dateFilter = {
+            start: new Date(now.getFullYear(), 0, 1),
+            end: new Date()
+          };
+        }
+        
+        // Fetch relevant data
+        if (isExpenseQuery || !isIncomeQuery && !isInvoiceQuery) {
+          let expensesQuery = db.collection(`companies/${companyId}/expenses`).orderBy('date', 'desc');
+          
+          if (dateFilter) {
+            expensesQuery = expensesQuery.where('date', '>=', dateFilter.start).where('date', '<=', dateFilter.end);
+          }
+          
+          const expensesSnapshot = await expensesQuery.limit(20).get();
+          const expenses = expensesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          
+          // Calculate totals
+          const totalExpenses = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+          const totalVAT = expenses.reduce((sum, exp) => sum + (exp.vatAmount || 0), 0);
+          
+          contextData = `Expenses data: ${expenses.length} items found. Total: €${totalExpenses.toFixed(2)}, VAT: €${totalVAT.toFixed(2)}. `;
+          contextData += `Recent expenses: ${expenses.slice(0, 5).map(e => `${e.description || 'Expense'}: €${(e.amount || 0).toFixed(2)}`).join(', ')}.`;
+          
+          queryData = {
+            type: 'expenses',
+            items: expenses,
+            totals: { amount: totalExpenses, vat: totalVAT, count: expenses.length }
+          };
+        }
+        
+        if (isIncomeQuery) {
+          let incomeQuery = db.collection(`companies/${companyId}/income`).orderBy('date', 'desc');
+          
+          if (dateFilter) {
+            incomeQuery = incomeQuery.where('date', '>=', dateFilter.start).where('date', '<=', dateFilter.end);
+          }
+          
+          const incomeSnapshot = await incomeQuery.limit(20).get();
+          const income = incomeSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          
+          const totalIncome = income.reduce((sum, inc) => sum + (inc.amount || 0), 0);
+          
+          contextData += `Income data: ${income.length} items found. Total: €${totalIncome.toFixed(2)}. `;
+          contextData += `Recent income: ${income.slice(0, 5).map(i => `${i.description || 'Income'}: €${(i.amount || 0).toFixed(2)}`).join(', ')}.`;
+          
+          if (!queryData) {
+            queryData = { type: 'income', items: income, totals: { amount: totalIncome, count: income.length } };
+          } else {
+            queryData.income = income;
+            queryData.incomeTotal = totalIncome;
+          }
+        }
+        
+        if (isInvoiceQuery) {
+          let invoicesQuery = db.collection(`companies/${companyId}/invoices`).orderBy('invoiceDate', 'desc');
+          
+          if (dateFilter) {
+            invoicesQuery = invoicesQuery.where('invoiceDate', '>=', dateFilter.start).where('invoiceDate', '<=', dateFilter.end);
+          }
+          
+          const invoicesSnapshot = await invoicesQuery.limit(20).get();
+          const invoices = invoicesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          
+          const totalInvoices = invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+          const unpaidInvoices = invoices.filter(inv => inv.status !== 'paid');
+          const unpaidTotal = unpaidInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+          
+          contextData += `Invoices: ${invoices.length} found. Total: €${totalInvoices.toFixed(2)}. Unpaid: ${unpaidInvoices.length} (€${unpaidTotal.toFixed(2)}).`;
+          
+          if (!queryData) {
+            queryData = { type: 'invoices', items: invoices, totals: { amount: totalInvoices, unpaid: unpaidTotal } };
+          } else {
+            queryData.invoices = invoices;
+            queryData.invoiceTotal = totalInvoices;
+            queryData.unpaidTotal = unpaidTotal;
+          }
+        }
+        
+        // If no specific query, get summary
+        if (!isExpenseQuery && !isIncomeQuery && !isInvoiceQuery) {
+          const expensesSnapshot = await db.collection(`companies/${companyId}/expenses`).orderBy('date', 'desc').limit(10).get();
+          const incomeSnapshot = await db.collection(`companies/${companyId}/income`).orderBy('date', 'desc').limit(10).get();
+          
+          contextData = `Financial summary: ${expensesSnapshot.size} recent expenses, ${incomeSnapshot.size} recent income records.`;
+        }
+      }
+
+      // Build enhanced system prompt with data context
+      const enhancedSystemPrompt = `${systemPrompt}
+
+Company: ${company.name || 'Unknown'}
+Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+
+Available Data Context:
+${contextData || 'No specific data context available.'}
+
+Instructions:
+- Provide clear, actionable insights based on the data
+- Use specific numbers and amounts when available
+- Format currency as € (Euro)
+- Be concise but informative
+- If data is limited, acknowledge it and provide general guidance
+- For financial queries, focus on trends, totals, and key insights`;
+
+      // Call OpenAI with enhanced context
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: enhancedSystemPrompt
+          },
+          {
+            role: 'user',
+            content: query
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 800
+      });
+
+      const responseText = completion.choices[0]?.message?.content || 'I apologize, but I could not process your query.';
+
+      // Extract insights from response
+      const insights = extractInsights(responseText, queryData);
+
+      // Log the query for audit
+      await db.collection(`companies/${companyId}/aiQueries`).add({
+        query: query.slice(0, 200),
+        scope,
+        userId,
+        response: responseText.slice(0, 1000),
+        timestamp: new Date(),
+        model: 'gpt-3.5-turbo',
+        hasData: queryData !== null
+      });
+
+      return {
+        text: responseText,
+        type: queryData ? 'data' : 'text',
+        data: queryData,
+        insights: insights,
+        suggestions: generateSuggestions(scope, queryData)
+      };
+    } catch (error) {
+      console.error('Error processing AI query:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        query: query?.slice(0, 100),
+        scope,
+        companyId,
+        userId
+      });
+      
+      // Return a helpful error message
+      const errorMessage = error.message || 'internal';
+      return {
+        text: `I encountered an error processing your query: ${errorMessage}. Please try rephrasing your question or contact support if the issue persists.`,
+        type: 'error',
+        data: null,
+        insights: [],
+        suggestions: []
+      };
+    }
+  }
+);
+
+/**
+ * Extract insights from AI response and data
+ */
+function extractInsights(responseText, queryData) {
+  const insights = [];
+  
+  if (!queryData) return insights;
+  
+  // Add data-driven insights
+  if (queryData.type === 'expenses' && queryData.totals) {
+    if (queryData.totals.amount > 1000) {
+      insights.push({
+        type: 'warning',
+        message: `Total expenses are €${queryData.totals.amount.toFixed(2)} - consider reviewing for optimization opportunities.`
+      });
+    }
+  }
+  
+  if (queryData.type === 'income' && queryData.totals) {
+    if (queryData.totals.amount < 100) {
+      insights.push({
+        type: 'info',
+        message: `Income is relatively low at €${queryData.totals.amount.toFixed(2)} - consider strategies to increase revenue.`
+      });
+    }
+  }
+  
+  if (queryData.unpaidTotal && queryData.unpaidTotal > 0) {
+    insights.push({
+      type: 'warning',
+      message: `You have €${queryData.unpaidTotal.toFixed(2)} in unpaid invoices - follow up on these to improve cash flow.`
+    });
+  }
+  
+  return insights;
+}
+
+/**
+ * Generate contextual suggestions based on query and data
+ */
+function generateSuggestions(scope, queryData) {
+  const suggestions = [];
+  
+  if (scope === 'financial') {
+    if (queryData && queryData.type === 'expenses') {
+      suggestions.push('Show me income for comparison');
+      suggestions.push('Analyze expense trends');
+      suggestions.push('Find largest expenses');
+    }
+    if (queryData && queryData.type === 'income') {
+      suggestions.push('Show me expenses');
+      suggestions.push('Calculate net profit');
+      suggestions.push('Show invoice status');
+    }
+  }
+  
+  return suggestions;
+}
 

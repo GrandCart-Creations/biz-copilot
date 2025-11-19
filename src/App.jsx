@@ -35,6 +35,7 @@ import CookieConsent from './components/CookieConsent';
 import AcceptInvitation from './components/AcceptInvitation';
 import EmailVerificationError from './components/EmailVerificationError';
 import AICommandCenter from './components/AICommandCenter';
+import MainLayout from './components/MainLayout';
 
 function App() {
   return (
@@ -47,6 +48,7 @@ function App() {
               <CookieConsent />
               <AICommandCenter />
           
+          <MainLayout>
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
@@ -356,6 +358,7 @@ function App() {
             {/* Catch all - redirect to dashboard */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+          </MainLayout>
             </OnboardingProvider>
           </CompanyProvider>
         </SecurityProvider>

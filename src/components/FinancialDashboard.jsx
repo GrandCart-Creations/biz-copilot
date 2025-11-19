@@ -550,45 +550,20 @@ const FinancialDashboard = () => {
   const isOwner = userRole === 'owner';
   
   return (
-    <div className="min-h-screen bg-gray-50 w-full">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b w-full">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <ModuleNavigationButton currentModuleId="financialDashboard" />
-              
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
-                style={{ background: headerBackground }}
-              >
-                <FaChartLine className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Financial Dashboard</h1>
-                <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <NotificationCenter />
-              {/* Period Selector */}
-              <select
-                value={period}
-                onChange={(e) => setPeriod(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-              >
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-                <option value="year">This Year</option>
-                <option value="all">All Time</option>
-              </select>
-              
-              <CompanySelector />
-              <UserProfile />
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="w-full">
+      {/* Period Selector - moved to content area */}
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-4 flex justify-end">
+        <select
+          value={period}
+          onChange={(e) => setPeriod(e.target.value)}
+          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white text-gray-900"
+        >
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+          <option value="year">This Year</option>
+          <option value="all">All Time</option>
+        </select>
+      </div>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

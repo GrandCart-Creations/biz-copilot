@@ -234,3 +234,49 @@ export function getModuleRequiredTier(moduleId) {
   return module?.requiredTier || null;
 }
 
+/**
+ * MODULE SECTIONS
+ * Groups modules into logical sections for sidebar navigation
+ */
+export const MODULE_SECTIONS = [
+  {
+    id: 'financial',
+    title: 'Financial',
+    color: 'blue',
+    icon: 'FaChartLine',
+    modules: ['expenses', 'income', 'invoices', 'financialDashboard', 'reports']
+  },
+  {
+    id: 'operations',
+    title: 'Operations',
+    color: 'orange',
+    icon: 'FaProjectDiagram',
+    modules: ['marketing', 'projects', 'forecasting']
+  },
+  {
+    id: 'administration',
+    title: 'Administration',
+    color: 'gray',
+    icon: 'FaCog',
+    modules: ['settings', 'team', 'security']
+  }
+];
+
+/**
+ * Get modules grouped by sections
+ * @param {string} role - User role
+ * @param {string} subscriptionTier - Subscription tier
+ * @returns {Array} Array of section objects with their visible modules
+ */
+export function getModulesBySections(role, subscriptionTier) {
+  const visibleModules = getVisibleModules(role, subscriptionTier);
+  const visibleModuleIds = new Set(visibleModules.map(m => m.id));
+  
+  return MODULE_SECTIONS.map(section => ({
+    ...section,
+    modules: section.modules
+      .map(moduleId => getModule(moduleId))
+      .filter(module => module && visibleModuleIds.has(module.id))
+  })).filter(section => section.modules.length > 0);
+}
+
