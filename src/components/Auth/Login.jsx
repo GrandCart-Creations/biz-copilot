@@ -223,9 +223,6 @@ export default function Login() {
                   alt={companyBranding?.name || 'Biz-CoPilot'}
                   className="h-24 w-auto object-contain bg-white/10 rounded-lg p-2 backdrop-blur-sm"
                 />
-                <h1 className="text-3xl font-bold text-white">
-                  {companyBranding?.name || 'Biz-CoPilot'}
-                </h1>
               </div>
               
               <div className="space-y-1 mb-2">
@@ -289,9 +286,6 @@ export default function Login() {
                 alt={companyBranding?.name || 'Biz-CoPilot'}
                 className="h-20 w-auto object-contain"
               />
-              <h1 className="text-3xl font-bold text-gray-900">
-                {companyBranding?.name || 'Biz-CoPilot'}
-              </h1>
             </div>
 
             {/* Welcome Card */}

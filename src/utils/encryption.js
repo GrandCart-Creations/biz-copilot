@@ -34,6 +34,12 @@ const getEncryptionKey = () => {
   return new TextEncoder().encode(fallback.padEnd(32, '0').substring(0, 32));
 };
 
+// Get fallback encryption key (for backward compatibility with old data)
+const getFallbackEncryptionKey = () => {
+  const fallback = 'biz-copilot-default-key-change-me!';
+  return new TextEncoder().encode(fallback.padEnd(32, '0').substring(0, 32));
+};
+
 /**
  * Derive a key from password using PBKDF2
  */
@@ -101,11 +107,13 @@ export async function encryptSensitiveField(plaintext) {
 /**
  * Decrypt sensitive data
  * @param {string} encryptedData - Base64 encoded encrypted data
+ * @param {boolean} tryFallback - Whether to try fallback key if primary fails
  * @returns {Promise<string>} - Decrypted plaintext
  */
-export async function decryptSensitiveField(encryptedData) {
+export async function decryptSensitiveField(encryptedData, tryFallback = true) {
   if (!encryptedData) return null;
   
+  // Try with primary key first
   try {
     const password = getEncryptionKey();
     const combined = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
@@ -123,9 +131,43 @@ export async function decryptSensitiveField(encryptedData) {
     );
     
     return new TextDecoder().decode(decrypted);
-  } catch (error) {
-    console.error('Decryption error:', error);
-    throw new Error('Failed to decrypt data');
+  } catch (primaryError) {
+    // If primary key fails and fallback is enabled, try fallback key
+    if (tryFallback) {
+      try {
+        const fallbackPassword = getFallbackEncryptionKey();
+        const combined = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
+        
+        const salt = combined.slice(0, 16);
+        const iv = combined.slice(16, 28);
+        const encrypted = combined.slice(28);
+        
+        const key = await deriveKey(new TextDecoder().decode(fallbackPassword), salt);
+        
+        const decrypted = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: iv },
+          key,
+          encrypted
+        );
+        
+        return new TextDecoder().decode(decrypted);
+      } catch (fallbackError) {
+        // Both keys failed - only log in development to reduce console noise
+        if (import.meta.env.DEV) {
+          console.warn('Decryption failed with both primary and fallback keys:', {
+            primary: primaryError.message,
+            fallback: fallbackError.message
+          });
+        }
+        throw new Error('Failed to decrypt data');
+      }
+    } else {
+      // Only log in development to reduce console noise
+      if (import.meta.env.DEV) {
+        console.warn('Decryption error:', primaryError);
+      }
+      throw new Error('Failed to decrypt data');
+    }
   }
 }
 
@@ -185,7 +227,7 @@ export async function decryptSensitiveFields(data, sensitiveFields = [
   for (const field of sensitiveFields) {
     if (decrypted[`${field}_encrypted`] && decrypted[field]) {
       try {
-        const decryptedValue = await decryptSensitiveField(decrypted[field]);
+        const decryptedValue = await decryptSensitiveField(decrypted[field], true);
         
         // Convert back to number if it was originally a number field
         if (field === 'amount' && !isNaN(decryptedValue)) {
@@ -196,8 +238,12 @@ export async function decryptSensitiveFields(data, sensitiveFields = [
         
         delete decrypted[`${field}_encrypted`];
       } catch (error) {
-        console.error(`Failed to decrypt ${field}:`, error);
-        // Keep encrypted value on error
+        // Only log in development to reduce console noise in production
+        // The encrypted value is kept, so the app continues to function
+        if (import.meta.env.DEV) {
+          console.warn(`Failed to decrypt ${field} (keeping encrypted value):`, error);
+        }
+        // Keep encrypted value on error - app will continue to function
       }
     }
   }

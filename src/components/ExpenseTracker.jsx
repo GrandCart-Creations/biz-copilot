@@ -110,6 +110,7 @@ const AttachmentPanel = ({
   onFilesChange,
   previewItems,
   existingAttachments,
+  onExistingAttachmentsChange,
   currentPreviewId,
   setCurrentPreviewId,
   zoomLevel,
@@ -471,22 +472,58 @@ const AttachmentPanel = ({
           {previewItems.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {previewItems.map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setCurrentPreviewId(item.id);
-                    setZoomLevel(DEFAULT_ZOOM);
-                  }}
-                  className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                    currentPreviewId === item.id
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-gray-100 text-gray-700 border-gray-300 hover:border-blue-400'
-                  }`}
-                  title={item.name}
-                >
-                  {item.name.length > 26 ? `${item.name.slice(0, 24)}…` : item.name}
-                </button>
+                <div key={item.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPreviewId(item.id);
+                      setZoomLevel(DEFAULT_ZOOM);
+                    }}
+                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                      currentPreviewId === item.id
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-gray-100 text-gray-700 border-gray-300 hover:border-blue-400'
+                    }`}
+                    title={item.name}
+                  >
+                    {item.name.length > 26 ? `${item.name.slice(0, 24)}…` : item.name}
+                  </button>
+                  {item.source === 'existing' && onExistingAttachmentsChange && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (window.confirm(`Remove "${item.name}"? This will delete the attachment from this expense.`)) {
+                          const attachmentIndex = existingAttachments.findIndex(
+                            att => {
+                              const attId = att.id ? `existing-${att.id}` : `existing-${existingAttachments.indexOf(att)}-${att.fileName || 'attachment'}`;
+                              return attId === item.id;
+                            }
+                          );
+                          if (attachmentIndex !== -1) {
+                            const updated = existingAttachments.filter((_, idx) => idx !== attachmentIndex);
+                            onExistingAttachmentsChange(updated);
+                            // If we're viewing this attachment, switch to another or clear preview
+                            if (currentPreviewId === item.id) {
+                              const remaining = previewItems.filter(p => p.id !== item.id);
+                              if (remaining.length > 0) {
+                                setCurrentPreviewId(remaining[0].id);
+                              } else {
+                                setCurrentPreviewId(null);
+                              }
+                            }
+                          }
+                        }
+                      }}
+                      className="ml-1 p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full border border-red-200 hover:border-red-300 transition-colors"
+                      title="Remove attachment"
+                      aria-label="Remove attachment"
+                    >
+                      <FaTimes className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           ) : (
@@ -1372,9 +1409,49 @@ const approvalStatusStyles = {
       }
     }
 
+    // Enhanced country detection from vendor address
     if (!fields.vendorCountry) {
       const vendorText = `${fields.vendor || ''} ${fields.vendorAddress || ''}`.toLowerCase();
-      const countryMatch = EU_COUNTRY_OPTIONS.find(country => vendorText.includes(country.label.toLowerCase()));
+      const fullText = normalized.toLowerCase();
+      
+      // 1. Check for country codes (2-letter ISO codes) in the text
+      const countryCodeRegex = /\b([A-Z]{2})\b/g;
+      const countryCodeMatches = [];
+      let match;
+      const upperText = `${fields.vendor || ''} ${fields.vendorAddress || ''}`.toUpperCase();
+      while ((match = countryCodeRegex.exec(upperText)) !== null) {
+        const code = match[1];
+        // Check if it's a valid country code
+        const euCountry = EU_COUNTRY_OPTIONS.find(c => c.code === code);
+        if (euCountry) {
+          countryCodeMatches.push({ code, position: match.index });
+        }
+      }
+      // Also check global country codes
+      const globalCountryCodes = ['US', 'CA', 'GB', 'AU', 'NZ', 'IN', 'IL', 'JP', 'CN', 'KR', 'BR', 'MX', 'ZA', 'SG', 'AE', 'CH', 'NO'];
+      for (const code of globalCountryCodes) {
+        if (upperText.includes(code) && !countryCodeMatches.find(m => m.code === code)) {
+          countryCodeMatches.push({ code, position: upperText.indexOf(code) });
+        }
+      }
+      // Prefer country codes that appear later in the text (likely in address)
+      if (countryCodeMatches.length > 0) {
+        countryCodeMatches.sort((a, b) => b.position - a.position);
+        fields.vendorCountry = countryCodeMatches[0].code;
+      }
+    }
+
+    if (!fields.vendorCountry) {
+      const vendorText = `${fields.vendor || ''} ${fields.vendorAddress || ''}`.toLowerCase();
+      const fullText = normalized.toLowerCase();
+      
+      // 2. Check for full country names (EU countries)
+      const countryMatch = EU_COUNTRY_OPTIONS.find(country => {
+        const labelLower = country.label.toLowerCase();
+        // Check if country name appears as a whole word
+        const regex = new RegExp(`\\b${labelLower}\\b`, 'i');
+        return regex.test(vendorText) || regex.test(fullText);
+      });
       if (countryMatch) {
         fields.vendorCountry = countryMatch.code;
       }
@@ -1382,18 +1459,117 @@ const approvalStatusStyles = {
 
     if (!fields.vendorCountry) {
       const vendorText = `${fields.vendor || ''} ${fields.vendorAddress || ''}`.toLowerCase();
+      const fullText = normalized.toLowerCase();
+      
+      // 3. Check for global country names
       const globalCountryCandidates = [
-        { code: 'US', keywords: ['united states', 'u.s.a', 'u.s.', 'usa'] },
-        { code: 'CA', keywords: ['canada'] },
-        { code: 'GB', keywords: ['united kingdom', 'england', 'scotland', 'wales', 'uk', 'great britain'] },
-        { code: 'AU', keywords: ['australia'] },
-        { code: 'NZ', keywords: ['new zealand'] },
-        { code: 'IN', keywords: ['india'] }
+        { code: 'US', keywords: ['united states', 'u.s.a', 'u.s.', 'usa', 'america', 'american'] },
+        { code: 'CA', keywords: ['canada', 'canadian'] },
+        { code: 'GB', keywords: ['united kingdom', 'england', 'scotland', 'wales', 'uk', 'great britain', 'british'] },
+        { code: 'AU', keywords: ['australia', 'australian'] },
+        { code: 'NZ', keywords: ['new zealand', 'kiwi'] },
+        { code: 'IN', keywords: ['india', 'indian'] },
+        { code: 'IL', keywords: ['israel', 'israeli'] },
+        { code: 'JP', keywords: ['japan', 'japanese'] },
+        { code: 'CN', keywords: ['china', 'chinese'] },
+        { code: 'KR', keywords: ['south korea', 'korea', 'korean'] },
+        { code: 'BR', keywords: ['brazil', 'brazilian'] },
+        { code: 'MX', keywords: ['mexico', 'mexican'] },
+        { code: 'ZA', keywords: ['south africa', 'south african'] },
+        { code: 'SG', keywords: ['singapore', 'singaporean'] },
+        { code: 'AE', keywords: ['united arab emirates', 'uae', 'dubai', 'abu dhabi'] },
+        { code: 'CH', keywords: ['switzerland', 'swiss'] },
+        { code: 'NO', keywords: ['norway', 'norwegian'] }
       ];
       for (const candidate of globalCountryCandidates) {
-        if (candidate.keywords.some(keyword => vendorText.includes(keyword))) {
+        if (candidate.keywords.some(keyword => {
+          const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+          return regex.test(vendorText) || regex.test(fullText);
+        })) {
           fields.vendorCountry = candidate.code;
           break;
+        }
+      }
+    }
+
+    if (!fields.vendorCountry) {
+      const vendorText = `${fields.vendor || ''} ${fields.vendorAddress || ''}`.toLowerCase();
+      const fullText = normalized.toLowerCase();
+      
+      // 4. Check for major cities that indicate countries
+      const cityCountryMap = [
+        // US cities
+        { cities: ['new york', 'los angeles', 'chicago', 'houston', 'phoenix', 'philadelphia', 'san antonio', 'san diego', 'dallas', 'san jose', 'austin', 'jacksonville', 'san francisco', 'indianapolis', 'columbus', 'fort worth', 'charlotte', 'seattle', 'denver', 'washington', 'boston', 'el paso', 'detroit', 'nashville', 'portland', 'oklahoma city', 'las vegas', 'memphis', 'louisville', 'baltimore', 'milwaukee', 'albuquerque', 'tucson', 'fresno', 'sacramento', 'kansas city', 'mesa', 'atlanta', 'omaha', 'colorado springs', 'raleigh', 'virginia beach', 'miami', 'oakland', 'minneapolis', 'tulsa', 'cleveland', 'wichita', 'arlington'], country: 'US' },
+        // UK cities
+        { cities: ['london', 'birmingham', 'manchester', 'glasgow', 'liverpool', 'leeds', 'sheffield', 'edinburgh', 'bristol', 'cardiff', 'belfast', 'newcastle', 'nottingham', 'southampton', 'derby', 'portsmouth', 'brighton', 'reading', 'northampton', 'luton', 'wolverhampton', 'bolton', 'bournemouth', 'norwich', 'swansea', 'southend-on-sea', 'blackpool', 'oxford', 'cambridge', 'york'], country: 'GB' },
+        // Canadian cities
+        { cities: ['toronto', 'montreal', 'calgary', 'ottawa', 'edmonton', 'winnipeg', 'vancouver', 'mississauga', 'brampton', 'hamilton', 'quebec', 'surrey', 'laval', 'halifax', 'london', 'markham', 'vaughan', 'gatineau', 'saskatoon', 'longueuil', 'kitchener', 'burnaby', 'windsor', 'regina', 'richmond', 'richmond hill', 'oakville', 'burlington', 'greater sudbury', 'sherbrooke'], country: 'CA' },
+        // Australian cities
+        { cities: ['sydney', 'melbourne', 'brisbane', 'perth', 'adelaide', 'gold coast', 'newcastle', 'canberra', 'sunshine coast', 'wollongong', 'hobart', 'geelong', 'townsville', 'cairns', 'darwin', 'toowoomba', 'ballarat', 'bendigo', 'albury', 'launceston', 'mackay', 'rockhampton', 'bunbury', 'bundaberg', 'coffs harbour', 'wagga wagga', 'hervey bay', 'port macquarie', 'shepparton', 'caloundra'], country: 'AU' },
+        // Israeli cities
+        { cities: ['tel aviv', 'jerusalem', 'haifa', 'rishon lezion', 'petah tikva', 'ashdod', 'netanya', 'beer sheva', 'bnei brak', 'holon', 'ramat gan', 'rehovot', 'bat yam', 'ashkelon', 'kfar saba', 'herzliya', 'hadera', 'raanana', 'modiin', 'lod', 'nazareth', 'ramla', 'givatayim', 'kiryat gat', 'kiryat motzkin', 'kiryat bialik', 'kiryat yam', 'kiryat shmona', 'eilat', 'tiberias'], country: 'IL' },
+        // Other major cities
+        { cities: ['paris', 'lyon', 'marseille', 'toulouse', 'nice', 'nantes', 'strasbourg', 'montpellier', 'bordeaux', 'lille', 'rennes', 'reims', 'saint-étienne', 'le havre', 'toulon', 'grenoble', 'dijon', 'angers', 'nîmes', 'villeurbanne'], country: 'FR' },
+        { cities: ['berlin', 'hamburg', 'munich', 'cologne', 'frankfurt', 'stuttgart', 'düsseldorf', 'dortmund', 'essen', 'leipzig', 'bremen', 'dresden', 'hannover', 'nuremberg', 'duisburg', 'bochum', 'wuppertal', 'bielefeld', 'bonn', 'münster'], country: 'DE' },
+        { cities: ['rome', 'milan', 'naples', 'turin', 'palermo', 'genoa', 'bologna', 'florence', 'bari', 'catania', 'venice', 'verona', 'messina', 'padua', 'trieste', 'brescia', 'taranto', 'prato', 'modena', 'reggio calabria'], country: 'IT' },
+        { cities: ['madrid', 'barcelona', 'valencia', 'seville', 'zaragoza', 'málaga', 'murcia', 'palma', 'las palmas', 'bilbao', 'alicante', 'córdoba', 'valladolid', 'vigo', 'gijón', 'hospitalet', 'granada', 'vitoria', 'a coruña', 'elche'], country: 'ES' },
+        { cities: ['amsterdam', 'rotterdam', 'the hague', 'utrecht', 'eindhoven', 'groningen', 'tilburg', 'almere', 'breda', 'nijmegen', 'enschede', 'haarlem', 'arnhem', 'zaanstad', 'amersfoort', 'apeldoorn', 's-hertogenbosch', 'hoofddorp', 'maastricht', 'leiden'], country: 'NL' },
+        { cities: ['tokyo', 'yokohama', 'osaka', 'nagoya', 'sapporo', 'fukuoka', 'kobe', 'kawasaki', 'kyoto', 'saitama', 'hiroshima', 'sendai', 'chiba', 'kitakyushu', 'sakai', 'niigata', 'hamamatsu', 'kumamoto', 'sagaminara', 'okayama'], country: 'JP' },
+        { cities: ['beijing', 'shanghai', 'guangzhou', 'shenzhen', 'chengdu', 'hangzhou', 'wuhan', 'xi\'an', 'tianjin', 'nanjing', 'chongqing', 'dongguan', 'shenyang', 'qingdao', 'dalian', 'zhengzhou', 'jinan', 'changsha', 'kunming', 'foshan'], country: 'CN' },
+        { cities: ['mumbai', 'delhi', 'bangalore', 'hyderabad', 'ahmedabad', 'chennai', 'kolkata', 'surat', 'pune', 'jaipur', 'lucknow', 'kanpur', 'nagpur', 'indore', 'thane', 'bhopal', 'visakhapatnam', 'patna', 'vadodara', 'ghaziabad'], country: 'IN' },
+        { cities: ['são paulo', 'rio de janeiro', 'brasília', 'salvador', 'fortaleza', 'belo horizonte', 'manaus', 'curitiba', 'recife', 'porto alegre', 'belém', 'goiânia', 'guarulhos', 'campinas', 'são luís', 'são gonçalo', 'maceió', 'duque de caxias', 'natal', 'teresina'], country: 'BR' },
+        { cities: ['mexico city', 'guadalajara', 'monterrey', 'puebla', 'tijuana', 'león', 'juárez', 'torreón', 'querétaro', 'san luis potosí', 'mérida', 'mexicali', 'aguascalientes', 'tampico', 'cancún', 'acapulco', 'chihuahua', 'cuernavaca', 'toluca', 'morelia'], country: 'MX' },
+        { cities: ['zurich', 'geneva', 'basel', 'bern', 'lausanne', 'winterthur', 'lucerne', 'st. gallen', 'lugano', 'biel', 'thun', 'koniz', 'la chaux-de-fonds', 'schaffhausen', 'fribourg', 'chur', 'ustern', 'sion', 'martigny', 'aarau'], country: 'CH' },
+        { cities: ['oslo', 'bergen', 'trondheim', 'stavanger', 'bærum', 'kristiansand', 'fredrikstad', 'tromsø', 'sandnes', 'ålesund', 'tønsberg', 'haugesund', 'arendal', 'moss', 'bodø', 'hamar', 'kongsberg', 'harstad', 'molde', 'lillehammer'], country: 'NO' },
+        { cities: ['stockholm', 'gothenburg', 'malmö', 'uppsala', 'västerås', 'örebro', 'linköping', 'helsingborg', 'jönköping', 'norrköping', 'lund', 'umeå', 'gävle', 'borås', 'södertälje', 'eskilstuna', 'halmstad', 'växjö', 'karlstad', 'sundsvall'], country: 'SE' },
+        { cities: ['copenhagen', 'aarhus', 'odense', 'aalborg', 'esbjerg', 'randers', 'kolding', 'horsens', 'vejle', 'roskilde', 'herning', 'hørsholm', 'hvidovre', 'greve', 'silkeborg', 'næstved', 'fredericia', 'taastrup', 'ballerup', 'rødovre'], country: 'DK' },
+        { cities: ['helsinki', 'espoo', 'tampere', 'vantaa', 'oulu', 'turku', 'jyväskylä', 'lahti', 'kuopio', 'pori', 'kouvola', 'joensuu', 'lappeenranta', 'hämeenlinna', 'vaasa', 'seinäjoki', 'rovaniemi', 'mikkeli', 'kotka', 'salo'], country: 'FI' }
+      ];
+      
+      for (const mapping of cityCountryMap) {
+        if (mapping.cities.some(city => {
+          const regex = new RegExp(`\\b${city}\\b`, 'i');
+          return regex.test(vendorText) || regex.test(fullText);
+        })) {
+          fields.vendorCountry = mapping.country;
+          break;
+        }
+      }
+    }
+
+    if (!fields.vendorCountry) {
+      // 5. Check the last line of vendor address (often contains country)
+      if (fields.vendorAddress) {
+        const addressLines = fields.vendorAddress.split(',').map(line => line.trim());
+        const lastLine = addressLines[addressLines.length - 1]?.toLowerCase() || '';
+        if (lastLine) {
+          // Check if last line is a country name
+          const countryMatch = EU_COUNTRY_OPTIONS.find(country => {
+            const labelLower = country.label.toLowerCase();
+            return lastLine === labelLower || lastLine.includes(labelLower);
+          });
+          if (countryMatch) {
+            fields.vendorCountry = countryMatch.code;
+          } else {
+            // Check global countries
+            const globalCountries = [
+              { code: 'US', names: ['united states', 'usa', 'u.s.a'] },
+              { code: 'CA', names: ['canada'] },
+              { code: 'GB', names: ['united kingdom', 'uk', 'england'] },
+              { code: 'AU', names: ['australia'] },
+              { code: 'NZ', names: ['new zealand'] },
+              { code: 'IL', names: ['israel'] },
+              { code: 'JP', names: ['japan'] },
+              { code: 'CN', names: ['china'] },
+              { code: 'IN', names: ['india'] }
+            ];
+            for (const country of globalCountries) {
+              if (country.names.some(name => lastLine === name || lastLine.includes(name))) {
+                fields.vendorCountry = country.code;
+                break;
+              }
+            }
+          }
         }
       }
     }
@@ -1808,22 +1984,8 @@ const approvalStatusStyles = {
     });
   };
 
-  useEffect(() => {
-    let isMounted = true;
-    if (!showAddExpense) return;
-    resetFormState();
-    setEditingExpense(null);
-    setShowAddExpense(false);
-    trackEvent('add_document_cancelled', {
-      context: 'expense_modal',
-      reason,
-      wasEditing: Boolean(editingExpense),
-      companyId: currentCompanyId || 'unknown'
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [showAddExpense, editingExpense, currentCompanyId]);
+  // Removed problematic useEffect that was closing modal incorrectly
+  // Modal closing is now handled by handleCloseModal function only
 
   useEffect(() => {
     let isMounted = true;
@@ -3293,7 +3455,13 @@ const approvalStatusStyles = {
 
   // Handle expense edit
   const handleEditExpense = (expense) => {
-    setFormData({
+    try {
+      if (!expense || !expense.id) {
+        console.error('Invalid expense object passed to handleEditExpense:', expense);
+        return;
+      }
+      
+      setFormData({
       date: expense.date,
       invoiceDate: expense.invoiceDate || expense.date,
       dueDate: expense.dueDate || '',
@@ -3348,12 +3516,16 @@ const approvalStatusStyles = {
           : '',
       lastChecked: expense.vatValidatedAt || null
     });
-    setEditingExpense(expense);
-    setShowAddExpense(true);
-    setExistingAttachments(expense.attachments || []);
-    setSelectedFiles([]);
-    setCurrentPreviewId(null);
-    setZoomLevel(DEFAULT_ZOOM);
+      setEditingExpense(expense);
+      setShowAddExpense(true);
+      setExistingAttachments(expense.attachments || []);
+      setSelectedFiles([]);
+      setCurrentPreviewId(null);
+      setZoomLevel(DEFAULT_ZOOM);
+    } catch (error) {
+      console.error('Error in handleEditExpense:', error);
+      alert('Error opening expense for editing. Please try again.');
+    }
   };
 
   // Handle view attachments
@@ -4577,7 +4749,10 @@ const approvalStatusStyles = {
       {/* Add/Edit Expense Modal - Available in all views */}
       {showAddExpense && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="px-5 py-3 border-b">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className="text-lg font-medium">
@@ -5434,7 +5609,7 @@ const approvalStatusStyles = {
       )}
 
       {/* Main Content */}
-      <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-12 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
       <div className="space-y-4 lg:space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -5844,44 +6019,58 @@ const approvalStatusStyles = {
               <h2 className="text-lg font-medium text-gray-900">All Expenses</h2>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1200px] divide-y divide-gray-200">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full table-fixed divide-y divide-gray-200">
+              <colgroup>
+                <col style={{ width: '90px' }} />
+                <col style={{ width: '110px' }} />
+                <col style={{ width: '160px' }} />
+                <col style={{ width: '100px' }} />
+                <col style={{ width: '100px' }} />
+                <col style={{ width: '140px' }} />
+                <col style={{ width: 'auto' }} />
+                <col style={{ width: '200px' }} />
+                <col style={{ width: '100px' }} />
+                <col style={{ width: '140px' }} />
+                <col style={{ width: '70px' }} />
+                <col style={{ width: '80px' }} />
+              </colgroup>
               <thead className="bg-gray-50">
                 <tr>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Date
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Category
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Vendor
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Document
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Approval
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Description & Notes
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Payment Details
                     </th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
+                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Amount
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Issues
                     </th>
-                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Files
                     </th>
-                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -5891,19 +6080,19 @@ const approvalStatusStyles = {
                     // Skeleton rows for loading state
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
-                        <td className="px-3 py-4"><div className="h-6 bg-gray-200 rounded w-24"></div></td>
-                        <td className="px-3 py-4"><div className="h-6 bg-gray-200 rounded w-20"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-36"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-60"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-48"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-24 ml-auto"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-48"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-10 mx-auto"></div></td>
-                        <td className="px-3 py-4"><div className="h-4 bg-gray-200 rounded w-16 mx-auto"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-6 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-6 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-10 mx-auto"></div></td>
+                        <td className="px-3 py-3"><div className="h-4 bg-gray-200 rounded w-16 mx-auto"></div></td>
                       </tr>
                     ))
                   ) : visibleExpenses.length === 0 ? (
@@ -6034,6 +6223,9 @@ const approvalStatusStyles = {
                               url: expense.contractUrl || ''
                             }
                           : null);
+                      
+                      // Ensure contractDetailsForRow.value is safely accessible
+                      const contractValue = contractDetailsForRow && typeof contractDetailsForRow.value === 'number' ? contractDetailsForRow.value : null;
 
                       const timelineEvents = [];
                       if (expense.createdAt) {
@@ -6118,16 +6310,16 @@ const approvalStatusStyles = {
                       return (
                         <React.Fragment key={expense.id}>
                           <tr className={`hover:bg-gray-50 ${rowTone}`}>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                               {formatDateTime(expense.date, { dateStyle: 'medium' })}
                         </td>
-                        <td className="px-3 py-4 whitespace-nowrap">
+                        <td className="px-3 py-3 whitespace-nowrap">
                           <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                             {expense.category}
                           </span>
                         </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <div className="max-w-[180px]">
+                        <td className="px-3 py-3 text-sm text-gray-900">
+                          <div className="break-words">
                             <p className="truncate font-medium" title={expense.vendor}>
                               {expense.vendor || '—'}
                             </p>
@@ -6144,7 +6336,7 @@ const approvalStatusStyles = {
                             )}
                           </div>
                         </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-sm">
+                            <td className="px-3 py-3 whitespace-nowrap text-sm">
                               <div className="flex items-center gap-2">
                                 <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${documentMeta.classes}`}>
                                   {documentMeta.label}
@@ -6166,12 +6358,12 @@ const approvalStatusStyles = {
                                 )}
                           </div>
                         </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-sm">
+                            <td className="px-3 py-3 whitespace-nowrap text-sm">
                               <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${paymentMeta.classes}`}>
                                 {paymentMeta.label}
                               </span>
                             </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                               <div className="flex flex-col gap-1">
                                 <span className={`px-2 inline-flex text-xs font-semibold rounded-full ${approvalMeta.classes}`}>
                                   {approvalMeta.label}
@@ -6198,8 +6390,8 @@ const approvalStatusStyles = {
                                 )}
                               </div>
                             </td>
-                        <td className="px-3 py-4 text-sm text-gray-900">
-                          <div className="max-w-xl space-y-2">
+                        <td className="px-3 py-3 text-sm text-gray-900">
+                          <div className="break-words space-y-2">
                             <div className="space-y-1">
                               <p className="whitespace-pre-wrap break-words leading-snug font-medium text-gray-900">
                                 {expense.description}
@@ -6229,8 +6421,8 @@ const approvalStatusStyles = {
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-4 text-sm text-gray-600">
-                          <div className="space-y-1">
+                        <td className="px-3 py-3 text-sm text-gray-600">
+                          <div className="break-words space-y-1">
                             <div className="flex items-center gap-2 text-xs">
                               <FaCreditCard className="w-3 h-3 text-gray-400" />
                               <span className="truncate">
@@ -6251,10 +6443,10 @@ const approvalStatusStyles = {
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
+                        <td className="px-3 py-3 whitespace-nowrap text-sm text-right font-medium text-gray-900">
                               {Number.isFinite(amountToDisplay) ? formatCurrency(amountToDisplay) : '-'}
                         </td>
-                        <td className="px-3 py-4 text-xs">
+                        <td className="px-3 py-3 text-xs">
                           {hasValidationErrors ? (
                             <div className="space-y-1 text-red-600">
                               {expense.validationErrors.map((error, idx) => (
@@ -6269,7 +6461,7 @@ const approvalStatusStyles = {
                             <span className="text-green-600">Ready to import</span>
                           )}
                         </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center text-sm">
+                        <td className="px-3 py-3 whitespace-nowrap text-center text-sm">
                           {expense.attachments && expense.attachments.length > 0 ? (
                             <button
                               onClick={() => handleViewAttachments(expense)}
@@ -6282,7 +6474,7 @@ const approvalStatusStyles = {
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-medium">
+                        <td className="px-3 py-3 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
                             {documentTypeKey === 'invoice' && paymentStatusKey !== 'paid' && (
                               <>
@@ -6502,9 +6694,24 @@ const approvalStatusStyles = {
                                       )}
                                     </section>
                                   )}
-                                  {(expense.dueDate || expense.scheduledPaymentDate || expense.paymentScheduleNotes || expense.contractReference || expense.contractUrl || contractDetailsForRow) && (
-                                    <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-                                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Scheduling & Contracts</h4>
+                                  {(() => {
+                                    // Only show Scheduling & Contracts for future/open expenses, not for past/paid ones
+                                    const isPaid = (expense.paymentStatus || '').toLowerCase() === 'paid';
+                                    const expenseDate = expense.date ? new Date(expense.date) : null;
+                                    const isPastExpense = expenseDate && expenseDate < new Date();
+                                    const hasFutureScheduling = expense.scheduledPaymentDate && new Date(expense.scheduledPaymentDate) > new Date();
+                                    const hasContractInfo = contractDetailsForRow || expense.contractReference || expense.contractUrl;
+                                    
+                                    // Show only if: not paid AND (has future scheduling OR has contract info OR has future due date)
+                                    const shouldShow = !isPaid && (
+                                      hasFutureScheduling || 
+                                      hasContractInfo || 
+                                      (expense.dueDate && new Date(expense.dueDate) > new Date())
+                                    ) && (expense.dueDate || expense.scheduledPaymentDate || expense.paymentScheduleNotes || expense.contractReference || expense.contractUrl || contractDetailsForRow);
+                                    
+                                    return shouldShow ? (
+                                      <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                        <h4 className="text-sm font-semibold text-gray-800 mb-3">Scheduling & Contracts</h4>
                                       <div className="grid md:grid-cols-2 gap-4 text-sm text-gray-700">
                                         <div>
                                           <span className="block text-xs uppercase text-gray-400">Due date</span>
@@ -6542,10 +6749,10 @@ const approvalStatusStyles = {
                                             <span>—</span>
                                           )}
                                         </div>
-                                        {contractDetailsForRow?.value !== null && (
+                                        {contractValue !== null && contractDetailsForRow && (
                                           <div>
                                             <span className="block text-xs uppercase text-gray-400">Contract value</span>
-                                            <span>{contractDetailsForRow.value} {contractDetailsForRow.currency || ''}</span>
+                                            <span>{contractValue} {contractDetailsForRow.currency || ''}</span>
                                           </div>
                                         )}
                                       </div>
@@ -6556,8 +6763,8 @@ const approvalStatusStyles = {
                                         </div>
                                       )}
                                     </section>
-                                  )}
-
+                                    ) : null;
+                                  })()}
                                   {timelineEvents.length > 0 && (
                                     <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                                       <p className="text-sm font-semibold text-gray-800">Audit trail</p>
@@ -6570,7 +6777,7 @@ const approvalStatusStyles = {
                                             <div>
                                               <p className="text-sm font-medium text-gray-800">{event.label}</p>
                                               <p className="text-xs text-gray-500">
-                                                {formatDateTime(event.at)} • {resolveUserName(event.userId)}
+                                                {event.at ? formatDateTime(event.at) : '—'} • {event.userId ? resolveUserName(event.userId) : 'System'}
                                               </p>
                                               {event.meta && (
                                                 <p className="text-xs text-gray-400">

@@ -8,7 +8,8 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '../firebase';
 
-const functions = getFunctions(app);
+// Use europe-west1 region to match Cloud Function deployment
+const functions = getFunctions(app, 'europe-west1');
 
 /**
  * Process a natural language query

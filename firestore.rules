@@ -245,8 +245,48 @@ service cloud.firestore {
       // ============================================
       
       match /financialAccounts/{accountId} {
-        // OWNER ONLY: Financial accounts are sensitive and only owners can access
-        allow read, create, update, delete: if isAuthenticated() && isOwner(companyId);
+        // Read: Company members can read financial accounts
+        allow read: if isAuthenticated() && 
+                     (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                      request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Write: Only owners OR company creator can update
+        allow create, update, delete: if isAuthenticated() && 
+                                       (isOwner(companyId) || 
+                                        request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+      }
+      
+      // ============================================
+      // LEDGER ENTRIES
+      // ============================================
+      
+      match /ledgerEntries/{entryId} {
+        // Read: Company members can read ledger entries
+        allow read: if isAuthenticated() && 
+                     (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                      request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Write: Only owners OR company creator can create/update ledger entries
+        allow create, update, delete: if isAuthenticated() && 
+                                        (isOwner(companyId) || 
+                                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+      }
+      
+      // ============================================
+      // LEDGER ACCOUNTS
+      // ============================================
+      
+      match /ledgerAccounts/{accountId} {
+        // Read: Company members can read ledger accounts
+        allow read: if isAuthenticated() && 
+                     (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                      request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Write: Only owners OR company creator can create/update ledger accounts
+        // This is needed for ledger entry transactions that update account balances
+        allow create, update, delete: if isAuthenticated() && 
+                                        (isOwner(companyId) || 
+                                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
       }
       
       // ============================================

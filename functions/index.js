@@ -1363,7 +1363,8 @@ This invitation will expire in 7 days.`;
 exports.processAIQuery = onCall(
   {
     secrets: [OPENAI_API_KEY],
-    region: 'europe-west1'
+    region: 'europe-west1',
+    cors: true // Enable CORS for cross-origin requests
   },
   async (request) => {
     const { query, scope, companyId, userId } = request.data;
@@ -1397,10 +1398,21 @@ exports.processAIQuery = onCall(
       const systemPrompt = systemPrompts[scope] || systemPrompts.global;
 
       // Get relevant data based on scope with intelligent querying
+      // Also check query content to auto-detect financial queries even if scope is global
       let contextData = '';
       let queryData = null;
       
-      if (scope === 'financial') {
+      // Detect if query is financial even if scope is global
+      const lowerQuery = query.toLowerCase();
+      const isFinancialQuery = lowerQuery.includes('expense') || lowerQuery.includes('income') || 
+                               lowerQuery.includes('invoice') || lowerQuery.includes('revenue') ||
+                               lowerQuery.includes('spending') || lowerQuery.includes('cost') ||
+                               lowerQuery.includes('financial') || lowerQuery.includes('money');
+      
+      // Use financial scope if query is financial, even if scope is global
+      const effectiveScope = (scope === 'financial' || isFinancialQuery) ? 'financial' : scope;
+      
+      if (effectiveScope === 'financial') {
         // Detect query intent
         const lowerQuery = query.toLowerCase();
         const isExpenseQuery = lowerQuery.includes('expense') || lowerQuery.includes('spending') || lowerQuery.includes('cost');
@@ -1438,14 +1450,40 @@ exports.processAIQuery = onCall(
           }
           
           const expensesSnapshot = await expensesQuery.limit(20).get();
-          const expenses = expensesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const expenses = expensesSnapshot.docs.map(doc => {
+            const data = doc.data();
+            return { 
+              id: doc.id, 
+              ...data,
+              // Ensure date is properly formatted
+              date: data.date?.toDate ? data.date.toDate() : data.date
+            };
+          });
           
           // Calculate totals
           const totalExpenses = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
           const totalVAT = expenses.reduce((sum, exp) => sum + (exp.vatAmount || 0), 0);
           
-          contextData = `Expenses data: ${expenses.length} items found. Total: €${totalExpenses.toFixed(2)}, VAT: €${totalVAT.toFixed(2)}. `;
-          contextData += `Recent expenses: ${expenses.slice(0, 5).map(e => `${e.description || 'Expense'}: €${(e.amount || 0).toFixed(2)}`).join(', ')}.`;
+          if (expenses.length > 0) {
+            const dateRangeText = dateFilter 
+              ? `from ${dateFilter.start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+              : 'across all time';
+            
+            contextData = `EXPENSES DATA (${expenses.length} items found ${dateRangeText}):
+- Total Amount: €${totalExpenses.toFixed(2)}
+- Total VAT: €${totalVAT.toFixed(2)}
+
+Expense Details:
+${expenses.slice(0, 10).map((e, idx) => {
+  const dateStr = e.date ? (e.date instanceof Date ? e.date.toLocaleDateString() : e.date) : 'No date';
+  return `${idx + 1}. ${e.description || 'Expense'} - €${(e.amount || 0).toFixed(2)} (Date: ${dateStr})`;
+}).join('\n')}`;
+          } else {
+            const dateRangeText = dateFilter 
+              ? `for ${dateFilter.start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+              : '';
+            contextData = `EXPENSES DATA: No expenses found ${dateRangeText}.`;
+          }
           
           queryData = {
             type: 'expenses',
@@ -1512,21 +1550,29 @@ exports.processAIQuery = onCall(
       }
 
       // Build enhanced system prompt with data context
+      const dataContextSection = contextData 
+        ? `IMPORTANT: The following data has been fetched from the database and is available for you to use:
+
+${contextData}
+
+You MUST use this actual data in your response. Do NOT say you don't have access to the data - it is provided above.`
+        : 'Note: No specific data was found for this query. Provide general guidance based on best practices.';
+
       const enhancedSystemPrompt = `${systemPrompt}
 
 Company: ${company.name || 'Unknown'}
 Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
 
-Available Data Context:
-${contextData || 'No specific data context available.'}
+${dataContextSection}
 
 Instructions:
-- Provide clear, actionable insights based on the data
-- Use specific numbers and amounts when available
+- ALWAYS use the actual data provided above if available
+- Provide specific numbers, amounts, and details from the data
 - Format currency as € (Euro)
-- Be concise but informative
-- If data is limited, acknowledge it and provide general guidance
-- For financial queries, focus on trends, totals, and key insights`;
+- Be direct and factual - use the real data, don't apologize for not having it
+- If data shows 0 items or empty results, state that clearly
+- For financial queries, include totals, counts, and key items from the data
+- Never say "I don't have access" when data is provided above`;
 
       // Call OpenAI with enhanced context
       const completion = await openai.chat.completions.create({

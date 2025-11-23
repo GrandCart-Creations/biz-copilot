@@ -19,6 +19,7 @@ import FundingAndInvestors from './FundingAndInvestors';
 import CompanyBranding from './CompanyBranding';
 import CompanyOnboarding from './CompanyOnboarding';
 import Contracts from './Contracts';
+import AccountBalanceRepair from './AccountBalanceRepair';
 import {
   FaCog,
   FaBuilding,
@@ -31,7 +32,8 @@ import {
   FaPaintBrush,
   FaRocket,
   FaStream,
-  FaFileContract
+  FaFileContract,
+  FaTools
 } from 'react-icons/fa';
 import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
 
@@ -39,7 +41,7 @@ const SettingsDashboard = () => {
   const navigate = useNavigate();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
   const [loading] = useState(false);
-  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'people' | 'accounts' | 'funding' | 'branding' | 'onboarding' | 'contracts'
+  const [activeTab, setActiveTab] = useState('team'); // 'team' | 'people' | 'accounts' | 'funding' | 'branding' | 'onboarding' | 'contracts' | 'repair'
 
   if (loading) {
     return (
@@ -76,7 +78,8 @@ const SettingsDashboard = () => {
     { id: 'contracts', label: 'Contracts', icon: FaFileContract, roles: ['owner', 'manager'] },
     { id: 'funding', label: 'Funding & Investors', icon: FaSeedling, roles: ['owner', 'manager'] },
     { id: 'branding', label: 'Branding', icon: FaPaintBrush, roles: ['owner'] },
-    { id: 'onboarding', label: 'Onboarding', icon: FaRocket, roles: ['owner'] }
+    { id: 'onboarding', label: 'Onboarding', icon: FaRocket, roles: ['owner'] },
+    { id: 'repair', label: 'Account Repair', icon: FaTools, roles: ['owner'] }
   ];
   const visibleTabs = tabItems.filter(tab => !tab.roles || tab.roles.includes(userRole));
 
@@ -159,6 +162,7 @@ const SettingsDashboard = () => {
           {activeTab === 'funding' && <FundingAndInvestors />}
           {activeTab === 'branding' && <CompanyBranding />}
           {activeTab === 'onboarding' && <CompanyOnboarding />}
+          {activeTab === 'repair' && <AccountBalanceRepair />}
         </div>
 
         {/* Coming Soon Features */}

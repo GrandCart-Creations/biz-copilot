@@ -27,3 +27,6 @@ dist-ssr
 *.sw?
 functions/node_modules
 functions/.env
+ENCRYPTION_KEY_BACKUP.txt
+ENCRYPTION_KEY_BACKUP.txt
+.env.production

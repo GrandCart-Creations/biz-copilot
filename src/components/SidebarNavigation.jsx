@@ -9,6 +9,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
 import { getModulesBySections, getModule } from '../utils/modules';
+import { getHeaderLogo } from '../utils/theme';
 import {
   FaChartLine,
   FaDollarSign,
@@ -21,13 +22,20 @@ import {
   FaUsers,
   FaShieldAlt,
   FaChevronDown,
-  FaChevronRight
+  FaChevronRight,
+  FaChevronLeft
 } from 'react-icons/fa';
 
 const SidebarNavigation = ({ isOpen, onToggle, pinned, onTogglePin }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { userRole, subscriptionTier, currentCompanyId } = useCompany();
+  const { userRole, subscriptionTier, currentCompanyId, currentCompany } = useCompany();
+  
+  // Get company logo
+  const headerLogo = getHeaderLogo(currentCompany);
+  const headerAlt = currentCompany?.branding?.logoUrl
+    ? `${currentCompany?.name || 'Company'} logo`
+    : 'Biz-CoPilot';
   const [expandedSections, setExpandedSections] = useState({
     financial: true,
     operations: false,
@@ -169,14 +177,35 @@ const SidebarNavigation = ({ isOpen, onToggle, pinned, onTogglePin }) => {
   // Determine if sidebar should be visible (open or hover-expanded)
   const isVisible = isOpen || (isHovered && !pinned);
 
-  // Collapsed state - show minimal sidebar with icons
+  // Collapsed state - show minimal sidebar with logo and icons
   if (!isOpen && !isHovered) {
     return (
       <div
         ref={sidebarRef}
-        className="fixed left-0 top-0 h-full w-16 bg-white border-r border-gray-200 shadow-lg z-40 flex flex-col transition-all duration-300"
+        className="fixed left-0 top-0 h-full w-16 bg-white border-r border-gray-200 shadow-lg z-50 flex flex-col transition-all duration-300"
         onMouseEnter={() => !pinned && setIsHovered(true)}
       >
+        {/* Top: Logo and Chevron (always visible) */}
+        <div className="flex flex-col items-center p-3 border-b border-gray-200">
+          {/* Logo - always visible */}
+          <div className="mb-2 flex items-center justify-center">
+            <img 
+              src={headerLogo} 
+              alt={headerAlt} 
+              className="h-10 w-10 object-contain rounded" 
+            />
+          </div>
+          {/* Chevron Toggle */}
+          <button
+            onClick={onToggle}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <FaChevronRight className="w-4 h-4 text-gray-600" />
+          </button>
+        </div>
+        
         {/* Minimal icons for collapsed state */}
         <div className="flex-1 overflow-y-auto py-4">
           {sections.map((section) => {
@@ -209,12 +238,55 @@ const SidebarNavigation = ({ isOpen, onToggle, pinned, onTogglePin }) => {
   return (
     <div
       ref={sidebarRef}
-      className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 shadow-lg z-40 flex flex-col transition-all duration-300"
+      className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 shadow-lg z-50 flex flex-col transition-all duration-300"
       onMouseLeave={() => !pinned && !isOpen && setIsHovered(false)}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">Navigation</h2>
+      {/* Top Line: Logo and Chevron */}
+      <div className="flex items-center justify-between p-3 border-b border-gray-200">
+        {/* Logo */}
+        <div className="flex items-center">
+          <img 
+            src={headerLogo} 
+            alt={headerAlt} 
+            className="h-10 w-auto max-w-[140px] object-contain" 
+          />
+        </div>
+        
+        {/* Chevron Toggle and Pin Button */}
+        <div className="flex items-center gap-2">
+          {/* Pin/Unpin Button */}
+          <button
+            onClick={onTogglePin}
+            className={`p-1.5 rounded transition-colors ${
+              pinned 
+                ? 'bg-gray-200 hover:bg-gray-300' 
+                : 'hover:bg-gray-100'
+            }`}
+            aria-label={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
+            title={pinned ? 'Unpin sidebar (hover to expand)' : 'Pin sidebar (always visible)'}
+          >
+            <div className={`w-2.5 h-2.5 rounded border ${
+              pinned 
+                ? 'border-gray-600 bg-gray-600' 
+                : 'border-gray-400'
+            }`} />
+          </button>
+          
+          {/* Chevron Toggle */}
+          <button
+            onClick={onToggle}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <FaChevronLeft className="w-4 h-4 text-gray-600" />
+          </button>
+        </div>
+      </div>
+      
+      {/* Navigation Label (moved down one line) */}
+      <div className="px-4 py-2 border-b border-gray-200">
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Navigation</h2>
       </div>
 
       {/* Navigation Content */}

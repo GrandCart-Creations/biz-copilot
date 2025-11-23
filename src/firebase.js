@@ -553,11 +553,26 @@ export const updateCompanyExpense = async (companyId, expenseId, expenseData) =>
       };
 
       try {
+        // Use the current user ID for ledger entry creation
+        // This ensures the ledger entry is created with proper permissions
+        let userIdForLedger = expenseData.updatedBy || existingData.updatedBy || '';
+        
+        // If no user ID provided or it's a system ID, try to get from auth
+        if (!userIdForLedger || userIdForLedger.startsWith('system-')) {
+          try {
+            const currentUser = getCurrentUser();
+            userIdForLedger = currentUser?.uid || existingData.createdBy || userIdForLedger;
+          } catch {
+            // Fallback to expense creator if we can't get current user
+            userIdForLedger = existingData.createdBy || userIdForLedger;
+          }
+        }
+        
         const ledgerEntryId = await createExpenseLedgerEntry(
           companyId,
           expenseId,
           mergedData,
-          expenseData.updatedBy || existingData.updatedBy || ''
+          userIdForLedger
         );
 
         await updateDoc(expenseRef, {
@@ -2339,6 +2354,30 @@ const createLedgerEntry = async (companyId, entryData = {}) => {
   const financialAdjustments = computeFinancialAccountAdjustments(lines, 1);
 
   await runTransaction(db, async (transaction) => {
+    // PHASE 1: ALL READS FIRST (Firestore requirement)
+    // Read all ledger accounts that will be updated
+    const ledgerAccountSnaps = new Map();
+    for (const [accountId] of ledgerAdjustments.entries()) {
+      const accountRef = getLedgerAccountRef(companyId, accountId);
+      const accountSnap = await transaction.get(accountRef);
+      if (!accountSnap.exists()) {
+        throw new Error(`Ledger account ${accountId} not found`);
+      }
+      ledgerAccountSnaps.set(accountId, accountSnap);
+    }
+    
+    // Read all financial accounts that will be updated
+    const financialAccountSnaps = new Map();
+    for (const [financialAccountId] of financialAdjustments.entries()) {
+      const financialRef = doc(db, 'companies', companyId, 'financialAccounts', financialAccountId);
+      const financialSnap = await transaction.get(financialRef);
+      if (financialSnap.exists()) {
+        financialAccountSnaps.set(financialAccountId, financialSnap);
+      }
+    }
+    
+    // PHASE 2: ALL WRITES AFTER READS
+    // Create the ledger entry
     transaction.set(entryRef, {
       date: entryData.date || new Date().toISOString().split('T')[0],
       description: entryData.description || '',
@@ -2356,12 +2395,9 @@ const createLedgerEntry = async (companyId, entryData = {}) => {
       updatedAt: serverTimestamp()
     });
 
+    // Update ledger accounts (using data from reads)
     for (const [accountId, adjustment] of ledgerAdjustments.entries()) {
-      const accountRef = getLedgerAccountRef(companyId, accountId);
-      const accountSnap = await transaction.get(accountRef);
-      if (!accountSnap.exists()) {
-        throw new Error(`Ledger account ${accountId} not found`);
-      }
+      const accountSnap = ledgerAccountSnaps.get(accountId);
       const accountData = accountSnap.data();
       const meta = LEDGER_TYPE_META[accountData.type] || {};
       const normalBalance = accountData.normalBalance || meta.normalBalance || 'debit';
@@ -2373,6 +2409,7 @@ const createLedgerEntry = async (companyId, entryData = {}) => {
         ? adjustment.debit - adjustment.credit
         : adjustment.credit - adjustment.debit;
 
+      const accountRef = getLedgerAccountRef(companyId, accountId);
       transaction.update(accountRef, {
         balance: parseFloat((currentBalance + balanceDelta).toFixed(2)),
         debitTotal: parseFloat((currentDebit + adjustment.debit).toFixed(2)),
@@ -2381,13 +2418,14 @@ const createLedgerEntry = async (companyId, entryData = {}) => {
       });
     }
 
+    // Update financial accounts (using data from reads)
     for (const [financialAccountId, delta] of financialAdjustments.entries()) {
-      const financialRef = doc(db, 'companies', companyId, 'financialAccounts', financialAccountId);
-      const financialSnap = await transaction.get(financialRef);
-      if (!financialSnap.exists()) {
-        continue;
+      const financialSnap = financialAccountSnaps.get(financialAccountId);
+      if (!financialSnap) {
+        continue; // Skip if account doesn't exist
       }
       const currentBalance = parseFloat(financialSnap.data().currentBalance || 0);
+      const financialRef = doc(db, 'companies', companyId, 'financialAccounts', financialAccountId);
       transaction.update(financialRef, {
         currentBalance: parseFloat((currentBalance + delta).toFixed(2)),
         updatedAt: serverTimestamp()

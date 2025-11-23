@@ -45,6 +45,7 @@ const AICommandCenter = () => {
     suggestions: [] 
   });
   const [urgentAlerts, setUrgentAlerts] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -125,6 +126,25 @@ const AICommandCenter = () => {
     });
   }, [userRole, aiPolicies]);
 
+  // Check if sidebar is open (via data attribute set by MainLayout)
+  useEffect(() => {
+    const checkSidebar = () => {
+      setSidebarOpen(document.body.hasAttribute('data-sidebar-open'));
+    };
+    
+    // Check initially
+    checkSidebar();
+    
+    // Watch for changes
+    const observer = new MutationObserver(checkSidebar);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-sidebar-open']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
+
   const runQuery = async (event) => {
     event.preventDefault();
     if (!query.trim()) {
@@ -204,6 +224,7 @@ const AICommandCenter = () => {
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
+  // Early returns after all hooks
   if (!currentUser) {
     return null;
   }
@@ -215,27 +236,6 @@ const AICommandCenter = () => {
   if (isInOnboarding) {
     return null;
   }
-
-  // Check if sidebar is open (via data attribute set by MainLayout)
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  
-  useEffect(() => {
-    const checkSidebar = () => {
-      setSidebarOpen(document.body.hasAttribute('data-sidebar-open'));
-    };
-    
-    // Check initially
-    checkSidebar();
-    
-    // Watch for changes
-    const observer = new MutationObserver(checkSidebar);
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['data-sidebar-open']
-    });
-    
-    return () => observer.disconnect();
-  }, []);
 
   if (!isOpen) {
     return (
