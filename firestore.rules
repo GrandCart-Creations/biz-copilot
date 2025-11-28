@@ -817,6 +817,72 @@ service cloud.firestore {
       }
       
       // ============================================
+      // COLLABORATION & DATA SHARING
+      // ============================================
+      
+      match /collaborationWorkspaces/{workspaceId} {
+        // Read: Company members can read collaboration workspaces
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create/Update: Company members can create/update workspaces
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Delete: Only owners and managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      match /collaborationActivities/{activityId} {
+        // Read: Company members can read collaboration activities
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create: Company members can create activities
+        allow create: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Update: Users can update their own activities (mark as read)
+        allow update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Delete: Only owners and managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      match /userFeedback/{feedbackId} {
+        // Read: Company members can read user feedback
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy);
+        
+        // Create: Any authenticated user can create feedback (for app users)
+        allow create: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        request.resource.data.createdBy == request.auth.uid;
+        
+        // Update: Users can update their own feedback, or owners/managers can update any
+        allow update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        (isResourceOwner() || isOwner(companyId) || hasRole(companyId, ['manager']));
+        
+        // Delete: Only owners and managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      // ============================================
       // AUDIT LOGS (Read-only for users, system writes)
       // ============================================
       

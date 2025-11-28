@@ -7,6 +7,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { SecurityProvider } from './contexts/SecurityContext';
 import { CompanyProvider } from './contexts/CompanyContext';
 import { OnboardingProvider } from './contexts/OnboardingContext';
+import { ButtonVisibilityProvider } from './contexts/ButtonVisibilityContext';
 import Signup from './components/Auth/Signup';
 import Login from './components/Auth/Login';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
@@ -34,6 +35,7 @@ import CookiePolicy from './components/CookiePolicy';
 import CookieConsent from './components/CookieConsent';
 import AcceptInvitation from './components/AcceptInvitation';
 import EmailVerificationError from './components/EmailVerificationError';
+import VerifyEmail from './components/VerifyEmail';
 import AICommandCenter from './components/AICommandCenter';
 import MainLayout from './components/MainLayout';
 
@@ -44,9 +46,10 @@ function App() {
         <SecurityProvider>
           <CompanyProvider>
             <OnboardingProvider>
-              {/* Cookie Consent Banner - appears on all pages */}
-              <CookieConsent />
-              <AICommandCenter />
+              <ButtonVisibilityProvider>
+                {/* Cookie Consent Banner - appears on all pages */}
+                <CookieConsent />
+                <AICommandCenter />
           
           <MainLayout>
           <Routes>
@@ -62,7 +65,8 @@ function App() {
             {/* Invitation Acceptance (Public - users need to see it before logging in) */}
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
             
-            {/* Email Verification Error Handler (Public - handles verification link errors) */}
+            {/* Email Verification Handlers (Public) */}
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/auth/action" element={<EmailVerificationError />} />
             <Route path="/email-verification" element={<EmailVerificationError />} />
             
@@ -359,6 +363,7 @@ function App() {
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
           </MainLayout>
+              </ButtonVisibilityProvider>
             </OnboardingProvider>
           </CompanyProvider>
         </SecurityProvider>

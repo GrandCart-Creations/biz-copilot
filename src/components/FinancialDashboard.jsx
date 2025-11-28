@@ -15,10 +15,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
 import { useAuth } from '../contexts/AuthContext';
-import CompanySelector from './CompanySelector';
-import UserProfile from './UserProfile';
-import NotificationCenter from './NotificationCenter';
-import ModuleNavigationButton from './ModuleNavigationButton';
+// Note: Header components (CompanySelector, UserProfile, NotificationCenter) 
+// are now provided by MainLayout's AppHeader - no duplicate imports needed
 import {
   getCompanyExpenses,
   getCompanyIncome,
@@ -43,13 +41,12 @@ import {
   FaChartBar,
   FaPercentage
 } from 'react-icons/fa';
-import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
+import { getPrimaryColor } from '../utils/theme';
 
 const FinancialDashboard = () => {
   const navigate = useNavigate();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
   const { currentUser } = useAuth();
-  const headerBackground = useMemo(() => getHeaderBackground(currentCompany), [currentCompany]);
   const accentColor = useMemo(() => getPrimaryColor(currentCompany), [currentCompany]);
   
   // Data State
@@ -470,22 +467,7 @@ const FinancialDashboard = () => {
   if (!currentCompanyId) {
     return (
       <div className="min-h-screen bg-gray-50 w-full">
-        <nav className="text-white shadow-lg w-full" style={{ background: getHeaderBackground(null) }}>
-          <div className="w-full px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 flex items-center">
-                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-[60px] w-auto" />
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <CompanySelector />
-                <UserProfile />
-              </div>
-            </div>
-          </div>
-        </nav>
-
+        {/* Header is provided by MainLayout */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="bg-white rounded-lg shadow p-8 text-center">
             <FaChartLine className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -511,20 +493,7 @@ const FinancialDashboard = () => {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 w-full">
-        <header className="bg-white shadow-sm border-b w-full">
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <ModuleNavigationButton currentModuleId="financialDashboard" />
-                <h1 className="text-2xl font-bold text-gray-900">Financial Dashboard</h1>
-              </div>
-              <div className="flex items-center gap-4">
-                <CompanySelector />
-                <UserProfile />
-              </div>
-            </div>
-          </div>
-        </header>
+        {/* Header is provided by MainLayout */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
             <div className="flex items-center gap-3">
@@ -570,7 +539,22 @@ const FinancialDashboard = () => {
         {/* Key Metrics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Net Profit */}
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-lg p-6 border border-green-200">
+          <div 
+            onClick={() => {
+              // Navigate to financial dashboard (already here, but could show detailed breakdown)
+              // For now, just show a visual feedback
+              alert(`Net Profit Breakdown:\n\nTotal Income: ${formatCurrency(metrics.totalIncome)}\nTotal Expenses: ${formatCurrency(metrics.totalExpenses)}\nProfit Margin: ${metrics.profitMargin.toFixed(1)}%`);
+            }}
+            className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-lg p-6 border border-green-200 cursor-pointer hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                alert(`Net Profit Breakdown:\n\nTotal Income: ${formatCurrency(metrics.totalIncome)}\nTotal Expenses: ${formatCurrency(metrics.totalExpenses)}\nProfit Margin: ${metrics.profitMargin.toFixed(1)}%`);
+              }
+            }}
+            aria-label="View net profit details"
+          >
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-medium text-green-700 mb-1">Net Profit</p>
@@ -593,7 +577,21 @@ const FinancialDashboard = () => {
           </div>
           
           {/* Total Income */}
-          <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl shadow-lg p-6 border border-blue-200">
+          <div 
+            onClick={() => {
+              // Navigate to income module with filter
+              navigate('/modules/income');
+            }}
+            className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl shadow-lg p-6 border border-blue-200 cursor-pointer hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                navigate('/modules/income');
+              }
+            }}
+            aria-label="View income details"
+          >
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-medium text-blue-700 mb-1">Total Income</p>
@@ -604,8 +602,10 @@ const FinancialDashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-600">{metrics.incomeCount} transactions</span>
               {trends.incomePercent !== 0 && (
                 <>
+                  <span className="text-gray-400">•</span>
                   {trends.incomePercent > 0 ? (
                     <FaArrowUp className="w-4 h-4 text-green-600" />
                   ) : (
@@ -620,7 +620,21 @@ const FinancialDashboard = () => {
           </div>
           
           {/* Total Expenses */}
-          <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl shadow-lg p-6 border border-red-200">
+          <div 
+            onClick={() => {
+              // Navigate to expenses module
+              navigate('/modules/expenses');
+            }}
+            className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl shadow-lg p-6 border border-red-200 cursor-pointer hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                navigate('/modules/expenses');
+              }
+            }}
+            aria-label="View expense details"
+          >
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-medium text-red-700 mb-1">Total Expenses</p>
@@ -636,7 +650,21 @@ const FinancialDashboard = () => {
           </div>
           
           {/* Account Balance */}
-          <div className="bg-gradient-to-br from-[#F0FBF8] to-[#EAF4F6] rounded-xl shadow-lg p-6 border border-[#B8E5DC]">
+          <div 
+            onClick={() => {
+              // Navigate to settings/accounts
+              navigate('/modules/settings?tab=accounts');
+            }}
+            className="bg-gradient-to-br from-[#F0FBF8] to-[#EAF4F6] rounded-xl shadow-lg p-6 border border-[#B8E5DC] cursor-pointer hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                navigate('/modules/settings?tab=accounts');
+              }
+            }}
+            aria-label="View account details"
+          >
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-medium text-[#2F6F63] mb-1">Total Balance</p>

@@ -5,18 +5,25 @@
  * Includes sidebar toggle, logo, module title, and user controls
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
+import { useButtonVisibility } from '../contexts/ButtonVisibilityContext';
 import { getModule } from '../utils/modules';
 import { getHeaderBackground } from '../utils/theme';
 import NotificationCenter from './NotificationCenter';
 import CompanySelector from './CompanySelector';
 import UserProfile from './UserProfile';
+import FeedbackButton from './FeedbackButton';
+import AICommandCenter from './AICommandCenter';
+import { FaCommentDots } from 'react-icons/fa';
 
 const AppHeader = ({ sidebarOpen, onToggleSidebar, sidebarPinned, onTogglePin }) => {
   const location = useLocation();
   const { currentCompany } = useCompany();
+  const { showHeaderButtons } = useButtonVisibility();
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showAIModal, setShowAIModal] = useState(false);
   
   const headerBackground = getHeaderBackground(currentCompany);
 
@@ -59,12 +66,42 @@ const AppHeader = ({ sidebarOpen, onToggleSidebar, sidebarPinned, onTogglePin })
             )}
           </div>
 
-          {/* Right Side: Notifications, Company Selector, User Profile */}
-          <div className="flex items-center gap-4">
+          {/* Right Side: Notifications, Minimized Buttons, Company Selector, User Profile */}
+          <div className="flex items-center gap-3">
             <NotificationCenter />
+            
+            {/* Minimized Action Buttons - Show after 10 seconds */}
+            {showHeaderButtons && (
+              <>
+                <button
+                  onClick={() => {
+                    const event = new Event('feedback-click');
+                    window.dispatchEvent(event);
+                  }}
+                  className="p-2 rounded-lg hover:bg-white/20 transition-colors"
+                  title="Send Feedback"
+                  aria-label="Send Feedback"
+                >
+                  <FaCommentDots className="w-5 h-5 text-white" />
+                </button>
+                <button
+                  onClick={() => {
+                    const event = new Event('ai-click');
+                    window.dispatchEvent(event);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-sm font-medium"
+                  title="Ask Biz-CoPilot"
+                  aria-label="Ask Biz-CoPilot"
+                >
+                  ✨ Ask Biz-CoPilot
+                </button>
+              </>
+            )}
+            
             <CompanySelector />
             <UserProfile />
           </div>
+          
         </div>
       </div>
     </nav>

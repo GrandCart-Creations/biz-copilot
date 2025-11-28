@@ -9,6 +9,8 @@ import { useLocation } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
 import SidebarNavigation from './SidebarNavigation';
 import AppHeader from './AppHeader';
+import FeedbackButton from './FeedbackButton';
+import EmailVerificationBanner from './EmailVerificationBanner';
 
 const MainLayout = ({ children }) => {
   const location = useLocation();
@@ -82,10 +84,16 @@ const MainLayout = ({ children }) => {
           />
         )}
 
+        {/* Email Verification Banner - Rendered once here */}
+        {shouldShowSidebar && <EmailVerificationBanner />}
+
         {/* Page Content */}
         <main className="w-full">
           {children}
         </main>
+
+        {/* Feedback Button - Only show when logged in and not on auth pages */}
+        {shouldShowSidebar && <FeedbackButton />}
       </div>
     </div>
   );

@@ -65,7 +65,13 @@ const NotificationCenter = () => {
       });
       setNotifications(data || []);
     } catch (error) {
-      console.error('Error loading notifications:', error);
+      // Handle missing Firestore index errors gracefully
+      if (error.message?.includes('index') || error.code === 'failed-precondition') {
+        console.warn('Notifications index not ready yet. Notifications will load once index is built.');
+        setNotifications([]);
+      } else {
+        console.error('Error loading notifications:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -74,11 +80,22 @@ const NotificationCenter = () => {
   const subscribeToNotifications = () => {
     if (!currentCompanyId || !currentUser) return () => {};
     
-    // Use real-time subscription
-    return subscribeToCompanyNotifications(currentCompanyId, currentUser.uid, (notifications) => {
-      setNotifications(notifications);
+    try {
+      // Use real-time subscription
+      return subscribeToCompanyNotifications(currentCompanyId, currentUser.uid, (notifications) => {
+        setNotifications(notifications);
+        setLoading(false);
+      });
+    } catch (error) {
+      // Handle missing index errors gracefully
+      if (error.message?.includes('index') || error.code === 'failed-precondition') {
+        console.warn('Notifications subscription index not ready yet');
+      } else {
+        console.error('Error subscribing to notifications:', error);
+      }
       setLoading(false);
-    });
+      return () => {};
+    }
   };
 
   const unreadCount = useMemo(() => {

@@ -174,6 +174,7 @@ const InvoiceTracker = () => {
     paymentMethod: '',
     financialAccountId: '',
     paymentLink: '',
+    category: 'Service Revenue', // Category for income tracking
     // Subscription fields
     planName: '',
     planType: 'monthly',
@@ -428,6 +429,7 @@ const InvoiceTracker = () => {
       paymentMethod: '',
       financialAccountId: '',
       paymentLink: '',
+      category: 'Service Revenue',
       planName: '',
       planType: 'monthly',
       billingCycle: 'monthly',
@@ -500,26 +502,46 @@ const InvoiceTracker = () => {
     if (!currentCompanyId || !currentUser) return;
 
     try {
-      if (formData.type === 'invoice') {
+      // Clean formData - remove undefined values and handle paymentLink for paid invoices
+      const cleanFormData = { ...formData };
+      
+      // Remove undefined values
+      Object.keys(cleanFormData).forEach(key => {
+        if (cleanFormData[key] === undefined) {
+          delete cleanFormData[key];
+        }
+      });
+      
+      // If status is paid, remove paymentLink (not needed for paid invoices)
+      if (cleanFormData.status === 'paid' && cleanFormData.paymentLink !== undefined) {
+        delete cleanFormData.paymentLink;
+      }
+      
+      // Ensure paymentLink is a string if it exists (not undefined)
+      if (cleanFormData.paymentLink === undefined && cleanFormData.status !== 'paid') {
+        cleanFormData.paymentLink = cleanFormData.paymentLink || '';
+      }
+
+      if (cleanFormData.type === 'invoice') {
         if (editingItem) {
           await updateCompanyInvoice(currentCompanyId, editingItem.id, {
-            ...formData,
+            ...cleanFormData,
             updatedBy: currentUser.uid
           });
         } else {
-          await addCompanyInvoice(currentCompanyId, currentUser.uid, formData);
+          await addCompanyInvoice(currentCompanyId, currentUser.uid, cleanFormData);
         }
-      } else if (formData.type === 'quote') {
+      } else if (cleanFormData.type === 'quote') {
         if (editingItem) {
-          await updateCompanyQuote(currentCompanyId, editingItem.id, formData);
+          await updateCompanyQuote(currentCompanyId, editingItem.id, cleanFormData);
         } else {
-          await addCompanyQuote(currentCompanyId, currentUser.uid, formData);
+          await addCompanyQuote(currentCompanyId, currentUser.uid, cleanFormData);
         }
-      } else if (formData.type === 'subscription') {
+      } else if (cleanFormData.type === 'subscription') {
         if (editingItem) {
-          await updateCompanySubscription(currentCompanyId, editingItem.id, formData);
+          await updateCompanySubscription(currentCompanyId, editingItem.id, cleanFormData);
         } else {
-          await addCompanySubscription(currentCompanyId, currentUser.uid, formData);
+          await addCompanySubscription(currentCompanyId, currentUser.uid, cleanFormData);
         }
       }
 
@@ -880,6 +902,7 @@ const InvoiceTracker = () => {
                                     invoiceDate: invoiceDate.toISOString().split('T')[0],
                                     dueDate: dueDate.toISOString().split('T')[0],
                                     paidDate: invoice.paidDate ? (invoice.paidDate.toDate?.() || new Date(invoice.paidDate)).toISOString().split('T')[0] : '',
+                                    category: invoice.category || 'Service Revenue',
                                     type: 'invoice'
                                   });
                                   setShowAddModal(true);
@@ -1394,18 +1417,28 @@ const InvoiceTracker = () => {
                       value={formData.status}
                       onChange={(e) => {
                         const newStatus = e.target.value;
-                        setFormData(prev => ({
-                          ...prev,
-                          status: newStatus,
-                          // Auto-set paid date if marking as paid
-                          paidDate: newStatus === 'paid' && !prev.paidDate 
-                            ? new Date().toISOString().split('T')[0] 
-                            : prev.paidDate,
-                          // Auto-generate payment link if not set and not paid
-                          paymentLink: !prev.paymentLink && newStatus !== 'paid'
-                            ? `${window.location.origin}/pay/${prev.invoiceNumber || 'invoice'}`
-                            : prev.paymentLink
-                        }));
+                        setFormData(prev => {
+                          const updated = {
+                            ...prev,
+                            status: newStatus,
+                            // Auto-set paid date if marking as paid
+                            paidDate: newStatus === 'paid' && !prev.paidDate 
+                              ? new Date().toISOString().split('T')[0] 
+                              : prev.paidDate
+                          };
+                          
+                          // Remove paymentLink if status is paid, otherwise set it
+                          if (newStatus === 'paid') {
+                            delete updated.paymentLink;
+                          } else {
+                            // Auto-generate payment link if not set and not paid
+                            updated.paymentLink = !prev.paymentLink
+                              ? `${window.location.origin}/pay/${prev.invoiceNumber || 'invoice'}`
+                              : prev.paymentLink || '';
+                          }
+                          
+                          return updated;
+                        });
                       }}
                       className="w-full border border-gray-300 rounded-lg px-4 py-2"
                       required
@@ -1436,32 +1469,52 @@ const InvoiceTracker = () => {
                   )}
 
                   {formData.status === 'paid' && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Paid Date *
-                        </label>
-                        <input
-                          type="date"
-                          name="paidDate"
-                          value={formData.paidDate}
-                          onChange={handleInputChange}
-                          className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                          required
-                        />
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Paid Date *
+                          </label>
+                          <input
+                            type="date"
+                            name="paidDate"
+                            value={formData.paidDate}
+                            onChange={handleInputChange}
+                            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Category *
+                          </label>
+                          <select
+                            name="category"
+                            value={formData.category || 'Service Revenue'}
+                            onChange={handleInputChange}
+                            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                            required
+                          >
+                            <option value="Service Revenue">Service Revenue</option>
+                            <option value="Product Sales">Product Sales</option>
+                            <option value="Subscription Revenue">Subscription Revenue</option>
+                            <option value="Investment">Investment</option>
+                            <option value="Grant">Grant</option>
+                            <option value="Loan">Loan</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Financial Account *
-                        </label>
                         <FinancialAccountSelect
                           value={formData.financialAccountId}
-                          onChange={(accountId) => setFormData(prev => ({ ...prev, financialAccountId: accountId }))}
+                          onChange={(e) => setFormData(prev => ({ ...prev, financialAccountId: e.target.value }))}
                           filterBy={['income']}
+                          label="Financial Account"
                           required
                         />
                       </div>
-                    </div>
+                    </>
                   )}
                 </>
               )}

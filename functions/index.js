@@ -543,15 +543,29 @@ If you didn't expect this invitation, you can safely ignore this email.
   }
 );
 
-// Rate limiting for verification emails (prevent multiple sends that invalidate previous codes)
+// Rate limiting for verification emails
 const verificationEmailCache = new Map(); // email -> { timestamp, count }
 const VERIFICATION_COOLDOWN = 60000; // 60 seconds minimum between sends
-const MAX_VERIFICATION_ATTEMPTS = 3; // Max 3 emails per hour
+const MAX_VERIFICATION_ATTEMPTS = 5; // Max 5 emails per 6 hours
+
+// Custom verification token expiration (6 hours in milliseconds)
+const VERIFICATION_TOKEN_EXPIRY_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 /**
- * Send Firebase Auth email verification via SendGrid from custom domain.
- * Callable from client after sign-up / from onboarding.
- * Includes rate limiting to prevent invalidating previous verification codes.
+ * Generate a secure random token
+ */
+function generateVerificationToken() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < 64; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+/**
+ * Send custom email verification with 6-hour expiration.
+ * Uses our own token system stored in Firestore instead of Firebase's 1-hour limit.
  */
 exports.sendAuthVerificationEmail = onCall(
   { 
@@ -564,19 +578,19 @@ exports.sendAuthVerificationEmail = onCall(
       throw new Error('Email is required');
     }
     
-    // Rate limiting: prevent rapid resends that invalidate previous codes
+    // Rate limiting: prevent rapid resends
     const now = Date.now();
     const cached = verificationEmailCache.get(email);
     if (cached) {
       const timeSinceLastSend = now - cached.timestamp;
       if (timeSinceLastSend < VERIFICATION_COOLDOWN) {
         const remainingSeconds = Math.ceil((VERIFICATION_COOLDOWN - timeSinceLastSend) / 1000);
-        throw new Error(`Please wait ${remainingSeconds} seconds before requesting another verification email. Rapid resends invalidate previous verification links.`);
+        throw new Error(`Please wait ${remainingSeconds} seconds before requesting another verification email.`);
       }
       
-      // Check if too many attempts in the last hour
-      if (cached.count >= MAX_VERIFICATION_ATTEMPTS && timeSinceLastSend < 3600000) {
-        throw new Error('Too many verification emails sent. Please wait 1 hour before requesting another. Check your spam/junk folder for previous emails.');
+      // Check if too many attempts in the last 6 hours
+      if (cached.count >= MAX_VERIFICATION_ATTEMPTS && timeSinceLastSend < VERIFICATION_TOKEN_EXPIRY_MS) {
+        throw new Error('Too many verification emails sent. Please wait before requesting another. Check your spam/junk folder for previous emails.');
       }
     }
     
@@ -587,13 +601,52 @@ exports.sendAuthVerificationEmail = onCall(
     const fromEmail = (SENDGRID_FROM_EMAIL.value() || 'noreply@biz-copilot.nl').trim();
     const baseUrl = (APP_URL.value() || 'https://biz-copilot.nl').trim();
     
-    // Generate a verification link via Firebase Admin (respects 1‑hour expiry)
-    // Note: Firebase Auth always uses firebaseapp.com for the action URL,
-    // but continueUrl redirects to our custom domain after verification
-    const link = await adminAuth.generateEmailVerificationLink(email, {
-      url: `${baseUrl}/email-verification`,
-      handleCodeInApp: false
+    // Find the user by email to get their UID
+    let userRecord;
+    try {
+      userRecord = await adminAuth.getUserByEmail(email);
+    } catch (error) {
+      console.error(`[sendAuthVerificationEmail] User not found for email ${email}:`, error.message);
+      throw new Error('No account found with this email address.');
+    }
+    
+    // Check if already verified
+    if (userRecord.emailVerified) {
+      return { 
+        ok: true, 
+        message: 'Your email is already verified! You can close this and continue using Biz-CoPilot.',
+        alreadyVerified: true
+      };
+    }
+    
+    // Generate a custom verification token
+    const token = generateVerificationToken();
+    const expiresAt = new Date(now + VERIFICATION_TOKEN_EXPIRY_MS);
+    
+    // Store the token in Firestore
+    // First, invalidate any existing tokens for this user
+    const existingTokens = await db.collection('emailVerificationTokens')
+      .where('email', '==', email)
+      .where('used', '==', false)
+      .get();
+    
+    const batch = db.batch();
+    existingTokens.docs.forEach(doc => {
+      batch.update(doc.ref, { invalidated: true });
     });
+    
+    // Create new token document
+    const tokenRef = db.collection('emailVerificationTokens').doc(token);
+    batch.set(tokenRef, {
+      email: email,
+      uid: userRecord.uid,
+      createdAt: new Date(),
+      expiresAt: expiresAt,
+      used: false,
+      invalidated: false
+    });
+    
+    await batch.commit();
     
     // Update rate limiting cache
     verificationEmailCache.set(email, {
@@ -601,12 +654,15 @@ exports.sendAuthVerificationEmail = onCall(
       count: cached ? (cached.count + 1) : 1
     });
     
-    // Clean up old cache entries (older than 1 hour)
+    // Clean up old cache entries
     for (const [key, value] of verificationEmailCache.entries()) {
-      if (now - value.timestamp > 3600000) {
+      if (now - value.timestamp > VERIFICATION_TOKEN_EXPIRY_MS) {
         verificationEmailCache.delete(key);
       }
     }
+    
+    // Create verification link to our custom handler
+    const verificationLink = `${baseUrl}/verify-email?token=${token}`;
     
     sgMail.setApiKey(apiKey);
     const msg = {
@@ -616,18 +672,92 @@ exports.sendAuthVerificationEmail = onCall(
         name: 'Biz-CoPilot'
       },
       subject: 'Verify your email for Biz‑CoPilot',
-      text: `Hello,\n\nPlease verify your email by clicking this link:\n${link}\n\nThis link will expire in 1 hour. If you didn't request this, you can ignore this email.\n\nThanks,\nBiz‑CoPilot`,
+      text: `Hello,\n\nPlease verify your email by clicking this link:\n${verificationLink}\n\nThis link will expire in 6 hours. If you didn't request this, you can ignore this email.\n\nThanks,\nBiz‑CoPilot`,
       html: `<p>Hello,</p>
              <p>Please verify your email by clicking this link:</p>
-             <p><a href="${link}" style="display:inline-block;padding:10px 16px;background:#0ea5e9;color:#fff;text-decoration:none;border-radius:6px;">Verify Email</a></p>
+             <p><a href="${verificationLink}" style="display:inline-block;padding:10px 16px;background:#0ea5e9;color:#fff;text-decoration:none;border-radius:6px;">Verify Email</a></p>
              <p>Or copy and paste this link into your browser:</p>
-             <p style="word-break:break-all;color:#666;font-size:12px;">${link}</p>
-             <p style="color:#666;font-size:12px;"><strong>Note:</strong> This link will expire in 1 hour. If you don't see this email in your inbox, check your spam/junk folder.</p>
+             <p style="word-break:break-all;color:#666;font-size:12px;">${verificationLink}</p>
+             <p style="color:#666;font-size:12px;"><strong>Note:</strong> This link will expire in <strong>6 hours</strong>. If you don't see this email in your inbox, check your spam/junk folder.</p>
              <p>If you didn't request this, you can ignore this email.</p>
              <p>Thanks,<br/>Biz‑CoPilot</p>`
     };
     await sgMail.send(msg);
-    return { ok: true, message: 'Verification email sent successfully' };
+    console.log(`[sendAuthVerificationEmail] Custom verification email sent to ${email} with 6-hour expiry`);
+    return { 
+      ok: true, 
+      message: 'Verification email sent! The link is valid for 6 hours. Check your inbox and spam/junk folder.' 
+    };
+  }
+);
+
+/**
+ * Verify email using custom token.
+ * This validates the token and marks the user's email as verified in Firebase Auth.
+ */
+exports.verifyEmailToken = onCall(
+  { 
+    region: 'europe-west1'
+  },
+  async (request) => {
+    const { token } = request.data || {};
+    if (!token) {
+      throw new Error('Verification token is required');
+    }
+    
+    console.log(`[verifyEmailToken] Attempting to verify token: ${token.substring(0, 8)}...`);
+    
+    // Look up the token in Firestore
+    const tokenDoc = await db.collection('emailVerificationTokens').doc(token).get();
+    
+    if (!tokenDoc.exists) {
+      console.log(`[verifyEmailToken] Token not found`);
+      throw new Error('Invalid verification link. Please request a new verification email.');
+    }
+    
+    const tokenData = tokenDoc.data();
+    
+    // Check if token was already used
+    if (tokenData.used) {
+      console.log(`[verifyEmailToken] Token already used`);
+      throw new Error('This verification link has already been used. Your email may already be verified.');
+    }
+    
+    // Check if token was invalidated (newer token was generated)
+    if (tokenData.invalidated) {
+      console.log(`[verifyEmailToken] Token was invalidated`);
+      throw new Error('This verification link is no longer valid. A newer verification email was sent. Please use the most recent email.');
+    }
+    
+    // Check if token has expired
+    const expiresAt = tokenData.expiresAt.toDate ? tokenData.expiresAt.toDate() : new Date(tokenData.expiresAt);
+    if (new Date() > expiresAt) {
+      console.log(`[verifyEmailToken] Token expired at ${expiresAt}`);
+      throw new Error('This verification link has expired. Please request a new verification email.');
+    }
+    
+    // Token is valid! Mark the user's email as verified in Firebase Auth
+    try {
+      await adminAuth.updateUser(tokenData.uid, {
+        emailVerified: true
+      });
+      console.log(`[verifyEmailToken] Successfully verified email for user ${tokenData.uid}`);
+      
+      // Mark the token as used
+      await tokenDoc.ref.update({
+        used: true,
+        usedAt: new Date()
+      });
+      
+      return {
+        ok: true,
+        message: 'Email verified successfully! You can now access all features.',
+        email: tokenData.email
+      };
+    } catch (error) {
+      console.error(`[verifyEmailToken] Error updating user:`, error);
+      throw new Error('Failed to verify email. Please try again or contact support.');
+    }
   }
 );
 

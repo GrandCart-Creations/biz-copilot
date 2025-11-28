@@ -21,11 +21,9 @@ import {
   FaDollarSign,
   FaCheckCircle
 } from 'react-icons/fa';
-import UserProfile from './UserProfile';
 import FileUpload from './FileUpload';
-import CompanySelector from './CompanySelector';
-import NotificationCenter from './NotificationCenter';
-import ModuleNavigationButton from './ModuleNavigationButton';
+// Note: Header components (UserProfile, CompanySelector, NotificationCenter)
+// are now provided by MainLayout's AppHeader
 import FinancialAccountSelect from './FinancialAccountSelect';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
@@ -41,13 +39,12 @@ import {
 import { generateReceiptPDF, generateInvoicePDF, downloadPDF } from '../utils/pdfGenerator';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '../firebase';
-import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
+import { getPrimaryColor } from '../utils/theme';
 
 const IncomeTracker = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { currentCompany, currentCompanyId, userRole } = useCompany();
-  const headerBackground = useMemo(() => getHeaderBackground(currentCompany), [currentCompany]);
   const accentColor = useMemo(() => getPrimaryColor(currentCompany), [currentCompany]);
   
   // Constants
@@ -175,18 +172,24 @@ const IncomeTracker = () => {
         return;
       }
 
+      // Ensure amount is rounded to 2 decimal places before saving
+      const roundedFormData = {
+        ...formData,
+        amount: formData.amount ? parseFloat(parseFloat(formData.amount).toFixed(2)) : 0
+      };
+
       let incomeId;
       if (editingIncome) {
         // Update existing income
         incomeId = editingIncome.id;
         await updateCompanyIncome(currentCompanyId, incomeId, {
-          ...formData,
+          ...roundedFormData,
           updatedAt: new Date().toISOString()
         });
       } else {
         // Add new income
         incomeId = await addCompanyIncome(currentCompanyId, currentUser.uid, {
-          ...formData,
+          ...roundedFormData,
           createdAt: new Date().toISOString()
         });
       }
@@ -242,12 +245,14 @@ const IncomeTracker = () => {
   };
 
   const handleEditIncome = (incomeRecord) => {
+    // Round amount to 2 decimal places
+    const roundedAmount = parseFloat(incomeRecord.amount) ? parseFloat(parseFloat(incomeRecord.amount).toFixed(2)) : '';
     setFormData({
       date: incomeRecord.date,
       source: incomeRecord.source || 'Client Payment',
       customer: incomeRecord.customer || '',
       description: incomeRecord.description || '',
-      amount: incomeRecord.amount,
+      amount: roundedAmount,
       currency: incomeRecord.currency || 'EUR',
       btw: incomeRecord.btw || 21,
       financialAccountId: incomeRecord.financialAccountId || '',
@@ -417,22 +422,7 @@ const IncomeTracker = () => {
   if (!currentCompanyId) {
     return (
       <div className="min-h-screen bg-gray-50 w-full">
-        <nav className="text-white shadow-lg w-full" style={{ background: getHeaderBackground(null) }}>
-          <div className="w-full px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 flex items-center">
-                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-[60px] w-auto" />
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <CompanySelector />
-                <UserProfile />
-              </div>
-            </div>
-          </div>
-        </nav>
-
+        {/* Header is provided by MainLayout */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="bg-white rounded-lg shadow p-8 text-center">
             <FaDollarSign className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -848,8 +838,16 @@ const IncomeTracker = () => {
                     <input
                       type="number"
                       name="amount"
-                      value={formData.amount}
-                      onChange={handleInputChange}
+                      value={formData.amount ? parseFloat(formData.amount).toFixed(2) : ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        // Round to 2 decimal places on change
+                        const roundedValue = value ? parseFloat(parseFloat(value).toFixed(2)) : '';
+                        setFormData(prev => ({
+                          ...prev,
+                          amount: roundedValue
+                        }));
+                      }}
                       required
                       step="0.01"
                       min="0"
@@ -934,7 +932,17 @@ const IncomeTracker = () => {
                     <select
                       name="invoiceId"
                       value={formData.invoiceId}
-                      onChange={handleInputChange}
+                      onChange={(e) => {
+                        const selectedInvoiceId = e.target.value;
+                        // Find the selected invoice to sync category
+                        const selectedInvoice = invoices.find(inv => inv.id === selectedInvoiceId);
+                        setFormData(prev => ({
+                          ...prev,
+                          invoiceId: selectedInvoiceId,
+                          // Sync category from invoice if available
+                          category: selectedInvoice?.category || prev.category || 'Service Revenue'
+                        }));
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                     >
                       <option value="">No invoice linked</option>

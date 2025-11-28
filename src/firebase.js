@@ -253,8 +253,27 @@ export const checkEmailVerification = async () => {
       throw new Error('No user is currently signed in.');
     }
     
-    // Reload user to get latest verification status from Firebase
-    await user.reload();
+    // Try to reload user to get latest verification status from Firebase
+    try {
+      await user.reload();
+    } catch (reloadError) {
+      // Handle rate limiting or network errors gracefully
+      const errorMessage = reloadError.message || reloadError.code || '';
+      if (errorMessage.includes('granttoken-are-blocked') || 
+          errorMessage.includes('network') ||
+          errorMessage.includes('quota') ||
+          errorMessage.includes('too-many-requests')) {
+        // Return cached local status instead of failing completely
+        console.debug('Token refresh temporarily blocked, using cached verification status');
+        return {
+          verified: user.emailVerified || false,
+          email: user.email,
+          cached: true
+        };
+      }
+      // Re-throw other errors
+      throw reloadError;
+    }
     
     return {
       verified: user.emailVerified || false,
@@ -4185,20 +4204,25 @@ export const updateCompanyInvoice = async (companyId, invoiceId, invoiceData = {
     const wasPaid = existingData.status === 'paid';
     const willBePaid = invoiceData.status === 'paid';
     
+    // Filter out undefined values - Firestore doesn't allow undefined
+    const cleanInvoiceData = Object.fromEntries(
+      Object.entries(invoiceData).filter(([_, value]) => value !== undefined)
+    );
+    
     const updateData = {
-      ...invoiceData,
+      ...cleanInvoiceData,
       updatedAt: serverTimestamp()
     };
     
     // Convert date strings to Timestamps
-    if (invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string') {
-      updateData.invoiceDate = Timestamp.fromDate(new Date(invoiceData.invoiceDate));
+    if (updateData.invoiceDate && typeof updateData.invoiceDate === 'string') {
+      updateData.invoiceDate = Timestamp.fromDate(new Date(updateData.invoiceDate));
     }
-    if (invoiceData.dueDate && typeof invoiceData.dueDate === 'string') {
-      updateData.dueDate = Timestamp.fromDate(new Date(invoiceData.dueDate));
+    if (updateData.dueDate && typeof updateData.dueDate === 'string') {
+      updateData.dueDate = Timestamp.fromDate(new Date(updateData.dueDate));
     }
-    if (invoiceData.paidDate && typeof invoiceData.paidDate === 'string') {
-      updateData.paidDate = Timestamp.fromDate(new Date(invoiceData.paidDate));
+    if (updateData.paidDate && typeof updateData.paidDate === 'string') {
+      updateData.paidDate = Timestamp.fromDate(new Date(updateData.paidDate));
     }
     
     await updateDoc(invoiceRef, updateData);
@@ -4224,7 +4248,7 @@ export const updateCompanyInvoice = async (companyId, invoiceId, invoiceData = {
             btw: parseFloat(mergedData.taxRate || 21),
             financialAccountId: invoiceData.financialAccountId,
             invoiceId: invoiceId,
-            category: 'Service Revenue',
+            category: mergedData.category || invoiceData.category || 'Service Revenue',
             notes: `Payment received for invoice ${mergedData.invoiceNumber || invoiceId}`,
             reconciled: true,
             createdBy: invoiceData.updatedBy || existingData.createdBy || '',
@@ -4277,7 +4301,7 @@ export const updateCompanyInvoice = async (companyId, invoiceId, invoiceData = {
             {
               amount: mergedData.total || 0,
               currency: mergedData.currency || 'EUR',
-              category: 'Service Revenue',
+              category: mergedData.category || invoiceData.category || 'Service Revenue',
               financialAccountId: invoiceData.financialAccountId,
               description: `Invoice ${mergedData.invoiceNumber || invoiceId}`,
               date: paidDateStr,
@@ -5107,10 +5131,19 @@ export const getCompanyProjects = async (companyId, options = {}) => {
     const projectsRef = collection(db, 'companies', companyId, 'projects');
     let q = query(projectsRef);
     
-    if (options.orderBy) {
-      q = query(q, orderBy(options.orderBy, options.orderDirection || 'desc'));
-    } else {
-      q = query(q, orderBy('createdAt', 'desc'));
+    // Only add orderBy if explicitly requested or if not disabled
+    if (options.orderBy !== null) {
+      if (options.orderBy) {
+        q = query(q, orderBy(options.orderBy, options.orderDirection || 'desc'));
+      } else {
+        // Try to order by createdAt, but fallback if index doesn't exist
+        try {
+          q = query(q, orderBy('createdAt', 'desc'));
+        } catch (orderError) {
+          // If orderBy fails (missing index), continue without ordering
+          console.warn('Could not order by createdAt, missing index. Continuing without order...');
+        }
+      }
     }
     
     if (options.limit) {
@@ -5118,12 +5151,50 @@ export const getCompanyProjects = async (companyId, options = {}) => {
     }
     
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({
+    const projects = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
+    
+    // If we couldn't order by createdAt, sort in memory
+    if (options.orderBy === null || (!options.orderBy && projects.length > 0)) {
+      try {
+        projects.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis?.() || a.createdAt || 0;
+          const bTime = b.createdAt?.toMillis?.() || b.createdAt || 0;
+          return bTime - aTime;
+        });
+      } catch (sortError) {
+        // If sorting fails, just return unsorted
+        console.warn('Could not sort projects:', sortError);
+      }
+    }
+    
+    return projects;
   } catch (error) {
     console.error('Error getting projects:', error);
+    // If it's an index error, try without orderBy
+    if (error.message && error.message.includes('index')) {
+      try {
+        const projectsRef = collection(db, 'companies', companyId, 'projects');
+        const q = query(projectsRef);
+        const snapshot = await getDocs(q);
+        const projects = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        // Sort in memory
+        projects.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis?.() || a.createdAt || 0;
+          const bTime = b.createdAt?.toMillis?.() || b.createdAt || 0;
+          return bTime - aTime;
+        });
+        return projects;
+      } catch (retryError) {
+        console.error('Error getting projects (retry):', retryError);
+        throw retryError;
+      }
+    }
     throw error;
   }
 };
@@ -5599,13 +5670,25 @@ export const subscribeToCompanyNotifications = (companyId, userId, callback) => 
     
     q = query(q, orderBy('createdAt', 'desc'), limit(50));
     
-    return onSnapshot(q, (snapshot) => {
-      const notifications = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      callback(notifications);
-    });
+    return onSnapshot(q, 
+      (snapshot) => {
+        const notifications = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        callback(notifications);
+      },
+      (error) => {
+        // Handle missing index errors gracefully
+        if (error.message?.includes('index') || error.code === 'failed-precondition') {
+          console.warn('Notifications index not ready. Index will be created automatically.');
+          callback([]); // Return empty array while index builds
+        } else {
+          console.error('Error in notifications subscription:', error);
+          callback([]);
+        }
+      }
+    );
   } catch (error) {
     console.error('Error subscribing to notifications:', error);
     return () => {};
@@ -5705,6 +5788,335 @@ export const deleteCompanyNotification = async (companyId, notificationId) => {
     return true;
   } catch (error) {
     console.error('Error deleting notification:', error);
+    throw error;
+  }
+};
+
+// ==================== COLLABORATION & DATA SHARING ====================
+
+/**
+ * Get collaboration workspace
+ */
+export const getCollaborationWorkspace = async (companyId, workspaceId) => {
+  if (!companyId || !workspaceId) throw new Error('Company ID and workspace ID are required');
+  try {
+    const workspaceRef = doc(db, 'companies', companyId, 'collaborationWorkspaces', workspaceId);
+    const workspaceSnap = await getDoc(workspaceRef);
+    if (!workspaceSnap.exists()) return null;
+    return { id: workspaceSnap.id, ...workspaceSnap.data() };
+  } catch (error) {
+    console.error('Error getting collaboration workspace:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all collaboration workspaces for a company
+ */
+export const getCompanyCollaborationWorkspaces = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const workspacesRef = collection(db, 'companies', companyId, 'collaborationWorkspaces');
+    let q = query(workspacesRef);
+    
+    if (options.type) {
+      q = query(q, where('type', '==', options.type));
+    }
+    if (options.departments) {
+      q = query(q, where('departments', 'array-contains-any', options.departments));
+    }
+    
+    q = query(q, orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting collaboration workspaces:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create collaboration workspace
+ */
+export const createCollaborationWorkspace = async (companyId, userId, workspaceData = {}) => {
+  if (!companyId || !userId) throw new Error('Company ID and user ID are required');
+  try {
+    const workspacesRef = collection(db, 'companies', companyId, 'collaborationWorkspaces');
+    
+    const newWorkspace = {
+      name: workspaceData.name || '',
+      type: workspaceData.type || 'project_launch',
+      description: workspaceData.description || '',
+      departments: workspaceData.departments || [],
+      sharingConfig: workspaceData.sharingConfig || {},
+      linkedProjectId: workspaceData.linkedProjectId || null,
+      linkedCampaignId: workspaceData.linkedCampaignId || null,
+      members: workspaceData.members || [userId],
+      status: workspaceData.status || 'active',
+      createdAt: serverTimestamp(),
+      createdBy: userId,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(workspacesRef, newWorkspace);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error creating collaboration workspace:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add activity to collaboration feed
+ */
+export const addCollaborationActivity = async (companyId, activityData = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const activitiesRef = collection(db, 'companies', companyId, 'collaborationActivities');
+    
+    const activity = {
+      type: activityData.type || 'project_updated',
+      sourceDepartment: activityData.sourceDepartment || '',
+      targetDepartments: activityData.targetDepartments || [],
+      title: activityData.title || '',
+      description: activityData.description || '',
+      linkedResourceType: activityData.linkedResourceType || null, // 'project', 'campaign', etc.
+      linkedResourceId: activityData.linkedResourceId || null,
+      metadata: activityData.metadata || {},
+      createdBy: activityData.createdBy || '',
+      createdAt: serverTimestamp(),
+      readBy: []
+    };
+    
+    const docRef = await addDoc(activitiesRef, activity);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding collaboration activity:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get collaboration activities
+ */
+export const getCollaborationActivities = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const activitiesRef = collection(db, 'companies', companyId, 'collaborationActivities');
+    let q = query(activitiesRef);
+    
+    if (options.department) {
+      q = query(q, where('targetDepartments', 'array-contains', options.department));
+    }
+    if (options.type) {
+      q = query(q, where('type', '==', options.type));
+    }
+    if (options.linkedResourceType && options.linkedResourceId) {
+      q = query(q, 
+        where('linkedResourceType', '==', options.linkedResourceType),
+        where('linkedResourceId', '==', options.linkedResourceId)
+      );
+    }
+    
+    q = query(q, orderBy('createdAt', 'desc'));
+    if (options.limit) {
+      q = query(q, limit(options.limit));
+    }
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting collaboration activities:', error);
+    throw error;
+  }
+};
+
+/**
+ * Link project to campaign for collaboration
+ */
+export const linkProjectToCampaign = async (companyId, projectId, campaignId, userId) => {
+  if (!companyId || !projectId || !campaignId) {
+    throw new Error('Company ID, project ID, and campaign ID are required');
+  }
+  try {
+    const batch = writeBatch(db);
+    
+    // Update project with campaign link
+    const projectRef = doc(db, 'companies', companyId, 'projects', projectId);
+    batch.update(projectRef, {
+      linkedCampaignId: campaignId,
+      updatedAt: serverTimestamp(),
+      updatedBy: userId
+    });
+    
+    // Update campaign with project link
+    const campaignRef = doc(db, 'companies', companyId, 'campaigns', campaignId);
+    batch.update(campaignRef, {
+      linkedProjectId: projectId,
+      updatedAt: serverTimestamp(),
+      updatedBy: userId
+    });
+    
+    await batch.commit();
+    
+    // Create activity notification
+    await addCollaborationActivity(companyId, {
+      type: 'project_campaign_linked',
+      sourceDepartment: 'projects',
+      targetDepartments: ['marketing'],
+      title: 'Project and Campaign Linked',
+      description: 'A project has been linked to a marketing campaign for collaboration',
+      linkedResourceType: 'project',
+      linkedResourceId: projectId,
+      metadata: { campaignId },
+      createdBy: userId
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error linking project to campaign:', error);
+    throw error;
+  }
+};
+
+/**
+ * Unlink project from campaign
+ */
+export const unlinkProjectFromCampaign = async (companyId, projectId, campaignId, userId) => {
+  if (!companyId || !projectId || !campaignId) {
+    throw new Error('Company ID, project ID, and campaign ID are required');
+  }
+  try {
+    const batch = writeBatch(db);
+    
+    // Remove project link from campaign
+    const projectRef = doc(db, 'companies', companyId, 'projects', projectId);
+    batch.update(projectRef, {
+      linkedCampaignId: null,
+      updatedAt: serverTimestamp(),
+      updatedBy: userId
+    });
+    
+    // Remove campaign link from project
+    const campaignRef = doc(db, 'companies', companyId, 'campaigns', campaignId);
+    batch.update(campaignRef, {
+      linkedProjectId: null,
+      updatedAt: serverTimestamp(),
+      updatedBy: userId
+    });
+    
+    await batch.commit();
+    
+    // Create activity notification
+    await addCollaborationActivity(companyId, {
+      type: 'project_campaign_unlinked',
+      sourceDepartment: 'marketing',
+      targetDepartments: ['projects'],
+      title: 'Project and Campaign Unlinked',
+      description: 'A project has been unlinked from a marketing campaign',
+      linkedResourceType: 'project',
+      linkedResourceId: projectId,
+      metadata: { campaignId },
+      createdBy: userId
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error unlinking project from campaign:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add user feedback to collaboration system
+ */
+export const addUserFeedback = async (companyId, feedbackData = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const feedbackRef = collection(db, 'companies', companyId, 'userFeedback');
+    
+    const feedback = {
+      source: feedbackData.source || 'app', // 'app', 'email', 'support', 'survey'
+      type: feedbackData.type || 'general', // 'bug', 'feature', 'improvement', 'complaint', 'praise'
+      category: feedbackData.category || '',
+      title: feedbackData.title || '',
+      description: feedbackData.description || '',
+      userEmail: feedbackData.userEmail || '',
+      userId: feedbackData.userId || null,
+      linkedProjectId: feedbackData.linkedProjectId || null,
+      linkedCampaignId: feedbackData.linkedCampaignId || null,
+      priority: feedbackData.priority || 'medium',
+      status: feedbackData.status || 'new',
+      assignedTo: feedbackData.assignedTo || null,
+      tags: feedbackData.tags || [],
+      metadata: feedbackData.metadata || {},
+      createdAt: serverTimestamp(),
+      createdBy: feedbackData.createdBy || '',
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(feedbackRef, feedback);
+    
+    // Notify relevant departments
+    await addCollaborationActivity(companyId, {
+      type: 'user_feedback_received',
+      sourceDepartment: 'support',
+      targetDepartments: ['marketing', 'projects'],
+      title: `New ${feedback.type} feedback`,
+      description: feedback.title || feedback.description,
+      linkedResourceType: 'feedback',
+      linkedResourceId: docRef.id,
+      metadata: { priority: feedback.priority, category: feedback.category },
+      createdBy: feedback.createdBy || ''
+    });
+    
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding user feedback:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get user feedback
+ */
+export const getUserFeedback = async (companyId, options = {}) => {
+  if (!companyId) throw new Error('Company ID is required');
+  try {
+    const feedbackRef = collection(db, 'companies', companyId, 'userFeedback');
+    let q = query(feedbackRef);
+    
+    if (options.status) {
+      q = query(q, where('status', '==', options.status));
+    }
+    if (options.type) {
+      q = query(q, where('type', '==', options.type));
+    }
+    if (options.linkedProjectId) {
+      q = query(q, where('linkedProjectId', '==', options.linkedProjectId));
+    }
+    if (options.linkedCampaignId) {
+      q = query(q, where('linkedCampaignId', '==', options.linkedCampaignId));
+    }
+    
+    q = query(q, orderBy('createdAt', 'desc'));
+    if (options.limit) {
+      q = query(q, limit(options.limit));
+    }
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting user feedback:', error);
     throw error;
   }
 };

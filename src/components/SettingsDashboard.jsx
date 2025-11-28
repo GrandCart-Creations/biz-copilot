@@ -8,10 +8,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
-import CompanySelector from './CompanySelector';
-import UserProfile from './UserProfile';
-import NotificationCenter from './NotificationCenter';
-import ModuleNavigationButton from './ModuleNavigationButton';
 import TeamManagement from './TeamManagement';
 import PeopleWorkspace from './PeopleWorkspace';
 import FinancialAccounts from './FinancialAccounts';
@@ -35,7 +31,7 @@ import {
   FaFileContract,
   FaTools
 } from 'react-icons/fa';
-import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
+import { getPrimaryColor } from '../utils/theme';
 
 const SettingsDashboard = () => {
   const navigate = useNavigate();
@@ -86,24 +82,7 @@ const SettingsDashboard = () => {
   if (!currentCompanyId) {
     return (
       <div className="min-h-screen bg-gray-50 w-full">
-        {/* Header */}
-        <nav className="text-white shadow-lg w-full" style={{ background: getHeaderBackground(null) }}>
-          <div className="w-full px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 flex items-center">
-                  <img src={getHeaderLogo(null)} alt="Biz-CoPilot" className="h-[60px] w-auto" />
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <CompanySelector />
-                <UserProfile />
-              </div>
-            </div>
-          </div>
-        </nav>
-
-        {/* No Company Message */}
+        {/* No Company Message - Header is provided by MainLayout */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="bg-white rounded-lg shadow p-8 text-center">
             <FaCog className="w-16 h-16 text-gray-400 mx-auto mb-4" />

@@ -71,6 +71,7 @@ import {
   getCompanyMembers
 } from '../firebase';
 import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
+import MarketingProjectsIntegration from './MarketingProjectsIntegration';
 
 const ProjectsTracker = () => {
   const navigate = useNavigate();
@@ -664,6 +665,17 @@ const ProjectsTracker = () => {
           </div>
         </div>
 
+        {/* Marketing Integration Section - Always show, even if no projects */}
+        <div className="mb-6">
+          <MarketingProjectsIntegration 
+            projectId={viewingItem?.id || null}
+            onCampaignLink={(campaignId) => {
+              // Refresh projects to show linked campaign
+              loadAllData();
+            }}
+          />
+        </div>
+
         {/* Projects List */}
         <div className="bg-white rounded-lg shadow">
           <div className="p-6">
@@ -975,6 +987,17 @@ const ProjectsTracker = () => {
               </button>
             </div>
             <div className="px-6 py-4 space-y-4">
+              {/* Marketing Integration Section */}
+              <div className="mb-6">
+                <MarketingProjectsIntegration 
+                  projectId={viewingItem.id}
+                  onCampaignLink={(campaignId) => {
+                    // Refresh projects to show linked campaign
+                    loadAllData();
+                  }}
+                />
+              </div>
+
               <div>
                 <h4 className="text-xl font-bold text-gray-900 mb-2">{viewingItem.name}</h4>
                 <p className="text-gray-600">{viewingItem.description}</p>

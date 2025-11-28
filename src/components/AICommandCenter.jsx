@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompany } from '../contexts/CompanyContext';
 import { useOnboarding } from '../contexts/OnboardingContext';
+import { useButtonVisibility } from '../contexts/ButtonVisibilityContext';
 import { authorizeAIScope, AI_SCOPES, getDefaultScopeForRole, canAccessScope } from '../utils/accessGateway';
 import { logAIEvent } from '../utils/auditLog';
 import { getCompanyNotifications } from '../firebase';
@@ -28,11 +29,12 @@ const SUGGESTION_PRESETS = [
   }
 ];
 
-const AICommandCenter = () => {
+const AICommandCenter = ({ minimized = false, onMinimizedClick }) => {
   const location = useLocation();
   const { currentUser } = useAuth();
   const { userRole, currentCompanyId, aiPolicies } = useCompany();
   const { shouldShowOnboarding } = useOnboarding();
+  const { showFloatingButtons } = useButtonVisibility();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState(() => getDefaultScopeForRole(userRole, aiPolicies));
@@ -70,10 +72,24 @@ const AICommandCenter = () => {
 
   useEffect(() => {
     if (isOpen) {
+      // Clear query immediately
       setQuery('');
       setAccessCode('');
       setStatus({ state: 'idle', message: '' });
       setScope(getDefaultScopeForRole(userRole, aiPolicies));
+      
+      // Force clear input field after a brief delay to override browser autofill
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.value = '';
+          setQuery('');
+          // Blur and refocus to clear any browser autofill
+          inputRef.current.blur();
+          setTimeout(() => {
+            inputRef.current?.focus();
+          }, 50);
+        }
+      }, 100);
       
       // Load urgent alerts when opening
       if (currentCompanyId && currentUser && ['owner', 'manager'].includes(userRole)) {
@@ -145,6 +161,15 @@ const AICommandCenter = () => {
     return () => observer.disconnect();
   }, []);
 
+  // Listen for header button clicks (must be before early returns)
+  useEffect(() => {
+    const handleHeaderClick = () => {
+      setIsOpen(true);
+    };
+    window.addEventListener('ai-click', handleHeaderClick);
+    return () => window.removeEventListener('ai-click', handleHeaderClick);
+  }, []);
+
   const runQuery = async (event) => {
     event.preventDefault();
     if (!query.trim()) {
@@ -211,9 +236,39 @@ const AICommandCenter = () => {
         companyId: currentCompanyId,
         error: error.message
       });
+      
+      // Enhanced error messages with helpful suggestions
+      let errorMessage = 'Failed to process your query.';
+      let errorSuggestion = '';
+      
+      if (error.message) {
+        const lowerError = error.message.toLowerCase();
+        
+        if (lowerError.includes('network') || lowerError.includes('fetch') || lowerError.includes('connection')) {
+          errorMessage = 'Connection error: Unable to reach the AI service.';
+          errorSuggestion = 'Please check your internet connection and try again.';
+        } else if (lowerError.includes('timeout') || lowerError.includes('timed out')) {
+          errorMessage = 'Request timeout: The query took too long to process.';
+          errorSuggestion = 'Please try rephrasing your question or breaking it into smaller parts.';
+        } else if (lowerError.includes('permission') || lowerError.includes('unauthorized')) {
+          errorMessage = 'Permission error: You may not have access to this data scope.';
+          errorSuggestion = 'Try selecting a different data scope or contact your administrator.';
+        } else if (lowerError.includes('quota') || lowerError.includes('limit') || lowerError.includes('rate')) {
+          errorMessage = 'Service limit reached: Too many requests.';
+          errorSuggestion = 'Please wait a moment and try again.';
+        } else if (lowerError.includes('api') || lowerError.includes('openai')) {
+          errorMessage = 'AI service error: The AI service encountered an issue.';
+          errorSuggestion = 'Please try again in a moment. If the problem persists, contact support.';
+        } else {
+          errorMessage = `Error: ${error.message}`;
+          errorSuggestion = 'Please try rephrasing your question or try again later.';
+        }
+      }
+      
       setStatus({
         state: 'error',
-        message: `Error: ${error.message || 'Failed to process query. Please try again.'}`
+        message: errorMessage,
+        suggestion: errorSuggestion
       });
     }
   };
@@ -237,16 +292,26 @@ const AICommandCenter = () => {
     return null;
   }
 
+  const handleClick = () => {
+    setIsOpen(true);
+  };
+
+  // Don't render floating button if minimized or visibility is false
+  if (!isOpen && (minimized || !showFloatingButtons)) {
+    return null;
+  }
+
   if (!isOpen) {
     return (
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 px-4 py-2 rounded-full shadow-lg text-sm font-semibold text-white transition-all duration-300 ${
+        onClick={handleClick}
+        className={`fixed bottom-6 px-4 py-2 rounded-full shadow-lg text-sm font-semibold text-white transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#00BFA6]/40 ${
           sidebarOpen ? 'right-[280px]' : 'right-6'
         }`}
         style={{ backgroundColor: '#005C70' }}
         title="Open AI Command Center (⌘K / Ctrl+K)"
+        aria-label="Open AI Command Center"
       >
         ✨ Ask Biz-CoPilot
       </button>
@@ -254,27 +319,47 @@ const AICommandCenter = () => {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ai-command-center-title"
+    >
       <div className="relative w-full max-w-2xl bg-white border border-gray-200 rounded-2xl shadow-xl">
         <form onSubmit={runQuery} className="p-6 border-b border-gray-200">
           <div className="flex flex-wrap gap-3 items-center mb-4">
-            <span className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-[#005C70] bg-[#00BFA6]/10 rounded">
+            <span 
+              id="ai-command-center-title"
+              className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-[#005C70] bg-[#00BFA6]/10 rounded"
+            >
               AI Command Center
             </span>
             <span className="text-xs text-gray-500">Press Esc to close</span>
           </div>
           <div className="space-y-3">
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <label htmlFor="ai-query-input" className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Ask anything about your workspace
               </label>
               <input
+                id="ai-query-input"
                 ref={inputRef}
+                type="text"
+                name="ai-query"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00BFA6]/40"
-                placeholder="e.g. Compare this month’s expenses to last month"
+                placeholder="e.g. Compare this month's expenses to last month"
+                aria-label="AI query input"
+                aria-describedby="query-help"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
+                data-lpignore="true"
+                data-form-type="other"
               />
+              <p id="query-help" className="sr-only">Enter a natural language question about your business data</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -285,6 +370,7 @@ const AICommandCenter = () => {
                   value={scope}
                   onChange={(event) => setScope(event.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00BFA6]/40"
+                  aria-label="Data scope selection"
                 >
                   {scopeOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -302,15 +388,18 @@ const AICommandCenter = () => {
                   onChange={(event) => setAccessCode(event.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00BFA6]/40"
                   placeholder="Optional override code"
+                  aria-label="Access code for elevated permissions"
+                  type="password"
                 />
               </div>
             </div>
             <div className="flex items-center gap-3">
               <button
                 type="submit"
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[#00BFA6]/40"
                 style={{ backgroundColor: '#005C70' }}
                 disabled={status.state === 'loading'}
+                aria-label={status.state === 'loading' ? 'Processing query' : 'Run AI query'}
               >
                 {status.state === 'loading' ? 'Processing…' : 'Run command'}
               </button>
@@ -322,19 +411,44 @@ const AICommandCenter = () => {
                 Close
               </button>
               {status.state !== 'idle' && status.state !== 'success' && (
-                <span
-                  className={`text-sm ${
-                    status.state === 'loading'
-                      ? 'text-blue-600'
-                      : 'text-red-600'
-                  }`}
-                >
-                  {status.message}
-                </span>
+                <div className="flex flex-col gap-1">
+                  <span
+                    className={`text-sm ${
+                      status.state === 'loading'
+                        ? 'text-blue-600'
+                        : 'text-red-600'
+                    }`}
+                  >
+                    {status.message}
+                  </span>
+                  {status.suggestion && (
+                    <span className="text-xs text-gray-600 italic">
+                      {status.suggestion}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
         </form>
+        
+        {/* Error Display Section */}
+        {status.state === 'error' && status.message && (
+          <div className="p-6 border-b border-gray-200 bg-red-50">
+            <div className="flex items-start gap-3">
+              <FaExclamationTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-900 mb-1">Error</p>
+                <p className="text-sm text-red-800 mb-2">{status.message}</p>
+                {status.suggestion && (
+                  <p className="text-xs text-red-700 italic bg-red-100 rounded px-2 py-1.5 border border-red-200">
+                    💡 {status.suggestion}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* AI Response Section */}
         {status.state === 'success' && status.message && (

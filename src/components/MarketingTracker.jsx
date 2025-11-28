@@ -87,6 +87,7 @@ import {
   getCompanyMembers
 } from '../firebase';
 import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
+import ProjectMarketingIntegration from './ProjectMarketingIntegration';
 
 const MarketingTracker = () => {
   const navigate = useNavigate();
@@ -461,6 +462,17 @@ const MarketingTracker = () => {
         <div className="bg-white rounded-lg shadow p-6">
           {activeTab === 'campaigns' && (
             <div>
+              {/* Project Integration Section - Always show, even if no campaigns */}
+              <div className="mb-6">
+                <ProjectMarketingIntegration 
+                  campaignId={viewingItem?.id || campaigns[0]?.id || null}
+                  onProjectLink={(projectId) => {
+                    // Refresh campaigns to show linked project
+                    loadAllData();
+                  }}
+                />
+              </div>
+
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-gray-900">Marketing Campaigns</h2>
                 <div className="flex items-center space-x-3">

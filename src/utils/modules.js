@@ -258,7 +258,7 @@ export const MODULE_SECTIONS = [
     title: 'Administration',
     color: 'gray',
     icon: 'FaCog',
-    modules: ['settings', 'team', 'security']
+    modules: ['settings', 'security'] // 'team' removed - Team Management is accessed via Settings
   }
 ];
 

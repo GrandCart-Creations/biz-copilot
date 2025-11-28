@@ -1,54 +1,21 @@
-// src/components/UserProfile.jsx - NEW COMPONENT
+// src/components/UserProfile.jsx - User Profile Dropdown Component
+// Note: Email verification banner is now in EmailVerificationBanner.jsx (rendered in MainLayout)
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { logoutUser, resendVerificationEmail, checkEmailVerification, getCurrentUser } from '../firebase';
+import { logoutUser, getCurrentUser } from '../firebase';
 
 export default function UserProfile() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [checkingVerification, setCheckingVerification] = useState(false);
-  const [showVerificationBanner, setShowVerificationBanner] = useState(false);
-  const [verificationMessage, setVerificationMessage] = useState('');
   const dropdownRef = useRef(null);
 
-  // Check verification status periodically and on mount
+  // Get current user on mount
   useEffect(() => {
-    const checkVerification = async () => {
-      try {
-        const verificationStatus = await checkEmailVerification();
-        const currentUser = getCurrentUser();
-        setUser(currentUser);
-        
-        if (currentUser && !verificationStatus.verified) {
-          setShowVerificationBanner(true);
-        } else if (verificationStatus.verified) {
-          setShowVerificationBanner(false);
-          setVerificationMessage('');
-        }
-      } catch (error) {
-        console.error('Error checking verification:', error);
-        // Still show banner if we can't check
-        const currentUser = getCurrentUser();
-        if (currentUser && !currentUser.emailVerified) {
-          setShowVerificationBanner(true);
-        }
-      }
-    };
-
-    checkVerification();
-    
-    // Check every 30 seconds if banner is showing
-    let interval;
-    if (showVerificationBanner) {
-      interval = setInterval(checkVerification, 30000);
-    }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [showVerificationBanner]);
+    const currentUser = getCurrentUser();
+    setUser(currentUser);
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -75,51 +42,6 @@ export default function UserProfile() {
     }
   };
 
-  const handleResendVerification = async () => {
-    setLoading(true);
-    setVerificationMessage('');
-    try {
-      const message = await resendVerificationEmail();
-      setVerificationMessage(message);
-      
-      // Check verification status after a short delay
-      setTimeout(async () => {
-        try {
-          await checkEmailVerification();
-          const currentUser = getCurrentUser();
-          setUser(currentUser);
-        } catch (error) {
-          console.error('Error checking verification after resend:', error);
-        }
-      }, 2000);
-    } catch (error) {
-      setVerificationMessage(error.message || 'Failed to send verification email.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCheckVerification = async () => {
-    setCheckingVerification(true);
-    setVerificationMessage('');
-    try {
-      const status = await checkEmailVerification();
-      const currentUser = getCurrentUser();
-      setUser(currentUser);
-      
-      if (status.verified) {
-        setVerificationMessage('✓ Your email is now verified!');
-        setShowVerificationBanner(false);
-      } else {
-        setVerificationMessage('Email not yet verified. Please check your inbox and click the verification link.');
-      }
-    } catch (error) {
-      setVerificationMessage(error.message || 'Failed to check verification status.');
-    } finally {
-      setCheckingVerification(false);
-    }
-  };
-
   if (!user) return null;
 
   // Get user initials for avatar
@@ -136,64 +58,7 @@ export default function UserProfile() {
   };
 
   return (
-    <>
-      {/* Email Verification Banner */}
-      {showVerificationBanner && (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <p className="text-sm text-yellow-800">
-                <strong>Email not verified.</strong> Please check your inbox and verify your email address.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={handleCheckVerification}
-                disabled={checkingVerification || loading}
-                className="text-sm font-medium text-yellow-800 hover:text-yellow-900 underline disabled:opacity-50"
-              >
-                {checkingVerification ? 'Checking...' : 'Check Status'}
-              </button>
-              <button
-                onClick={handleResendVerification}
-                disabled={loading || checkingVerification}
-                className="text-sm font-medium text-yellow-800 hover:text-yellow-900 underline disabled:opacity-50"
-              >
-                {loading ? 'Sending...' : 'Resend Email'}
-              </button>
-              <button
-                onClick={() => {
-                  setShowVerificationBanner(false);
-                  setVerificationMessage('');
-                }}
-                className="text-yellow-600 hover:text-yellow-800"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            {verificationMessage && (
-              <div className={`mt-2 text-xs px-3 py-2 rounded ${
-                verificationMessage.includes('✓') || verificationMessage.includes('already verified')
-                  ? 'bg-green-50 text-green-800'
-                  : 'bg-blue-50 text-blue-800'
-              }`}>
-                {verificationMessage}
-              </div>
-            )}
-            <div className="mt-2 text-xs text-yellow-700 px-3">
-              <strong>Note:</strong> Verification links expire after 1 hour. If your link expired, click "Resend Email" to get a new one. Check your spam/junk folder if you don't see the email.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* User Profile Dropdown */}
-      <div className="relative" ref={dropdownRef}>
+    <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setShowDropdown(!showDropdown)}
           className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -352,7 +217,6 @@ export default function UserProfile() {
             </div>
           </div>
         )}
-      </div>
-    </>
+    </div>
   );
 }

@@ -3,28 +3,19 @@
  * 
  * Standalone Team Management module accessible from the module dashboard
  * Provides comprehensive team management functionality
+ * 
+ * Note: Header is now provided by MainLayout's AppHeader - no duplicate header here
  */
 
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../contexts/CompanyContext';
-import { useAuth } from '../contexts/AuthContext';
-import CompanySelector from './CompanySelector';
-import UserProfile from './UserProfile';
-import NotificationCenter from './NotificationCenter';
-import ModuleNavigationButton from './ModuleNavigationButton';
 import TeamManagement from './TeamManagement';
 import SubscriptionGate from './SubscriptionGate';
 import { FaUsers, FaInfoCircle } from 'react-icons/fa';
-import { getHeaderBackground, getHeaderLogo, getPrimaryColor } from '../utils/theme';
 import { meetsTierRequirement } from '../utils/modules';
 
 const TeamTracker = () => {
-  const navigate = useNavigate();
-  const { currentUser } = useAuth();
-  const { currentCompany, currentCompanyId, userRole, subscriptionTier } = useCompany();
-  const headerBackground = useMemo(() => getHeaderBackground(currentCompany), [currentCompany]);
-  const accentColor = useMemo(() => getPrimaryColor(currentCompany), [currentCompany]);
+  const { currentCompany, currentCompanyId, subscriptionTier } = useCompany();
   
   // Check if user has required subscription tier
   const hasRequiredTier = useMemo(() => {
@@ -36,28 +27,6 @@ const TeamTracker = () => {
   if (!currentCompanyId) {
     return (
       <div className="min-h-screen bg-gray-50 w-full">
-        <header className="bg-white shadow-sm border-b w-full">
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <ModuleNavigationButton currentModuleId="team" />
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ backgroundColor: accentColor }}>
-                  <FaUsers className="w-6 h-6" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Team Management</h1>
-                  <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <NotificationCenter />
-                <CompanySelector />
-                <UserProfile />
-              </div>
-            </div>
-          </div>
-        </header>
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="bg-white rounded-lg shadow p-8 text-center">
             <FaUsers className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -71,30 +40,7 @@ const TeamTracker = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 w-full">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b w-full">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <ModuleNavigationButton currentModuleId="team" />
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ backgroundColor: accentColor }}>
-                <FaUsers className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Team Management</h1>
-                <p className="text-sm text-gray-500">{currentCompany?.name || 'Company'}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <NotificationCenter />
-              <CompanySelector />
-              <UserProfile />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
+      {/* Main Content - Header is provided by MainLayout */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Subscription Tier Check */}
         {!hasRequiredTier ? (
@@ -129,4 +75,3 @@ const TeamTracker = () => {
 };
 
 export default TeamTracker;
-
