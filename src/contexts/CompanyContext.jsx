@@ -998,8 +998,8 @@ export const CompanyProvider = ({ children }) => {
       const userRef = doc(db, 'companies', companyRef.id, 'users', currentUser.uid);
       await setDoc(userRef, {
         role: 'owner',
-        accessModules: ['expenses', 'income', 'marketing', 'forecasting', 'settings'],
-        subscriptionTier: 'business',
+        accessModules: settings.accessModules || ['expenses', 'income', 'marketing', 'forecasting', 'settings'],
+        subscriptionTier: settings.subscriptionTier || 'business',
         joinedAt: serverTimestamp()
       });
 

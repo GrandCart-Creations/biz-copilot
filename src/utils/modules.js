@@ -96,6 +96,17 @@ export const MODULES = {
     requiredTier: 'business',
     status: 'active'
   },
+  companyOS: {
+    id: 'companyOS',
+    name: 'Company OS',
+    description: 'Business planning, roadmaps, goals, and file management',
+    icon: 'FaFolderOpen',
+    color: 'teal',
+    route: '/company-os',
+    requiredPermission: '*',
+    requiredTier: 'business',
+    status: 'active'
+  },
   settings: {
     id: 'settings',
     name: 'Settings',
@@ -251,7 +262,7 @@ export const MODULE_SECTIONS = [
     title: 'Operations',
     color: 'orange',
     icon: 'FaProjectDiagram',
-    modules: ['marketing', 'projects', 'forecasting']
+    modules: ['companyOS', 'marketing', 'projects', 'forecasting']
   },
   {
     id: 'administration',

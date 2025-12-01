@@ -11,6 +11,8 @@
 import React, { useState, useEffect } from 'react';
 import { useCompany } from '../contexts/CompanyContext';
 import { useAuth } from '../contexts/AuthContext';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 import {
   getCompanyMembers,
   getCompanyInvitations,

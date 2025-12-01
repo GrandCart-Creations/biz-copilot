@@ -10,6 +10,7 @@ import { useOnboarding } from '../../contexts/OnboardingContext';
 import { useCompany } from '../../contexts/CompanyContext';
 import { useAuth } from '../../contexts/AuthContext';
 import WelcomeStep from './steps/WelcomeStep';
+import BusinessAssessmentStep from './steps/BusinessAssessmentStep';
 import CompanySetupStep from './steps/CompanySetupStep';
 import CompanyProfileStep from './steps/CompanyProfileStep';
 import TeamInviteStep from './steps/TeamInviteStep';
@@ -36,6 +37,13 @@ const OnboardingWizard = () => {
       id: 'welcome',
       title: 'Welcome to Biz-CoPilot',
       component: WelcomeStep,
+      canSkip: false,
+      isOptional: false
+    },
+    {
+      id: 'business-assessment',
+      title: 'Business Assessment',
+      component: BusinessAssessmentStep,
       canSkip: false,
       isOptional: false
     },
@@ -199,6 +207,7 @@ const OnboardingWizard = () => {
               onSkip={handleSkip}
               currentStep={currentStep}
               totalSteps={steps.length}
+              canProceed={true} // Pass validation state if needed
             />
           )}
         </div>

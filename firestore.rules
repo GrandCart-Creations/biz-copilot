@@ -883,6 +883,28 @@ service cloud.firestore {
       }
       
       // ============================================
+      // PEOPLE WORKSPACE - HR PROFILES
+      // ============================================
+      
+      match /peopleProfiles/{userId} {
+        // Read: Owners and managers can read all profiles, users can read their own
+        allow read: if isAuthenticated() && 
+                      (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                       request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                      (isOwner(companyId) || hasRole(companyId, ['manager']) || request.auth.uid == userId);
+        
+        // Create/Update: Owners and managers can create/update any profile, users can update their own
+        allow create, update: if isAuthenticated() && 
+                        (exists(/databases/$(database)/documents/companies/$(companyId)/users/$(request.auth.uid)) ||
+                         request.auth.uid == get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy) &&
+                        (isOwner(companyId) || hasRole(companyId, ['manager']) || request.auth.uid == userId);
+        
+        // Delete: Only owners and managers
+        allow delete: if isAuthenticated() && 
+                        (isOwner(companyId) || hasRole(companyId, ['manager']));
+      }
+      
+      // ============================================
       // AUDIT LOGS (Read-only for users, system writes)
       // ============================================
       

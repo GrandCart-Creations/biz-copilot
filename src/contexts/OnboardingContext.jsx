@@ -62,44 +62,27 @@ export const OnboardingProvider = ({ children }) => {
           return;
         }
         
-        // Determine if onboarding should be shown
-        // Show if: not completed AND (no companies OR first-time user creating a company)
-        const hasNoCompanies = !companies || companies.length === 0;
-        const isFirstTime = !data.completed && (hasNoCompanies || data.step < 2);
+        // CRITICAL FIX: If onboarding was STARTED but not completed, ALWAYS show it
+        // This ensures new users complete the full onboarding flow
+        // Even if they created a company via CompanySelector first
+        if (data.started && !data.completed && !data.skipped) {
+          console.log('[OnboardingContext] Onboarding was started but not completed - showing wizard');
+          setShouldShowOnboarding(true);
+          return;
+        }
         
-        // IMPORTANT: If user has companies but onboarding not completed, 
-        // they likely joined via invitation - skip onboarding
-        if (!hasNoCompanies && !data.completed) {
-          // User has companies but onboarding isn't complete - they joined via invitation
-          // Mark onboarding as completed to prevent showing it
-          try {
-            await completeOnboarding();
-          } catch (error) {
-            console.error('Error auto-completing onboarding for invited user:', error);
-          }
-          setShouldShowOnboarding(false);
-        } else {
-          setShouldShowOnboarding(isFirstTime);
+        // Onboarding exists but wasn't started - initialize and show it
+        setShouldShowOnboarding(true);
+        if (!data.started) {
+          await initializeOnboarding();
         }
       } else {
-        // No onboarding data - check if user needs onboarding
-        const hasNoCompanies = !companies || companies.length === 0;
-        const needsOnboarding = hasNoCompanies;
-        
-        // If user has companies but no onboarding data, they joined via invitation
-        // Skip onboarding entirely
-        if (!hasNoCompanies) {
-          setShouldShowOnboarding(false);
-          // Initialize onboarding as completed
-          await initializeOnboarding();
-          await completeOnboarding();
-        } else {
-          setShouldShowOnboarding(needsOnboarding);
-          // Initialize onboarding document for company creators
-          if (needsOnboarding) {
-            await initializeOnboarding();
-          }
-        }
+        // No onboarding data - this is a new user
+        // ALWAYS show onboarding for new users, even if they have a company
+        // (They might have created it via CompanySelector before onboarding initialized)
+        console.log('[OnboardingContext] No onboarding data - initializing for new user');
+        await initializeOnboarding();
+        setShouldShowOnboarding(true);
       }
     } catch (error) {
       console.error('Error loading onboarding status:', error);

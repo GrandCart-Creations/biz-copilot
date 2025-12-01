@@ -3,11 +3,29 @@
 
 import React, { useState, useEffect } from 'react';
 import { useCompany } from '../contexts/CompanyContext';
+import { useOnboarding } from '../contexts/OnboardingContext';
 import { getCompanyBranding } from '../firebase';
 import { FaBuilding, FaPlus, FaCheck, FaTrash } from 'react-icons/fa';
+import NewCompanySetupWizard from './NewCompanySetupWizard';
 
 const CompanySelector = () => {
+  console.log('[CompanySelector] Component rendered');
   const { companies, currentCompany, userRole, switchCompany, createCompany, updateCompanyName, deleteCompany, loading } = useCompany();
+  const { onboardingData, shouldShowOnboarding } = useOnboarding();
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
+  const [pendingCompanyId, setPendingCompanyId] = useState(null);
+  const [pendingCompanyName, setPendingCompanyName] = useState(null);
+  
+  // Log component state on render
+  useEffect(() => {
+    console.log('[CompanySelector] Component mounted/updated:', {
+      companiesCount: companies?.length,
+      currentCompanyId: currentCompany?.id,
+      showSetupWizard,
+      pendingCompanyId,
+      onboardingCompleted: onboardingData?.completed
+    });
+  }, [companies?.length, currentCompany?.id, showSetupWizard, pendingCompanyId, onboardingData?.completed]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -40,21 +58,71 @@ const CompanySelector = () => {
     loadLogo();
   }, [currentCompany?.id]);
 
+  // Check for pending company setup on mount or when companies change
+  useEffect(() => {
+    if (!currentCompany?.id || showSetupWizard) return;
+    
+    // Check if there's a pending setup for the current company
+    const pendingKey = `pendingCompanySetup_${currentCompany.id}`;
+    const hasPendingSetup = sessionStorage.getItem(pendingKey);
+    
+    if (hasPendingSetup && !showSetupWizard) {
+      console.log('[CompanySelector] Found pending company setup, showing wizard:', currentCompany.id);
+      setPendingCompanyId(currentCompany.id);
+      setPendingCompanyName(currentCompany.name);
+      setShowSetupWizard(true);
+    }
+  }, [currentCompany?.id, currentCompany?.name, showSetupWizard]);
+
   const handleSwitchCompany = async (companyId) => {
     await switchCompany(companyId);
     setShowDropdown(false);
   };
 
   const handleCreateCompany = async (e) => {
+    console.log('[CompanySelector] handleCreateCompany CALLED');
     e.preventDefault();
     const nameToCreate = newCompanyName.trim();
-    if (!nameToCreate) return;
+    console.log('[CompanySelector] handleCreateCompany - nameToCreate:', nameToCreate);
+    if (!nameToCreate) {
+      console.log('[CompanySelector] handleCreateCompany - name is empty, returning');
+      return;
+    }
 
     try {
+      console.log('[CompanySelector] handleCreateCompany - starting try block');
+      // Check if this is an additional company (user already has at least one)
+      // We check BEFORE creating because companies array updates after creation
+      const hasExistingCompanies = companies && companies.length > 0;
+      const isAdditionalCompany = hasExistingCompanies || (onboardingData?.completed === true) || (onboardingData?.skipped === true);
+      
+      console.log('[CompanySelector] Creating company - isAdditionalCompany:', isAdditionalCompany, {
+        hasExistingCompanies,
+        companiesLength: companies?.length,
+        onboardingCompleted: onboardingData?.completed,
+        onboardingSkipped: onboardingData?.skipped,
+        companyName: nameToCreate
+      });
+      
       setNewCompanyName(''); // Clear input immediately
-      await createCompany(nameToCreate);
+      const companyId = await createCompany(nameToCreate);
       setShowCreateModal(false);
       setShowDropdown(false);
+      
+      // ALWAYS show setup wizard for additional companies (not first company)
+      // First company goes through full onboarding wizard
+      if (isAdditionalCompany) {
+        console.log('[CompanySelector] Showing setup wizard for additional company:', companyId, nameToCreate);
+        // Set state immediately
+        setPendingCompanyId(companyId);
+        setPendingCompanyName(nameToCreate);
+        setShowSetupWizard(true);
+        // Also store in sessionStorage as backup
+        sessionStorage.setItem(`pendingCompanySetup_${companyId}`, 'true');
+        console.log('[CompanySelector] Wizard state set:', { companyId, name: nameToCreate, showSetupWizard: true });
+      } else {
+        console.log('[CompanySelector] First company - onboarding wizard will handle setup');
+      }
       // Company context will automatically reload and show the new company
     } catch (error) {
       console.error('Error creating company:', error);
@@ -65,12 +133,41 @@ const CompanySelector = () => {
   };
 
   const handleCreateCompanyFromModal = async (companyName) => {
-    if (!companyName.trim()) return;
+    console.log('[CompanySelector] handleCreateCompanyFromModal CALLED with:', companyName);
+    if (!companyName.trim()) {
+      console.log('[CompanySelector] Company name is empty, returning');
+      return;
+    }
 
     try {
-      await createCompany(companyName.trim());
+      console.log('[CompanySelector] Starting company creation process...');
+      // Check if this is an additional company BEFORE creating
+      // We check BEFORE because companies array updates after creation
+      const hasExistingCompanies = companies && companies.length > 0;
+      const isAdditionalCompany = hasExistingCompanies || (onboardingData?.completed === true) || (onboardingData?.skipped === true);
+      
+      console.log('[CompanySelector] Creating company from modal - isAdditionalCompany:', isAdditionalCompany, {
+        hasExistingCompanies,
+        companiesLength: companies?.length,
+        onboardingCompleted: onboardingData?.completed,
+        onboardingSkipped: onboardingData?.skipped
+      });
+      
+      const companyId = await createCompany(companyName.trim());
       setShowCreateModal(false);
       setNewCompanyName('');
+      
+      // ALWAYS show setup wizard for additional companies (not first company)
+      // First company goes through full onboarding wizard
+      if (isAdditionalCompany) {
+        console.log('[CompanySelector] Showing setup wizard for additional company:', companyId, companyName.trim());
+        setPendingCompanyId(companyId);
+        setPendingCompanyName(companyName.trim());
+        setShowSetupWizard(true);
+        sessionStorage.setItem(`pendingCompanySetup_${companyId}`, 'true');
+      } else {
+        console.log('[CompanySelector] First company - onboarding wizard will handle setup');
+      }
       // Company context will automatically reload and show the new company
     } catch (error) {
       console.error('Error creating company:', error);
@@ -90,8 +187,15 @@ const CompanySelector = () => {
     );
   }
 
-  // If no company exists yet, show a create button
+  // If no company exists yet, show a create button ONLY if onboarding is complete
+  // New users should go through onboarding wizard to create their first company
   if (!currentCompany) {
+    // If onboarding should be shown, don't show the create button
+    // The onboarding wizard will handle company creation
+    if (shouldShowOnboarding) {
+      return null; // Don't show anything - onboarding wizard will handle it
+    }
+    
     return (
       <>
         <button
@@ -227,11 +331,12 @@ const CompanySelector = () => {
                 ))}
               </div>
 
-              {/* Create New Company Button - OWNER ONLY */}
-              {userRole === 'owner' && (
+              {/* Create New Company Button - OWNER ONLY and Onboarding Complete */}
+              {userRole === 'owner' && !shouldShowOnboarding && (onboardingData?.completed || onboardingData?.skipped || companies?.length > 0) && (
                 <div className="mt-2 pt-2 border-t border-gray-200">
                   <button
                     onClick={() => {
+                      console.log('[CompanySelector] Create New Company button clicked in dropdown');
                       setShowCreateModal(true);
                       setShowDropdown(false);
                     }}
@@ -276,7 +381,7 @@ const CompanySelector = () => {
                   value={editingCompanyName}
                   onChange={(e) => setEditingCompanyName(e.target.value)}
                   placeholder="Enter company name"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
                   autoFocus
                   required
                 />
@@ -305,14 +410,20 @@ const CompanySelector = () => {
       )}
 
       {/* Create Company Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => {
-          setShowCreateModal(false);
-          setNewCompanyName('');
-        }}>
+      {showCreateModal && (() => {
+        console.log('[CompanySelector] Rendering inline create company modal');
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => {
+            console.log('[CompanySelector] Modal backdrop clicked');
+            setShowCreateModal(false);
+            setNewCompanyName('');
+          }}>
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-xl font-bold text-gray-900 mb-4">Create New Company</h2>
-            <form onSubmit={handleCreateCompany}>
+            <form onSubmit={(e) => {
+              console.log('[CompanySelector] Inline modal form submitted, calling handleCreateCompany');
+              handleCreateCompany(e);
+            }}>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Company Name
@@ -322,7 +433,8 @@ const CompanySelector = () => {
                   value={newCompanyName}
                   onChange={(e) => setNewCompanyName(e.target.value)}
                   placeholder="Enter company name"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+                  style={{ color: '#111827', backgroundColor: '#ffffff' }}
                   autoFocus
                   required
                 />
@@ -351,7 +463,8 @@ const CompanySelector = () => {
             </form>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && deletingCompanyId && (
@@ -390,6 +503,28 @@ const CompanySelector = () => {
           </div>
         </div>
       )}
+
+      {/* New Company Setup Wizard */}
+      {showSetupWizard && pendingCompanyId && pendingCompanyName && (
+        <NewCompanySetupWizard
+          companyId={pendingCompanyId}
+          companyName={pendingCompanyName}
+          onComplete={() => {
+            console.log('[CompanySelector] Wizard completed');
+            sessionStorage.removeItem(`pendingCompanySetup_${pendingCompanyId}`);
+            setShowSetupWizard(false);
+            setPendingCompanyId(null);
+            setPendingCompanyName(null);
+          }}
+          onSkip={() => {
+            console.log('[CompanySelector] Wizard skipped');
+            sessionStorage.removeItem(`pendingCompanySetup_${pendingCompanyId}`);
+            setShowSetupWizard(false);
+            setPendingCompanyId(null);
+            setPendingCompanyName(null);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -400,9 +535,20 @@ const CreateCompanyModal = ({ show, onClose, onCreate }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!companyName.trim()) return;
-    await onCreate(companyName.trim());
-    setCompanyName('');
+    console.log('[CreateCompanyModal] Form submitted with company name:', companyName);
+    if (!companyName.trim()) {
+      console.log('[CreateCompanyModal] Company name is empty, not submitting');
+      return;
+    }
+    console.log('[CreateCompanyModal] Calling onCreate with:', companyName.trim());
+    try {
+      await onCreate(companyName.trim());
+      setCompanyName('');
+      console.log('[CreateCompanyModal] onCreate completed successfully');
+    } catch (error) {
+      console.error('[CreateCompanyModal] Error in onCreate:', error);
+      throw error;
+    }
   };
 
   if (!show) return null;
@@ -421,7 +567,8 @@ const CreateCompanyModal = ({ show, onClose, onCreate }) => {
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
               placeholder="Enter company name"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+              style={{ color: '#111827', backgroundColor: '#ffffff' }}
               autoFocus
               required
             />

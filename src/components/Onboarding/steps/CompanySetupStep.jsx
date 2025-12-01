@@ -6,10 +6,13 @@
 
 import React, { useState } from 'react';
 import { useCompany } from '../../../contexts/CompanyContext';
+import { useOnboarding } from '../../../contexts/OnboardingContext';
+import { generateCompanyConfiguration } from '../../../utils/businessConfiguration';
 import { FaBuilding, FaUsers, FaPlus } from 'react-icons/fa';
 
 const CompanySetupStep = ({ onNext, onPrevious }) => {
   const { companies, createCompany, loading } = useCompany();
+  const { onboardingData } = useOnboarding();
   const [companyName, setCompanyName] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
@@ -24,9 +27,42 @@ const CompanySetupStep = ({ onNext, onPrevious }) => {
     setError('');
 
     try {
-      await createCompany(companyName.trim());
+      // Get business assessment data from onboarding
+      // Check both onboardingData and any passed stepData
+      const assessmentData = {
+        businessType: onboardingData?.businessType,
+        businessCategory: onboardingData?.businessCategory,
+        employeeCount: onboardingData?.employeeCount,
+        hasAccountant: onboardingData?.hasAccountant || false,
+        needsInvoicing: onboardingData?.needsInvoicing !== false, // Default to true
+        needsProjects: onboardingData?.needsProjects || false,
+        needsMarketing: onboardingData?.needsMarketing || false,
+        needsForecasting: onboardingData?.needsForecasting || false,
+        recommendedModules: onboardingData?.recommendedModules || ['expenses', 'income', 'financialDashboard']
+      };
+
+      // Generate configuration from assessment
+      const config = generateCompanyConfiguration(assessmentData);
+      
+      console.log('[CompanySetupStep] Applying configuration:', {
+        assessmentData,
+        config
+      });
+
+      // Create company with configuration
+      await createCompany(companyName.trim(), {
+        ...config.settings,
+        configuredModules: config.modules,
+        accessModules: config.accessModules,
+        subscriptionTier: config.subscriptionTier
+      });
+
       // Company created, move to next step
-      onNext({ companyCreated: true, companyName: companyName.trim() });
+      onNext({ 
+        companyCreated: true, 
+        companyName: companyName.trim(),
+        configurationApplied: true
+      });
     } catch (err) {
       setError(err.message || 'Failed to create company');
       setCreating(false);
@@ -95,7 +131,8 @@ const CompanySetupStep = ({ onNext, onPrevious }) => {
                     setError('');
                   }}
                   placeholder="e.g., GrandCart Creations"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00BFA6] focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-[#00BFA6] focus:border-[#00BFA6] focus:outline-none disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                  style={{ color: '#111827', backgroundColor: '#ffffff' }}
                   autoFocus
                   disabled={creating}
                 />

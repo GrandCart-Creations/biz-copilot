@@ -8,7 +8,8 @@ import {
   removePeopleAttachment
 } from '../firebase';
 import { useCompany } from '../contexts/CompanyContext';
-import { FaCheckCircle, FaClipboardList, FaFileUpload, FaFolderOpen, FaShieldAlt } from 'react-icons/fa';
+import PersonWorkspace from './PeopleWorkspace/PersonWorkspace';
+import { FaCheckCircle, FaClipboardList, FaFileUpload, FaFolderOpen, FaShieldAlt, FaTasks, FaBullseye, FaUser } from 'react-icons/fa';
 
 const defaultProfile = {
   fullName: '',
@@ -96,6 +97,7 @@ const PeopleWorkspace = () => {
   const [members, setMembers] = useState([]);
   const [profilesCache, setProfilesCache] = useState({});
   const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const [viewMode, setViewMode] = useState('profile'); // 'profile' | 'workspace'
   const [form, setForm] = useState(defaultProfile);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -129,7 +131,7 @@ const PeopleWorkspace = () => {
         }, {});
         setProfilesCache(cache);
 
-        if (sortedMembers.length > 0) {
+        if (sortedMembers.length > 0 && !selectedMemberId) {
           setSelectedMemberId(sortedMembers[0].userId);
         }
       } catch (error) {
@@ -190,8 +192,14 @@ const PeopleWorkspace = () => {
   }, [currentCompanyId, selectedMemberId, profilesCache, members]);
 
   const selectedMember = useMemo(
-    () => members.find((member) => member.userId === selectedMemberId),
-    [members, selectedMemberId]
+    () => {
+      const member = members.find((member) => member.userId === selectedMemberId);
+      if (member) {
+        console.log('[PeopleWorkspace] Selected member:', member.displayName || member.email, 'ViewMode:', viewMode);
+      }
+      return member;
+    },
+    [members, selectedMemberId, viewMode]
   );
 
   const handleFieldChange = (field, value) => {
@@ -351,17 +359,30 @@ const PeopleWorkspace = () => {
                     <li key={member.userId}>
                       <button
                         type="button"
-                        onClick={() => setSelectedMemberId(member.userId)}
+                        onClick={() => {
+                          setSelectedMemberId(member.userId);
+                          setViewMode('profile'); // Reset to profile view when selecting new member
+                        }}
                         className={`w-full text-left px-3 py-2 rounded-lg border transition ${
                           isActive
-                            ? 'border-[#2FGF3F] bg-[#2FGF3F]/10 text-gray-900'
-                            : 'border-gray-200 hover:border-[#2FGF3F]/50 hover:bg-[#2FGF3F]/5 text-gray-600'
+                            ? 'border-[#005C70] bg-[#F0FBF8] text-gray-900'
+                            : 'border-gray-200 hover:border-[#005C70]/50 hover:bg-[#F0FBF8]/50 text-gray-600'
                         }`}
                       >
-                        <p className="text-sm font-medium">
-                          {member.displayName || member.email}
-                        </p>
-                        <p className="text-xs text-gray-500 capitalize">{member.role || 'employee'}</p>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium">
+                              {member.displayName || member.email}
+                            </p>
+                            <p className="text-xs text-gray-500 capitalize">{member.role || 'employee'}</p>
+                          </div>
+                          {isActive && (
+                            <div className="flex items-center gap-1">
+                              <FaTasks className="w-3 h-3 text-[#005C70]" />
+                              <FaBullseye className="w-3 h-3 text-[#005C70]" />
+                            </div>
+                          )}
+                        </div>
                       </button>
                     </li>
                   );
@@ -384,13 +405,39 @@ const PeopleWorkspace = () => {
           {selectedMember ? (
             <>
               <header className="flex flex-col gap-1 border-b border-gray-200 pb-4 mb-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    {selectedMember.displayName || selectedMember.email}
-                  </h3>
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: '#00BFA6', color: '#074147' }}>
-                    {selectedMember.role || 'employee'}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="text-xl font-semibold text-gray-900">
+                      {selectedMember.displayName || selectedMember.email}
+                    </h3>
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: '#00BFA6', color: '#074147' }}>
+                      {selectedMember.role || 'employee'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setViewMode('profile')}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        viewMode === 'profile'
+                          ? 'bg-[#005C70] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      <FaUser className="w-4 h-4 inline mr-2" />
+                      Profile
+                    </button>
+                    <button
+                      onClick={() => setViewMode('workspace')}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        viewMode === 'workspace'
+                          ? 'bg-[#005C70] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      <FaTasks className="w-4 h-4 inline mr-2" />
+                      Workspace
+                    </button>
+                  </div>
                 </div>
                 <p className="text-sm text-gray-500">{selectedMember.email}</p>
               </header>
@@ -406,7 +453,13 @@ const PeopleWorkspace = () => {
                 </div>
               )}
 
-              {loadingProfile ? (
+              {viewMode === 'workspace' ? (
+                <PersonWorkspace
+                  member={selectedMember}
+                  canEdit={canEdit}
+                  profileData={form}
+                />
+              ) : loadingProfile ? (
                 <div className="py-12 text-center text-gray-500">Loading profile…</div>
               ) : (
                 <div className="space-y-6">

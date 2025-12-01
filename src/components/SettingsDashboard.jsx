@@ -16,6 +16,7 @@ import CompanyBranding from './CompanyBranding';
 import CompanyOnboarding from './CompanyOnboarding';
 import Contracts from './Contracts';
 import AccountBalanceRepair from './AccountBalanceRepair';
+import CompanyAdministration from './CompanyAdministration';
 import {
   FaCog,
   FaBuilding,
@@ -70,6 +71,7 @@ const SettingsDashboard = () => {
   const tabItems = [
     { id: 'team', label: 'Team Management', icon: FaUsers },
     { id: 'people', label: 'People Workspace', icon: FaUserTie },
+    { id: 'administration', label: 'Company Administration', icon: FaCog, roles: ['owner'] },
     { id: 'accounts', label: 'Financial Accounts', icon: FaUniversity, roles: ['owner'] },
     { id: 'contracts', label: 'Contracts', icon: FaFileContract, roles: ['owner', 'manager'] },
     { id: 'funding', label: 'Funding & Investors', icon: FaSeedling, roles: ['owner', 'manager'] },
@@ -136,6 +138,7 @@ const SettingsDashboard = () => {
         <div className="bg-white rounded-lg shadow p-6">
           {activeTab === 'team' && <TeamManagement />}
           {activeTab === 'people' && <PeopleWorkspace />}
+          {activeTab === 'administration' && <CompanyAdministration />}
           {activeTab === 'accounts' && <FinancialAccounts />}
           {activeTab === 'contracts' && <Contracts />}
           {activeTab === 'funding' && <FundingAndInvestors />}
